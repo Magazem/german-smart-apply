@@ -6,6 +6,7 @@ import { CvModule } from './cv/cv.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
 import { ApplicationsModule } from './applications/applications.module.js';
 import { SavedSearchesModule } from './saved-searches/saved-searches.module.js';
+import { BillingModule } from './billing/billing.module.js';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { SavedSearchesModule } from './saved-searches/saved-searches.module.js';
     JobsModule,
     ApplicationsModule,
     SavedSearchesModule,
+    BillingModule,
   ],
 })
 export class AppModule {}

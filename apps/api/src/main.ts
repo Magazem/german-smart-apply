@@ -4,7 +4,10 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { cors: true });
+  // rawBody: true is required for Stripe webhook signature verification
+  // (billing.controller.ts reads req.rawBody), which needs the exact bytes
+  // Stripe signed, not the JSON-parsed-and-reserialized body.
+  const app = await NestFactory.create(AppModule, { cors: true, rawBody: true });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
