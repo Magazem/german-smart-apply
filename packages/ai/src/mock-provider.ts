@@ -1,0 +1,97 @@
+import type { CandidateProfile, CanonicalJob, ParsedCvResult } from '@german-smart-apply/shared';
+import type {
+  AiGenerationResult,
+  AiProvider,
+  CvSuggestionsResult,
+} from './types.js';
+
+/**
+ * Deterministic, template-based provider used when ANTHROPIC_API_KEY is
+ * absent (e.g. this sandbox) and in unit tests that assert prompt-output
+ * *shape* rather than model quality. No network calls.
+ */
+export class MockAiProvider implements AiProvider {
+  async parseCv(rawText: string, language: string): Promise<ParsedCvResult> {
+    const lines = rawText
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const emailMatch = rawText.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+    const skillsLine = lines.find((l) => /skills?:/i.test(l));
+    const skills = skillsLine
+      ? skillsLine
+          .replace(/skills?:/i, '')
+          .split(/[,;]/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
+    return {
+      fullName: lines[0] ?? null,
+      email: emailMatch ? emailMatch[0] : null,
+      phone: null,
+      summary: lines.slice(0, 3).join(' '),
+      skills,
+      experience: [],
+      education: [],
+      languages: [language],
+      suggestions: [
+        'Quantify achievements with concrete metrics (%, revenue, users).',
+        'Move the most relevant skills to the top third of the document.',
+      ],
+    };
+  }
+
+  async generateCvSuggestions(
+    profile: CandidateProfile,
+    targetJob: CanonicalJob | null,
+    _language: string,
+  ): Promise<CvSuggestionsResult> {
+    const suggestions = [
+      `Emphasize experience with ${profile.skills.slice(0, 3).join(', ') || 'your core skills'}.`,
+    ];
+    if (targetJob) {
+      suggestions.push(`Mirror terminology from "${targetJob.jobTitleNormalized}" in your summary.`);
+    }
+    return { suggestions, modelUsed: 'mock', tokensUsed: 0 };
+  }
+
+  async generateCvVariant(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+    _language: string,
+  ): Promise<AiGenerationResult> {
+    return {
+      text: `${profile.fullName ?? 'Candidate'} - CV tailored for ${job.jobTitleNormalized} at ${job.companyNameNormalized}.\n\nSkills: ${profile.skills.join(', ')}`,
+      modelUsed: 'mock',
+      tokensUsed: 0,
+    };
+  }
+
+  async generateCoverLetter(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+    language: string,
+  ): Promise<AiGenerationResult> {
+    const greeting = language.startsWith('de') ? 'Sehr geehrte Damen und Herren,' : 'Dear Hiring Team,';
+    return {
+      text: `${greeting}\n\nI am writing to apply for the ${job.jobTitleNormalized} role at ${job.companyNameNormalized}. My background in ${profile.skills.slice(0, 3).join(', ') || profile.targetRole} aligns closely with this position.\n\nBest regards,\n${profile.fullName ?? ''}`,
+      modelUsed: 'mock',
+      tokensUsed: 0,
+    };
+  }
+
+  async generateMatchExplanation(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+    _language: string,
+  ): Promise<AiGenerationResult> {
+    const overlap = profile.skills.filter((s) =>
+      job.techStackTags.some((t) => t.toLowerCase() === s.toLowerCase()),
+    );
+    const text = overlap.length
+      ? `Strong match: you share ${overlap.length} skill(s) (${overlap.join(', ')}) with this ${job.jobTitleNormalized} role.`
+      : `Potential match based on your target role "${profile.targetRole}" and seniority "${profile.seniority}".`;
+    return { text, modelUsed: 'mock', tokensUsed: 0 };
+  }
+}

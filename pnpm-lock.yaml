@@ -33,6 +33,19 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9
 
+  packages/ai:
+    dependencies:
+      '@german-smart-apply/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9
+
   packages/db:
     dependencies:
       '@prisma/client':
