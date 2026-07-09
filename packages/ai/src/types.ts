@@ -48,8 +48,15 @@ export interface AiProvider {
   ): Promise<AiGenerationResult>;
 }
 
+// Model IDs verified current via the claude-api skill's model catalog
+// (cached 2026-06-24): the bare alias is the recommended form over a
+// dated snapshot id, and both are GA/active at time of writing.
+// - cheap:  Claude Haiku 4.5  - fastest/cheapest, used for extraction,
+//           tagging, and structured parsing (plan.md "Model routing strategy").
+// - strong: Claude Sonnet 5   - near-Opus quality on writing/agentic work
+//           at Sonnet cost, used for candidate-facing writing tasks.
 export const MODEL_ROUTING: Record<ModelTier, string> = {
-  cheap: 'claude-haiku-4-5-20251001',
+  cheap: 'claude-haiku-4-5',
   strong: 'claude-sonnet-5',
 };
 
