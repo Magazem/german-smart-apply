@@ -1,0 +1,11 @@
+[
+  {
+    "id": "abc-123",
+    "text": "Senior Backend Engineer",
+    "hostedUrl": "https://jobs.lever.co/acme/abc-123",
+    "categories": {"location": "Berlin, Germany", "team": "Engineering", "commitment": "Full-time"},
+    "descriptionPlain": "We are looking for a Senior Backend Engineer with Python and AWS experience. Gehalt: 65.000 - 80.000 EUR.",
+    "description": "<div>We are looking for a Senior Backend Engineer</div>",
+    "createdAt": 1748000000000
+  }
+]

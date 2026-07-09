@@ -1,0 +1,15 @@
+{
+  "maxErgebnisse": 1,
+  "stellenangebote": [
+    {
+      "refnr": "10000-1234567890-S",
+      "titel": "Lead DevOps Engineer (m/w/d)",
+      "arbeitgeber": "Deutsche Telekom AG",
+      "arbeitsort": {"ort": "Bonn", "plz": "53113", "region": "Nordrhein-Westfalen", "land": "Deutschland"},
+      "eintrittsdatum": "2026-08-01",
+      "aktuelleVeroeffentlichungsdatum": "2026-07-01",
+      "stellenbeschreibung": "Wir suchen einen erfahrenen DevOps Lead mit Kubernetes und Terraform Kenntnissen.",
+      "externeUrl": "https://telekom.example/karriere/12345"
+    }
+  ]
+}
