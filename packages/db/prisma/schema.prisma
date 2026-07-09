@@ -205,6 +205,10 @@ model User {
   id                   String   @id @default(uuid())
   email                String   @unique
   authProviderId       String?  @unique
+  // Dev-mode local email+password auth stand-in.
+  // TODO: swap for Clerk/NextAuth when API keys are available; this column
+  // becomes unused once authProviderId-based auth takes over.
+  passwordHash         String?
   subscriptionStatus   SubscriptionStatus @default(free)
   stripeCustomerId     String?  @unique
   stripeSubscriptionId String?  @unique
