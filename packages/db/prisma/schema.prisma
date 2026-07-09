@@ -1,0 +1,387 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sources domain
+// ─────────────────────────────────────────────────────────────
+
+enum TrustTier {
+  high
+  medium
+  low
+}
+
+model Source {
+  id                    String   @id @default(uuid())
+  sourceType            String
+  displayName           String
+  countryCode           String
+  trustTier             TrustTier @default(medium)
+  crawlFrequencyMinutes Int      @default(360)
+  config                Json     @default("{}")
+  domainAllowlist       String[] @default([])
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  crawlRuns   SourceCrawlRun[]
+  rawSnapshots RawJobSnapshot[]
+  rawJobs     RawJob[]
+
+  @@index([countryCode])
+  @@map("sources")
+}
+
+enum CrawlRunStatus {
+  running
+  success
+  partial_failure
+  failure
+}
+
+model SourceCrawlRun {
+  id             String         @id @default(uuid())
+  sourceId       String
+  source         Source         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  status         CrawlRunStatus @default(running)
+  startedAt      DateTime       @default(now())
+  finishedAt     DateTime?
+  jobsFetched    Int            @default(0)
+  jobsNew        Int            @default(0)
+  jobsUpdated    Int            @default(0)
+  errorLog       String?
+  retryCount     Int            @default(0)
+
+  @@index([sourceId, startedAt])
+  @@map("source_crawl_runs")
+}
+
+model RawJobSnapshot {
+  id             String   @id @default(uuid())
+  sourceId       String
+  source         Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  originalJobId  String
+  payload        Json
+  fetchedAt      DateTime @default(now())
+
+  @@index([sourceId, originalJobId])
+  @@map("raw_job_snapshots")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Jobs domain
+// ─────────────────────────────────────────────────────────────
+
+model RawJob {
+  id                     String    @id @default(uuid())
+  sourceId               String
+  source                 Source    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  originalJobId          String
+  sourceUrl              String
+  companyNameRaw         String
+  companyNameNormalized  String
+  jobTitleRaw            String
+  jobTitleNormalized     String
+  jobDescriptionHtml     String?
+  jobDescriptionText     String
+  language               String
+  locationRaw            String
+  locationNormalized     String
+  countryCode            String
+  remoteType             String
+  employmentType         String
+  seniority              String?
+  salaryMin              Int?
+  salaryMax              Int?
+  salaryCurrency         String?
+  techStackTags          String[] @default([])
+  applyUrl               String
+  postedAt               DateTime?
+  crawledAt              DateTime  @default(now())
+  sourceTrustScore       Float     @default(0.5)
+  scamRiskScore          Float     @default(0)
+  isDeduplicated         Boolean   @default(false)
+
+  canonicalJob CanonicalJob?
+  clusterMemberships DuplicateClusterMember[]
+
+  @@unique([sourceId, originalJobId])
+  @@index([companyNameNormalized, jobTitleNormalized, locationNormalized])
+  @@map("raw_jobs")
+}
+
+model CanonicalJob {
+  id                    String   @id @default(uuid())
+  rawJobId              String   @unique
+  rawJob                RawJob   @relation(fields: [rawJobId], references: [id], onDelete: Cascade)
+  companyNameNormalized String
+  jobTitleNormalized    String
+  locationNormalized    String
+  countryCode           String
+  remoteType            String
+  employmentType        String
+  seniority             String?
+  salaryMin             Int?
+  salaryMax             Int?
+  salaryCurrency        String?
+  techStackTags         String[] @default([])
+  language              String
+  sourceTrustScore      Float
+  scamRiskScore         Float
+  duplicateConfidence   Float    @default(1.0)
+  postedAt              DateTime?
+  crawledAt             DateTime
+  isVisible             Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  clusters        DuplicateCluster[]
+  savedByUsers    SavedJob[]
+  interactions    JobInteraction[]
+  applications    Application[]
+
+  @@index([countryCode, jobTitleNormalized])
+  @@index([companyNameNormalized])
+  @@map("canonical_jobs")
+}
+
+model DuplicateCluster {
+  id             String   @id @default(uuid())
+  canonicalJobId String
+  canonicalJob   CanonicalJob @relation(fields: [canonicalJobId], references: [id], onDelete: Cascade)
+  clusterKey     String
+  createdAt      DateTime @default(now())
+
+  members DuplicateClusterMember[]
+
+  @@index([clusterKey])
+  @@map("duplicate_clusters")
+}
+
+model DuplicateClusterMember {
+  id                 String   @id @default(uuid())
+  duplicateClusterId String
+  duplicateCluster   DuplicateCluster @relation(fields: [duplicateClusterId], references: [id], onDelete: Cascade)
+  rawJobId           String
+  rawJob             RawJob   @relation(fields: [rawJobId], references: [id], onDelete: Cascade)
+  similarityScore    Float
+  isCanonicalPick    Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  @@unique([duplicateClusterId, rawJobId])
+  @@map("duplicate_cluster_members")
+}
+
+model CompanyAlias {
+  id                    String   @id @default(uuid())
+  companyNameNormalized String
+  alias                 String
+  aliasType             String   @default("variant") // variant | abbreviation | legal_name | brand
+  createdAt             DateTime @default(now())
+
+  @@unique([companyNameNormalized, alias])
+  @@index([alias])
+  @@map("company_aliases")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Users domain
+// ─────────────────────────────────────────────────────────────
+
+enum SubscriptionStatus {
+  free
+  pro
+  canceled
+  past_due
+}
+
+model User {
+  id                   String   @id @default(uuid())
+  email                String   @unique
+  authProviderId       String?  @unique
+  subscriptionStatus   SubscriptionStatus @default(free)
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?  @unique
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  candidateProfile CandidateProfile?
+  cvDocuments      CvDocument[]
+  savedJobs        SavedJob[]
+  interactions     JobInteraction[]
+  applications     Application[]
+  savedSearches    SavedSearch[]
+
+  @@map("users")
+}
+
+model CandidateProfile {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName              String?
+  targetRole            String
+  targetCountryCode     String   @default("DE")
+  preferredLanguage     String   @default("en")
+  seniority             String
+  locationPreference    String   @default("any")
+  skills                String[] @default([])
+  summary               String?
+  salaryTargetMin        Int?
+  salaryTargetMax        Int?
+  workAuthorization      String?
+  companyBlacklist       String[] @default([])
+  commutePreferenceKm    Int?
+  portfolioLinks         String[] @default([])
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@map("candidate_profiles")
+}
+
+model CvDocument {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileName      String
+  storageKey    String
+  mimeType      String
+  parsedResult  Json?
+  parseStatus   String   @default("pending") // pending | parsed | failed
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@map("cv_documents")
+}
+
+model SavedJob {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canonicalJobId String
+  canonicalJob   CanonicalJob @relation(fields: [canonicalJobId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, canonicalJobId])
+  @@map("saved_jobs")
+}
+
+enum InteractionType {
+  view
+  like
+  skip
+  share
+}
+
+model JobInteraction {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canonicalJobId String
+  canonicalJob   CanonicalJob @relation(fields: [canonicalJobId], references: [id], onDelete: Cascade)
+  interactionType InteractionType
+  createdAt      DateTime @default(now())
+
+  @@index([userId, canonicalJobId])
+  @@map("job_interactions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Applications domain
+// ─────────────────────────────────────────────────────────────
+
+enum ApplicationStatus {
+  new
+  viewed
+  saved
+  draft_ready
+  awaiting_approval
+  applied
+  interview
+  rejected
+  offer
+  archived
+}
+
+model Application {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canonicalJobId String
+  canonicalJob   CanonicalJob @relation(fields: [canonicalJobId], references: [id], onDelete: Cascade)
+  status         ApplicationStatus @default(new)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  drafts ApplicationDraft[]
+  events ApplicationEvent[]
+
+  @@unique([userId, canonicalJobId])
+  @@index([userId, status])
+  @@map("applications")
+}
+
+model ApplicationDraft {
+  id            String   @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  cvVariantText String
+  coverLetterText String
+  modelUsed     String
+  tokensUsed    Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@index([applicationId])
+  @@map("application_drafts")
+}
+
+model ApplicationEvent {
+  id            String   @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStatus    ApplicationStatus?
+  toStatus      ApplicationStatus
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@index([applicationId])
+  @@map("application_events")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Alerts domain
+// ─────────────────────────────────────────────────────────────
+
+model SavedSearch {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  filters   Json
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deliveries AlertDelivery[]
+
+  @@index([userId])
+  @@map("saved_searches")
+}
+
+model AlertDelivery {
+  id            String   @id @default(uuid())
+  savedSearchId String
+  savedSearch   SavedSearch @relation(fields: [savedSearchId], references: [id], onDelete: Cascade)
+  jobIds        String[]
+  channel       String   @default("email")
+  sentAt        DateTime @default(now())
+
+  @@index([savedSearchId])
+  @@map("alert_deliveries")
+}
