@@ -1,0 +1,20 @@
+Jordan Schmidt
+jordan.schmidt@example.com
++49 30 1234567
+
+Summary: Full-stack software engineer with 4 years of experience building web
+applications with React, TypeScript, and Node.js. Comfortable owning features
+end to end, from API design to deployment.
+
+Skills: TypeScript, React, Node.js, PostgreSQL, Docker, AWS
+
+Experience:
+Software Engineer, Beispiel GmbH, Berlin (2022 - Present)
+- Built and shipped customer-facing React features used by 200k+ users.
+- Designed REST APIs in Node.js backed by PostgreSQL.
+
+Junior Developer, StartupCo, Hamburg (2020 - 2022)
+- Maintained internal tooling and CI/CD pipelines.
+
+Education:
+B.Sc. Computer Science, University of Hamburg, 2016 - 2020
