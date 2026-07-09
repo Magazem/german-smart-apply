@@ -1,4 +1,4 @@
-import { createAiProvider } from '@german-smart-apply/ai';
+import { MockAiProvider } from '@german-smart-apply/ai/mock';
 import {
   canTransition,
   type Application,
@@ -23,7 +23,7 @@ import type {
   RegisterInput,
 } from './types';
 
-const aiProvider = createAiProvider();
+const aiProvider = new MockAiProvider();
 
 function toAuthUser(u: MockUser): AuthUser {
   return { id: u.id, email: u.email, fullName: u.fullName, tier: u.tier, createdAt: u.createdAt };
