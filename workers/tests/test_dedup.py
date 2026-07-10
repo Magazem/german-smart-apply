@@ -216,8 +216,15 @@ def test_run_dedup_does_not_collapse_near_miss_different_location(seeded_db):
     assert result["rawJobsProcessed"] == 2
     assert result["groups"] == 2
     assert result["canonicalJobsCreated"] == 2
-    assert result["duplicateClustersCreated"] == 0
-    assert result["duplicateClusterMembersCreated"] == 0
+    # Every cluster key gets a duplicate_clusters row from its first sighting
+    # (even a "cluster of one"), so a later cross-run duplicate can be found
+    # and folded in - see test_run_dedup_collapses_cross_run_duplicates.
+    assert result["duplicateClustersCreated"] == 2
+    assert result["duplicateClusterMembersCreated"] == 2
+
+    dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    dict_cur.execute('SELECT * FROM "canonical_jobs"')
+    assert len(dict_cur.fetchall()) == 2
 
 
 def test_run_dedup_does_not_collapse_near_miss_different_title(seeded_db):
@@ -237,7 +244,7 @@ def test_run_dedup_does_not_collapse_near_miss_different_title(seeded_db):
 
     assert result["groups"] == 2
     assert result["canonicalJobsCreated"] == 2
-    assert result["duplicateClustersCreated"] == 0
+    assert result["duplicateClustersCreated"] == 2
 
 
 def test_run_dedup_picks_higher_trust_source_as_canonical(seeded_db):
@@ -258,3 +265,91 @@ def test_run_dedup_picks_higher_trust_source_as_canonical(seeded_db):
     canonical = dict_cur.fetchone()
     assert canonical["rawJobId"] == gh_job_id
     assert canonical["sourceTrustScore"] == 0.9  # high tier
+
+
+def test_run_dedup_collapses_cross_run_duplicates(seeded_db):
+    """The core bug: sources crawl on independent schedules, so an exact
+    duplicate from a second source routinely arrives in a *separate*
+    run_dedup() call, not the same one. It must still collapse into the
+    original canonical_jobs row, not create a second one.
+    """
+    conn, source_ids = seeded_db
+    cur = conn.cursor()
+
+    gh_job_id = _insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-1")
+    first_result = dedup.run_dedup(conn)
+    assert first_result["canonicalJobsCreated"] == 1
+    assert first_result["duplicateClustersCreated"] == 1
+
+    dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    dict_cur.execute('SELECT * FROM "canonical_jobs"')
+    canonical_after_first_run = dict_cur.fetchall()
+    assert len(canonical_after_first_run) == 1
+    first_canonical_id = canonical_after_first_run[0]["id"]
+
+    # A second source posts an exact duplicate, discovered in a *later* run.
+    lever_job_id = _insert_raw_job(
+        cur, source_ids["lever-de"], originalJobId="lv-1", sourceUrl="https://jobs.lever.co/acme/abc-123"
+    )
+    second_result = dedup.run_dedup(conn)
+
+    # No new canonical_jobs row or cluster - it folds into the existing one.
+    assert second_result["canonicalJobsCreated"] == 0
+    assert second_result["duplicateClustersCreated"] == 0
+    assert second_result["duplicateClusterMembersCreated"] == 1
+
+    dict_cur.execute('SELECT * FROM "canonical_jobs"')
+    canonical_after_second_run = dict_cur.fetchall()
+    assert len(canonical_after_second_run) == 1
+    assert canonical_after_second_run[0]["id"] == first_canonical_id
+
+    dict_cur.execute(
+        'SELECT * FROM "duplicate_clusters" WHERE "canonicalJobId" = %s', (first_canonical_id,)
+    )
+    clusters = dict_cur.fetchall()
+    assert len(clusters) == 1
+
+    dict_cur.execute(
+        'SELECT * FROM "duplicate_cluster_members" WHERE "duplicateClusterId" = %s', (clusters[0]["id"],)
+    )
+    members = dict_cur.fetchall()
+    assert {m["rawJobId"] for m in members} == {gh_job_id, lever_job_id}
+
+
+def test_run_dedup_promotes_higher_trust_job_arriving_in_a_later_run(seeded_db):
+    """A cross-run duplicate that's *more* trustworthy than the original
+    canonical pick must be promoted - the canonical_jobs row itself should
+    switch to point at it, not just add it as a non-canonical member.
+    """
+    conn, source_ids = seeded_db
+    cur = conn.cursor()
+
+    cur.execute('UPDATE "sources" SET "trustTier" = %s WHERE "id" = %s', ("low", source_ids["lever-de"]))
+
+    lever_job_id = _insert_raw_job(cur, source_ids["lever-de"], originalJobId="lv-first")
+    dedup.run_dedup(conn)
+
+    dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    dict_cur.execute('SELECT * FROM "canonical_jobs"')
+    initial_canonical = dict_cur.fetchone()
+    assert initial_canonical["rawJobId"] == lever_job_id
+
+    # A higher-trust source posts the same role, discovered in a later run.
+    gh_job_id = _insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-later")
+    dedup.run_dedup(conn)
+
+    dict_cur.execute('SELECT * FROM "canonical_jobs"')
+    rows = dict_cur.fetchall()
+    assert len(rows) == 1
+    assert rows[0]["id"] == initial_canonical["id"]  # same canonical row, not a new one
+    assert rows[0]["rawJobId"] == gh_job_id  # promoted to the higher-trust job
+    assert rows[0]["sourceTrustScore"] == 0.9
+
+    dict_cur.execute(
+        'SELECT * FROM "duplicate_cluster_members" WHERE "duplicateClusterId" = ('
+        '  SELECT "id" FROM "duplicate_clusters" WHERE "canonicalJobId" = %s'
+        ')',
+        (initial_canonical["id"],),
+    )
+    members = {m["rawJobId"]: m["isCanonicalPick"] for m in dict_cur.fetchall()}
+    assert members == {lever_job_id: False, gh_job_id: True}

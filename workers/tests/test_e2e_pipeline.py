@@ -95,8 +95,11 @@ def test_full_pipeline_snapshot_to_normalize_to_dedup_collapses_duplicate(seeded
     assert dedup_result["rawJobsProcessed"] == 3
     assert dedup_result["groups"] == 2  # {Senior Backend Engineer, Berlin} and {Werkstudent Marketing, Remote}
     assert dedup_result["canonicalJobsCreated"] == 2
-    assert dedup_result["duplicateClustersCreated"] == 1
-    assert dedup_result["duplicateClusterMembersCreated"] == 2
+    # Every cluster key gets a duplicate_clusters row from its first sighting
+    # (even the solo Werkstudent Marketing one) so a cross-run duplicate can
+    # be found and folded in later - see dedup.py's module docstring.
+    assert dedup_result["duplicateClustersCreated"] == 2
+    assert dedup_result["duplicateClusterMembersCreated"] == 3
 
     # Exactly one canonical_jobs row for the duplicate pair.
     dict_cur.execute(
@@ -131,8 +134,9 @@ def test_full_pipeline_snapshot_to_normalize_to_dedup_collapses_duplicate(seeded
     sources_of_members = {row[1] for row in cur.fetchall()}
     assert sources_of_members == {gh_source_id, lever_source_id}
 
-    # The unrelated Werkstudent Marketing job got its own canonical_jobs row
-    # and did NOT get pulled into any duplicate_clusters trail.
+    # The unrelated Werkstudent Marketing job got its own canonical_jobs row,
+    # with its own "cluster of one" (populated eagerly so a future cross-run
+    # duplicate of *this* job could still be found and collapsed later).
     dict_cur.execute(
         'SELECT * FROM "canonical_jobs" WHERE "jobTitleNormalized" = %s', ("werkstudent marketing",)
     )
@@ -141,4 +145,12 @@ def test_full_pipeline_snapshot_to_normalize_to_dedup_collapses_duplicate(seeded
     dict_cur.execute(
         'SELECT * FROM "duplicate_clusters" WHERE "canonicalJobId" = %s', (solo_canonical[0]["id"],)
     )
-    assert dict_cur.fetchall() == []
+    solo_clusters = dict_cur.fetchall()
+    assert len(solo_clusters) == 1
+    dict_cur.execute(
+        'SELECT * FROM "duplicate_cluster_members" WHERE "duplicateClusterId" = %s',
+        (solo_clusters[0]["id"],),
+    )
+    solo_members = dict_cur.fetchall()
+    assert len(solo_members) == 1
+    assert solo_members[0]["isCanonicalPick"] is True

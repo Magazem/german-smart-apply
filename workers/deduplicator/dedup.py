@@ -1,5 +1,7 @@
 """Exact deduplication: raw_jobs -> canonical_jobs, with duplicate_clusters /
-duplicate_cluster_members written for any raw_jobs collapsed together.
+duplicate_cluster_members written for every cluster key ever seen (not just
+ones with 2+ members in a single run - see the module-level note below on
+why that matters).
 
 Exact-dedup key = (resolved company key, jobTitleNormalized, locationNormalized).
 "Resolved company key" means companyNameNormalized after resolving through
@@ -14,6 +16,16 @@ three after normalization, while two genuinely different roles will not.
 Within a cluster, the canonical pick is the raw_job with the highest
 sourceTrustScore, tie-broken by earliest postedAt (falling back to crawledAt),
 then by id for full determinism.
+
+Cross-run duplicates: sources crawl on independent schedules
+(crawlFrequencyMinutes), so two exact-duplicate postings from different
+sources routinely arrive in *separate* run_dedup() invocations, not the same
+one. A `duplicate_clusters` row is therefore created for every cluster key
+the very first time it's seen -- even a "cluster of one" -- so a later run
+can look it up by clusterKey and fold a newly-arrived duplicate into the
+existing canonical_jobs row (re-evaluating the canonical pick across *all*
+members, old and new) instead of minting a second, uncollapsed canonical_jobs
+row for what is really the same posting.
 """
 from __future__ import annotations
 
@@ -96,70 +108,119 @@ def run_dedup(conn, country_code: str = "DE") -> dict[str, Any]:
             job["sourceTrustScore"] = trust_score
             job["scamRiskScore"] = scam_score
 
-        ordered = sorted(jobs, key=_canonical_sort_key)
+        # A cluster for this key may already exist from an earlier run (see
+        # module docstring) - if so, fold this batch's job(s) into it instead
+        # of minting a second canonical_jobs row for the same real posting.
+        dict_cur.execute(
+            'SELECT * FROM "duplicate_clusters" WHERE "clusterKey" = %s LIMIT 1', (cluster_key,)
+        )
+        existing_cluster = dict_cur.fetchone()
+
+        if existing_cluster is not None:
+            duplicate_cluster_id = existing_cluster["id"]
+            canonical_id = existing_cluster["canonicalJobId"]
+            dict_cur.execute(
+                """
+                SELECT rj.* FROM "duplicate_cluster_members" dcm
+                JOIN "raw_jobs" rj ON rj."id" = dcm."rawJobId"
+                WHERE dcm."duplicateClusterId" = %s
+                """,
+                (duplicate_cluster_id,),
+            )
+            all_jobs_in_cluster = dict_cur.fetchall() + jobs
+        else:
+            duplicate_cluster_id = str(uuid.uuid4())
+            canonical_id = str(uuid.uuid4())
+            all_jobs_in_cluster = jobs
+
+        # Re-evaluate the canonical pick across every member the cluster has
+        # ever had, old and new - a later, higher-trust duplicate can promote
+        # over an earlier, lower-trust one.
+        ordered = sorted(all_jobs_in_cluster, key=_canonical_sort_key)
         canonical_pick = ordered[0]
         # Exact-match cluster members all share identical normalized keys, so
         # duplicateConfidence on the canonical_jobs row is 1.0 regardless of
         # cluster size (this is an *exact* dedup pass, not similarity-based).
         duplicate_confidence = 1.0
 
-        canonical_id = str(uuid.uuid4())
-        cur.execute(
-            """
-            INSERT INTO "canonical_jobs" (
-                "id", "rawJobId", "companyNameNormalized", "jobTitleNormalized", "locationNormalized",
-                "countryCode", "remoteType", "employmentType", "seniority", "salaryMin", "salaryMax",
-                "salaryCurrency", "techStackTags", "language", "sourceTrustScore", "scamRiskScore",
-                "duplicateConfidence", "postedAt", "crawledAt", "updatedAt"
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
-            """,
-            (
-                canonical_id,
-                canonical_pick["id"],
-                canonical_pick["companyNameNormalized"],
-                canonical_pick["jobTitleNormalized"],
-                canonical_pick["locationNormalized"],
-                canonical_pick["countryCode"],
-                canonical_pick["remoteType"],
-                canonical_pick["employmentType"],
-                canonical_pick["seniority"],
-                canonical_pick["salaryMin"],
-                canonical_pick["salaryMax"],
-                canonical_pick["salaryCurrency"],
-                canonical_pick["techStackTags"],
-                canonical_pick["language"],
-                canonical_pick["sourceTrustScore"],
-                canonical_pick["scamRiskScore"],
-                duplicate_confidence,
-                canonical_pick["postedAt"],
-                canonical_pick["crawledAt"],
-            ),
+        canonical_fields = (
+            canonical_pick["companyNameNormalized"],
+            canonical_pick["jobTitleNormalized"],
+            canonical_pick["locationNormalized"],
+            canonical_pick["countryCode"],
+            canonical_pick["remoteType"],
+            canonical_pick["employmentType"],
+            canonical_pick["seniority"],
+            canonical_pick["salaryMin"],
+            canonical_pick["salaryMax"],
+            canonical_pick["salaryCurrency"],
+            canonical_pick["techStackTags"],
+            canonical_pick["language"],
+            canonical_pick["sourceTrustScore"],
+            canonical_pick["scamRiskScore"],
+            duplicate_confidence,
+            canonical_pick["postedAt"],
+            canonical_pick["crawledAt"],
         )
-        canonical_created += 1
 
-        if len(jobs) > 1:
-            duplicate_cluster_id = str(uuid.uuid4())
+        if existing_cluster is not None:
+            cur.execute(
+                """
+                UPDATE "canonical_jobs" SET
+                    "rawJobId" = %s, "companyNameNormalized" = %s, "jobTitleNormalized" = %s,
+                    "locationNormalized" = %s, "countryCode" = %s, "remoteType" = %s,
+                    "employmentType" = %s, "seniority" = %s, "salaryMin" = %s, "salaryMax" = %s,
+                    "salaryCurrency" = %s, "techStackTags" = %s, "language" = %s,
+                    "sourceTrustScore" = %s, "scamRiskScore" = %s, "duplicateConfidence" = %s,
+                    "postedAt" = %s, "crawledAt" = %s, "updatedAt" = now()
+                WHERE "id" = %s
+                """,
+                (canonical_pick["id"], *canonical_fields, canonical_id),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO "canonical_jobs" (
+                    "id", "rawJobId", "companyNameNormalized", "jobTitleNormalized", "locationNormalized",
+                    "countryCode", "remoteType", "employmentType", "seniority", "salaryMin", "salaryMax",
+                    "salaryCurrency", "techStackTags", "language", "sourceTrustScore", "scamRiskScore",
+                    "duplicateConfidence", "postedAt", "crawledAt", "updatedAt"
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                """,
+                (canonical_id, canonical_pick["id"], *canonical_fields),
+            )
+            canonical_created += 1
+
             cur.execute(
                 'INSERT INTO "duplicate_clusters" ("id", "canonicalJobId", "clusterKey") VALUES (%s, %s, %s)',
                 (duplicate_cluster_id, canonical_id, cluster_key),
             )
             clusters_created += 1
-            for job in ordered:
-                cur.execute(
-                    """
-                    INSERT INTO "duplicate_cluster_members"
-                        ("id", "duplicateClusterId", "rawJobId", "similarityScore", "isCanonicalPick")
-                    VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    (
-                        str(uuid.uuid4()),
-                        duplicate_cluster_id,
-                        job["id"],
-                        1.0,  # exact-match cluster
-                        job["id"] == canonical_pick["id"],
-                    ),
-                )
-                members_created += 1
+
+        # Cluster-membership rows only need inserting for jobs newly arrived
+        # in *this* batch - a prior run's members already have rows. The
+        # canonical-pick flag is refreshed across the whole cluster since a
+        # newly-arrived job may have just been promoted above.
+        cur.execute(
+            'UPDATE "duplicate_cluster_members" SET "isCanonicalPick" = false '
+            'WHERE "duplicateClusterId" = %s',
+            (duplicate_cluster_id,),
+        )
+        for job in jobs:
+            cur.execute(
+                """
+                INSERT INTO "duplicate_cluster_members"
+                    ("id", "duplicateClusterId", "rawJobId", "similarityScore", "isCanonicalPick")
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (str(uuid.uuid4()), duplicate_cluster_id, job["id"], 1.0, False),
+            )
+            members_created += 1
+        cur.execute(
+            'UPDATE "duplicate_cluster_members" SET "isCanonicalPick" = true '
+            'WHERE "duplicateClusterId" = %s AND "rawJobId" = %s',
+            (duplicate_cluster_id, canonical_pick["id"]),
+        )
 
         for job in jobs:
             cur.execute('UPDATE "raw_jobs" SET "isDeduplicated" = true WHERE "id" = %s', (job["id"],))
