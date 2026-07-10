@@ -128,8 +128,10 @@ export class CvService {
     return this.prisma.client.candidateProfile.update({
       where: { userId },
       data: {
-        fullName: existing.fullName ?? parsed.fullName,
-        summary: existing.summary ?? parsed.summary,
+        // An empty string isn't a value the user "has" - treat it the same
+        // as null/undefined so a later CV parse can still fill it in.
+        fullName: existing.fullName || parsed.fullName,
+        summary: existing.summary || parsed.summary,
         skills: existing.skills.length > 0 ? existing.skills : parsed.skills,
       },
     });

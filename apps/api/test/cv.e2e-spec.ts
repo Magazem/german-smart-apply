@@ -86,6 +86,35 @@ describe('CV upload (e2e)', () => {
     expect(res.body.email).toBe('jane.doe@example.com');
   });
 
+  it('backfills fullName/summary from a CV parse when the existing profile has them as empty strings, not just null', async () => {
+    const email = uniqueEmail('cv-empty-fields');
+    const authRes = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({ email, password: 'correct-horse-battery-staple' });
+    const token = authRes.body.accessToken;
+    const otherUserId = authRes.body.user.id;
+
+    await request(app.getHttpServer())
+      .put('/profile')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fullName: '', summary: '', targetRole: 'Backend Engineer' })
+      .expect(200);
+
+    const uploadRes = await request(app.getHttpServer())
+      .post('/cv/upload')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', Buffer.from(CV_TEXT, 'utf-8'), {
+        filename: 'jane-doe-cv.txt',
+        contentType: 'text/plain',
+      })
+      .expect(201);
+
+    expect(uploadRes.body.profile.fullName).toBe('Jane Doe');
+    expect(uploadRes.body.profile.summary).toBeTruthy();
+
+    await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
+  });
+
   it('404s reading the last parsed CV for a user who never uploaded one', async () => {
     const email = uniqueEmail('cv-none');
     const authRes = await request(app.getHttpServer())
