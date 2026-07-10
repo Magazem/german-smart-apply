@@ -4,12 +4,22 @@ import type { BillingProvider, BillingWebhookEvent } from './billing-provider.js
 import { MockBillingProvider } from './mock-billing-provider.js';
 import { StripeBillingProvider } from './stripe-billing-provider.js';
 
-function createBillingProvider(): BillingProvider {
+export function createBillingProvider(): BillingProvider {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const proPriceId = process.env.STRIPE_PRO_PRICE_ID;
   if (secretKey && webhookSecret && proPriceId) {
     return new StripeBillingProvider({ secretKey, webhookSecret, proPriceId });
+  }
+  // Fail closed in production: MockBillingProvider's webhook handler trusts
+  // any request body it can JSON.parse (there is no real Stripe account to
+  // verify a signature against), and /billing/webhook is deliberately
+  // unauthenticated - letting this combination reach production would let
+  // anyone flip any user's subscription tier with an unsigned HTTP request.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and STRIPE_PRO_PRICE_ID must all be set in production - refusing to start with the unsigned MockBillingProvider webhook path.',
+    );
   }
   return new MockBillingProvider();
 }

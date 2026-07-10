@@ -11,7 +11,10 @@ primary_region = "fra"
   # DATABASE_URL, JWT_SECRET, WEB_APP_URL, STRIPE_*, ANTHROPIC_API_KEY are
   # secrets, not plain env vars - set them with:
   #   fly secrets set DATABASE_URL=... JWT_SECRET=... --app german-smart-apply-api
-  # Leaving STRIPE_*/ANTHROPIC_API_KEY unset runs with the mock providers.
+  # Fly sets NODE_ENV=production by default, and the app fails to start under
+  # NODE_ENV=production unless JWT_SECRET and all three STRIPE_* vars are set
+  # (see auth.module.ts / billing.service.ts) - only ANTHROPIC_API_KEY is
+  # truly optional (omitting it runs with the deterministic MockAiProvider).
 
 [http_service]
   internal_port = 3001

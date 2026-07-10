@@ -20,11 +20,19 @@ fly launch --config apps/api/fly.toml --dockerfile apps/api/Dockerfile --no-depl
 fly secrets set --app german-smart-apply-api \
   DATABASE_URL="postgresql://..." \
   JWT_SECRET="$(openssl rand -hex 32)" \
-  WEB_APP_URL="https://german-smart-apply-web.fly.dev"
-  # Optional — omit to run with the mock providers:
-  # STRIPE_SECRET_KEY=... STRIPE_WEBHOOK_SECRET=... STRIPE_PRO_PRICE_ID=... ANTHROPIC_API_KEY=...
+  WEB_APP_URL="https://german-smart-apply-web.fly.dev" \
+  STRIPE_SECRET_KEY="sk_live_..." STRIPE_WEBHOOK_SECRET="whsec_..." STRIPE_PRO_PRICE_ID="price_..."
+  # ANTHROPIC_API_KEY="sk-ant-..."  # optional — omit to run with the deterministic MockAiProvider
 fly deploy --config apps/api/fly.toml --dockerfile apps/api/Dockerfile .
 ```
+
+`JWT_SECRET` and all three `STRIPE_*` vars above are required with `NODE_ENV=production`
+(Fly sets `NODE_ENV=production` by default) — the app fails to start rather
+than silently falling back to a hardcoded JWT secret or an unsigned mock
+billing-webhook handler, both of which would otherwise let an attacker forge
+auth tokens or flip any user's subscription tier. `ANTHROPIC_API_KEY` is the
+only one that's genuinely optional; omitting it runs with the deterministic
+`MockAiProvider` (no security implication either way, just fake AI output).
 
 Run migrations once against the target database before first deploy (or as
 a release step): `DATABASE_URL=... pnpm --filter @german-smart-apply/db migrate:deploy`.
