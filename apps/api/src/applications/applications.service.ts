@@ -2,9 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
-import { createAiProvider } from '@german-smart-apply/ai';
+import { AiProviderError, createAiProvider } from '@german-smart-apply/ai';
 import type { Prisma } from '@german-smart-apply/db';
 import { canTransition, type ApplicationStatus } from '@german-smart-apply/shared';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -16,6 +18,7 @@ import type { UpdateStatusDto } from './dto/update-status.dto.js';
 
 @Injectable()
 export class ApplicationsService {
+  private readonly logger = new Logger(ApplicationsService.name);
   private readonly aiProvider = createAiProvider();
 
   constructor(private readonly prisma: PrismaService) {}
@@ -136,10 +139,21 @@ export class ApplicationsService {
     const sharedJob = toSharedCanonicalJob(jobRecord);
     const lang = language ?? profile.preferredLanguage;
 
-    const [cvVariant, coverLetter] = await Promise.all([
-      this.aiProvider.generateCvVariant(sharedProfile, sharedJob, lang),
-      this.aiProvider.generateCoverLetter(sharedProfile, sharedJob, lang),
-    ]);
+    let cvVariant, coverLetter;
+    try {
+      [cvVariant, coverLetter] = await Promise.all([
+        this.aiProvider.generateCvVariant(sharedProfile, sharedJob, lang),
+        this.aiProvider.generateCoverLetter(sharedProfile, sharedJob, lang),
+      ]);
+    } catch (err) {
+      this.logger.error(`Draft generation failed for application ${applicationId}: ${String(err)}`);
+      if (err instanceof AiProviderError) {
+        throw new ServiceUnavailableException(
+          'CV/cover-letter generation is temporarily unavailable - please try again shortly.',
+        );
+      }
+      throw err;
+    }
 
     const draft = await this.prisma.client.$transaction(
       async (tx: Prisma.TransactionClient) => {

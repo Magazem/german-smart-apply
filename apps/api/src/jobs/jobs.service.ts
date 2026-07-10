@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { createAiProvider } from '@german-smart-apply/ai';
 import type { Prisma } from '@german-smart-apply/db';
 import type { CanonicalJob, JobMatchScore } from '@german-smart-apply/shared';
@@ -22,6 +22,7 @@ const DEFAULT_PAGE_SIZE = 20;
 
 @Injectable()
 export class JobsService {
+  private readonly logger = new Logger(JobsService.name);
   private readonly aiProvider = createAiProvider();
 
   constructor(
@@ -104,12 +105,19 @@ export class JobsService {
     const score = this.ranking.score(job, { profile: rankingProfile });
 
     if (profile) {
-      const explanationResult = await this.aiProvider.generateMatchExplanation(
-        toSharedCandidateProfile(profile),
-        job,
-        profile.preferredLanguage,
-      );
-      score.explanation = explanationResult.text;
+      // The match explanation is a nice-to-have addition to an otherwise
+      // complete response - a transient AI-provider failure (rate limit,
+      // overload, etc.) shouldn't 500 the whole job-detail request.
+      try {
+        const explanationResult = await this.aiProvider.generateMatchExplanation(
+          toSharedCandidateProfile(profile),
+          job,
+          profile.preferredLanguage,
+        );
+        score.explanation = explanationResult.text;
+      } catch (err) {
+        this.logger.warn(`Match explanation generation failed for job ${id}: ${String(err)}`);
+      }
     }
 
     return { job, score };
