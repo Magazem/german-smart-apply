@@ -19,9 +19,6 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        launchOptions: {
-          executablePath: '/opt/pw-browsers/chromium',
-        },
       },
     },
   ],

@@ -31,12 +31,31 @@ function setToken(token: string | null): void {
   else window.localStorage.removeItem(TOKEN_STORAGE_KEY);
 }
 
+interface RawAuthResult {
+  accessToken: string;
+  user: { id: string; email: string };
+}
+
+interface RawMeResult {
+  id: string;
+  email: string;
+  subscriptionStatus: 'free' | 'pro' | 'canceled' | 'past_due';
+  createdAt: string;
+  candidateProfile: { fullName: string | null } | null;
+}
+
+function toAuthUser(raw: RawMeResult): AuthUser {
+  return {
+    id: raw.id,
+    email: raw.email,
+    fullName: raw.candidateProfile?.fullName ?? null,
+    tier: raw.subscriptionStatus === 'pro' ? 'pro' : 'free',
+    createdAt: raw.createdAt,
+  };
+}
+
 /**
- * Real HTTP implementation, talking to apps/api once it exists. Not yet
- * exercised end to end (no server to hit in this worktree) — wire it up by
- * flipping NEXT_PUBLIC_USE_MOCK_API=false once apps/api is reachable, and
- * double-check response shapes/error handling against the real
- * implementation at that point.
+ * Real HTTP implementation, talking to apps/api.
  */
 export class RealApiClient implements ApiClient {
   constructor(private readonly baseUrl: string) {}
@@ -61,25 +80,40 @@ export class RealApiClient implements ApiClient {
 
   auth = {
     register: async (input: RegisterInput): Promise<AuthSession> => {
-      const session = await this.request<AuthSession>('/auth/register', {
+      const result = await this.request<RawAuthResult>('/auth/register', {
         method: 'POST',
         body: JSON.stringify(input),
       });
-      setToken(session.token);
-      return session;
+      setToken(result.accessToken);
+      const user = (await this.auth.me()) ?? {
+        id: result.user.id,
+        email: result.user.email,
+        fullName: null,
+        tier: 'free' as const,
+        createdAt: new Date().toISOString(),
+      };
+      return { user, token: result.accessToken };
     },
     login: async (input: LoginInput): Promise<AuthSession> => {
-      const session = await this.request<AuthSession>('/auth/login', {
+      const result = await this.request<RawAuthResult>('/auth/login', {
         method: 'POST',
         body: JSON.stringify(input),
       });
-      setToken(session.token);
-      return session;
+      setToken(result.accessToken);
+      const user = (await this.auth.me()) ?? {
+        id: result.user.id,
+        email: result.user.email,
+        fullName: null,
+        tier: 'free' as const,
+        createdAt: new Date().toISOString(),
+      };
+      return { user, token: result.accessToken };
     },
     me: async (): Promise<AuthUser | null> => {
       if (!getToken()) return null;
       try {
-        return await this.request<AuthUser>('/auth/me');
+        const raw = await this.request<RawMeResult>('/auth/me');
+        return toAuthUser(raw);
       } catch {
         return null;
       }
@@ -116,7 +150,8 @@ export class RealApiClient implements ApiClient {
         body: form,
       });
       if (!res.ok) throw new Error(`CV upload failed: ${res.status}`);
-      return (await res.json()) as ParsedCvResult;
+      const body = (await res.json()) as { parsed: ParsedCvResult };
+      return body.parsed;
     },
     getLastParsed: async (): Promise<ParsedCvResult | null> => {
       try {
@@ -135,11 +170,22 @@ export class RealApiClient implements ApiClient {
         if (Array.isArray(value)) params.set(key, value.join(','));
         else params.set(key, String(value));
       }
-      return this.request<JobSearchResult>(`/jobs/search?${params.toString()}`);
+      const raw = await this.request<{
+        total: number;
+        results: Array<{ job: JobDetailResult['job']; score: JobDetailResult['match'] }>;
+      }>(`/jobs/search?${params.toString()}`);
+      const matches: JobSearchResult['matches'] = {};
+      for (const r of raw.results) {
+        if (r.score) matches[r.job.jobId] = r.score;
+      }
+      return { jobs: raw.results.map((r) => r.job), matches, total: raw.total };
     },
     get: async (id: string): Promise<JobDetailResult | null> => {
       try {
-        return await this.request<JobDetailResult>(`/jobs/${id}`);
+        const raw = await this.request<{ job: JobDetailResult['job']; score: JobDetailResult['match'] }>(
+          `/jobs/${id}`,
+        );
+        return { job: raw.job, match: raw.score };
       } catch {
         return null;
       }
