@@ -44,6 +44,27 @@ def test_normalize_job_title_strips_gender_star():
     assert fields.normalize_job_title("Entwickler*in") == "entwickler"
 
 
+def test_normalize_job_title_strips_mwdx_variant():
+    assert fields.normalize_job_title("Senior Backend Engineer (m/w/d/x)") == "senior backend engineer"
+
+
+def test_normalize_job_title_strips_colon_and_underscore_gendersternchen():
+    assert fields.normalize_job_title("Senior Entwickler:in") == "senior entwickler"
+    assert fields.normalize_job_title("Senior Entwickler_in") == "senior entwickler"
+
+
+def test_normalize_job_title_gender_marker_variants_all_collapse_to_the_same_title():
+    variants = [
+        "Senior Entwickler (m/w/d)",
+        "Senior Entwickler (m/w/d/x)",
+        "Senior Entwickler*in",
+        "Senior Entwickler:in",
+        "Senior Entwickler_in",
+    ]
+    normalized = {fields.normalize_job_title(v) for v in variants}
+    assert normalized == {"senior entwickler"}
+
+
 def test_normalize_job_title_collapses_whitespace_and_case():
     assert fields.normalize_job_title("  Senior   Backend  Engineer  ") == "senior backend engineer"
 
@@ -96,6 +117,10 @@ def test_parse_salary_handles_decimal_comma():
 
 def test_parse_salary_range_with_bis_keyword():
     assert fields.parse_salary("Verguetung 50.000 bis 60.000 EUR") == (50000, 60000, "EUR")
+
+
+def test_parse_salary_range_with_und_keyword():
+    assert fields.parse_salary("Gehalt zwischen 45.000 und 55.000 Euro") == (45000, 55000, "EUR")
 
 
 def test_parse_salary_returns_none_without_currency_marker():
@@ -176,6 +201,17 @@ def test_infer_employment_type_part_time():
 
 def test_infer_employment_type_defaults_full_time():
     assert fields.infer_employment_type("Senior Backend Engineer") == "full_time"
+
+
+def test_infer_employment_type_honors_enum_convention_hint():
+    # Structured source fields (e.g. Stepstone's employmentType) pass their
+    # own enum value straight through as `hint`, using the same underscore
+    # convention this function's own output uses - not natural-language text.
+    assert fields.infer_employment_type("Sales Manager", "General sales role.", hint="part_time") == "part_time"
+    assert (
+        fields.infer_employment_type("Marketing Assistant", "General role.", hint="working_student")
+        == "working_student"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -4,8 +4,21 @@ One test per source type, using the same fixtures the crawler adapter tests use.
 """
 from __future__ import annotations
 
-from normalizer.pipeline import build_raw_job_fields
+from normalizer.pipeline import _parse_datetime, build_raw_job_fields
 from tests.conftest import load_fixture
+
+
+def test_parse_datetime_uses_dayfirst_for_german_ambiguous_dates():
+    # market_de.COUNTRY_CODE == "DE" uses DD.MM.YYYY; "01.07.2026" must parse
+    # as 1 July, not (dayfirst=False's default) 7 January.
+    parsed = _parse_datetime("01.07.2026")
+    assert parsed.month == 7
+    assert parsed.day == 1
+
+
+def test_parse_datetime_unambiguous_iso_formats_unaffected_by_dayfirst():
+    parsed = _parse_datetime("2026-07-01T00:00:00Z")
+    assert (parsed.year, parsed.month, parsed.day) == (2026, 7, 1)
 
 
 def test_build_raw_job_fields_greenhouse():

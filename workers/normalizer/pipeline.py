@@ -7,6 +7,7 @@ thin DB-writing layer used by the runner/CLI and by the end-to-end test.
 """
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 
@@ -16,14 +17,26 @@ from common import market_de
 from normalizer import fields
 from normalizer.extractors import extract_common_fields
 
+# Matches German-convention DD.MM.YYYY (dot-separated) date strings, the one
+# genuinely ambiguous format this pipeline needs to special-case.
+_DOTTED_DATE_RE = re.compile(r"^\s*\d{1,2}\.\d{1,2}\.\d{2,4}")
+
 
 def _parse_datetime(value) -> datetime | None:
     if not value:
         return None
     if isinstance(value, datetime):
         return value
+    text = str(value)
     try:
-        return date_parser.parse(str(value))
+        # dateutil's dayfirst flag isn't scoped to genuinely-ambiguous inputs
+        # -- passing dayfirst=True unconditionally corrupts unambiguous
+        # "YYYY-MM-DD..." strings too (Greenhouse's "...Z" timestamps,
+        # Lever's constructed ISO strings), silently swapping day/month for
+        # any date where day<=12. Only dot-separated DD.MM.YYYY strings (this
+        # pipeline's designated market, market_de, uses that convention) are
+        # actually ambiguous, so dayfirst is scoped to just that shape.
+        return date_parser.parse(text, dayfirst=bool(_DOTTED_DATE_RE.match(text)))
     except (ValueError, TypeError, OverflowError):
         return None
 

@@ -30,6 +30,16 @@ def _hostnames(*urls: str) -> set[str]:
     for url in urls:
         if not url:
             continue
+        if url.lower().startswith("mailto:"):
+            # mailto: is a non-hierarchical scheme -- urlparse(...).hostname
+            # is always None for it, which silently dropped scam listings
+            # whose "apply" contact is a personal email address (a common
+            # real-world pattern the gmail.com$ heuristic exists to catch).
+            # Extract the domain half of the email address instead.
+            address = url.split(":", 1)[1].split("?", 1)[0]
+            if "@" in address:
+                hosts.add(address.rsplit("@", 1)[1].strip().lower())
+            continue
         host = urlparse(url).hostname
         if host:
             hosts.add(host.lower())

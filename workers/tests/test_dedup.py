@@ -76,6 +76,26 @@ def test_scam_risk_score_does_not_false_positive_on_path_containing_tk_substring
     assert score == 0.0
 
 
+def test_scam_risk_score_flags_mailto_contact_with_suspicious_domain():
+    # mailto: is non-hierarchical (urlparse(...).hostname is always None for
+    # it) -- the domain half of the email address must still be checked
+    # against suspiciousDomainPatterns like gmail.com$.
+    score = trust.compute_scam_risk_score(
+        "A perfectly normal-sounding job description.",
+        apply_url="mailto:someone@gmail.com",
+        source_url="https://boards.greenhouse.io/acme/jobs/1001",
+    )
+    assert score >= trust.DOMAIN_MATCH_WEIGHT
+
+
+def test_scam_risk_score_mailto_to_a_non_suspicious_domain_is_not_flagged():
+    score = trust.compute_scam_risk_score(
+        "A perfectly normal-sounding job description.",
+        apply_url="mailto:hr@acme-corp.com",
+    )
+    assert score == 0.0
+
+
 # ---------------------------------------------------------------------------
 # Company alias resolution (needs Postgres: company_aliases table)
 # ---------------------------------------------------------------------------

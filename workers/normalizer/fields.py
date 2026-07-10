@@ -59,20 +59,26 @@ def normalize_company_name(raw: str) -> str:
 # ---------------------------------------------------------------------------
 
 # German job postings routinely suffix titles with a gender-neutrality marker
-# such as "(m/w/d)" -- stripping it means "Senior Engineer (m/w/d)" and
-# "Senior Engineer" normalize to the same title for dedup purposes.
-_GENDER_MARKER_CORE = r"[mwfd](?:\s*/\s*[mwfd]){1,3}"
+# such as "(m/w/d)" or "(m/w/d/x)" -- stripping it means "Senior Engineer
+# (m/w/d)" and "Senior Engineer" normalize to the same title for dedup
+# purposes. "x" (a common further-inclusive variant alongside m/w/d) must be
+# in the character class or "(m/w/d/x)" only partially matches, leaving a
+# stray "(/x)" fragment behind.
+_GENDER_MARKER_CORE = r"[mwfdx](?:\s*/\s*[mwfdx]){1,3}"
 _GENDER_MARKER_RE = re.compile(
     rf"\(\s*{_GENDER_MARKER_CORE}\s*\)|\b{_GENDER_MARKER_CORE}\b", re.IGNORECASE
 )
-_GENDER_STAR_RE = re.compile(r"[*][a-zA-Zäöü]+\b")
+# Gender-neutral suffix notations directly on a German noun ("Entwickler*in",
+# "Entwickler:in", "Entwickler_in" -- asterisk/colon/underscore are all
+# common house styles for the same Gendersternchen convention).
+_GENDER_INLINE_SUFFIX_RE = re.compile(r"[*:_][a-zA-Zäöü]+\b")
 
 
 def normalize_job_title(raw: str) -> str:
     if not raw:
         return ""
     title = _GENDER_MARKER_RE.sub("", raw)
-    title = _GENDER_STAR_RE.sub("", title)
+    title = _GENDER_INLINE_SUFFIX_RE.sub("", title)
     title = title.replace("*", "")
     title = re.sub(r"\s+", " ", title).strip(" -")
     return title.lower()
@@ -110,7 +116,9 @@ _NUMBER_GROUP = r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d{4,6}(?:,\d+)?"
 _SALARY_RE = re.compile(
     rf"(?P<cur1>€|EUR|Euro)?\s*"
     rf"(?P<num1>{_NUMBER_GROUP})"
-    rf"(?:\s*(?:-|–|bis|to)\s*(?P<num2>{_NUMBER_GROUP}))?"
+    # "und" is a common German range connector ("zwischen X und Y Euro"),
+    # alongside the dash/"bis"/"to" forms.
+    rf"(?:\s*(?:-|–|bis|to|und)\s*(?P<num2>{_NUMBER_GROUP}))?"
     rf"\s*(?P<cur2>€|EUR|Euro)?",
     re.IGNORECASE,
 )
@@ -226,8 +234,12 @@ def infer_seniority(title: str) -> str | None:
 
 _EMPLOYMENT_TYPE_KEYWORDS: list[tuple[str, list[str]]] = [
     ("internship", ["praktikum", "praktikant", "internship", " intern "]),
-    ("working_student", ["werkstudent", "working student"]),
-    ("part_time", ["teilzeit", "part-time", "part time"]),
+    # "working_student"/"part_time" (underscore, enum-convention form) match
+    # structured source fields that pass their own enum value straight
+    # through as the `hint` (e.g. Stepstone's employmentType), not just the
+    # natural-language forms a title/description would use.
+    ("working_student", ["werkstudent", "working student", "working_student"]),
+    ("part_time", ["teilzeit", "part-time", "part time", "part_time"]),
     ("freelance", ["freelance", "freiberuflich"]),
     ("contract", ["contract", "befristet", "temporary", "zeitarbeit"]),
 ]
