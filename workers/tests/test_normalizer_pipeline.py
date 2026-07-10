@@ -21,6 +21,27 @@ def test_parse_datetime_unambiguous_iso_formats_unaffected_by_dayfirst():
     assert (parsed.year, parsed.month, parsed.day) == (2026, 7, 1)
 
 
+def test_parse_datetime_always_returns_naive_utc_regardless_of_source_offset():
+    # postedAt is a Postgres TIMESTAMP(3) (no time zone) column - mixing naive
+    # (date-only sources like Arbeitsagentur) and aware (Greenhouse's "Z",
+    # Lever's constructed offsets) datetimes into it means psycopg2 silently
+    # converts aware values to the session time zone while storing naive ones
+    # as-is, skewing postedAt inconsistently by source. Every parsed value
+    # must come out naive and UTC-normalized so they're comparable.
+    naive_date_only = _parse_datetime("2026-07-01")
+    assert naive_date_only.tzinfo is None
+
+    utc_marker = _parse_datetime("2026-07-01T10:00:00Z")
+    assert utc_marker.tzinfo is None
+    assert (utc_marker.hour, utc_marker.minute) == (10, 0)
+
+    # A non-UTC offset must be converted to its UTC wall-clock time, not
+    # just have its tzinfo stripped in place.
+    plus_two_offset = _parse_datetime("2026-07-01T10:00:00+02:00")
+    assert plus_two_offset.tzinfo is None
+    assert (plus_two_offset.hour, plus_two_offset.minute) == (8, 0)
+
+
 def test_build_raw_job_fields_greenhouse():
     payload = load_fixture("greenhouse_jobs.json")["jobs"][0]
     result = build_raw_job_fields("greenhouse", payload)

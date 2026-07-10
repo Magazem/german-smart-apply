@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from dateutil import parser as date_parser
 
@@ -22,11 +22,27 @@ from normalizer.extractors import extract_common_fields
 _DOTTED_DATE_RE = re.compile(r"^\s*\d{1,2}\.\d{1,2}\.\d{2,4}")
 
 
+def _to_utc_naive(value: datetime) -> datetime:
+    """Postgres's TIMESTAMP(3) column (raw_jobs.postedAt) has no time zone,
+    so a tz-aware value gets silently converted to the DB session's time
+    zone before storage while a naive value is stored as-is. Some sources
+    give date-only strings (naive) and others give "...Z"/offset timestamps
+    (aware) - without normalizing both to the same UTC-wall-clock
+    representation first, postedAt shifted inconsistently by source
+    whenever the session time zone wasn't UTC, skewing the ranking
+    recency component. Naive values are assumed already UTC (the only
+    naive sources are date-only, so there's no offset to convert).
+    """
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def _parse_datetime(value) -> datetime | None:
     if not value:
         return None
     if isinstance(value, datetime):
-        return value
+        return _to_utc_naive(value)
     text = str(value)
     try:
         # dateutil's dayfirst flag isn't scoped to genuinely-ambiguous inputs
@@ -36,7 +52,8 @@ def _parse_datetime(value) -> datetime | None:
         # any date where day<=12. Only dot-separated DD.MM.YYYY strings (this
         # pipeline's designated market, market_de, uses that convention) are
         # actually ambiguous, so dayfirst is scoped to just that shape.
-        return date_parser.parse(text, dayfirst=bool(_DOTTED_DATE_RE.match(text)))
+        parsed = date_parser.parse(text, dayfirst=bool(_DOTTED_DATE_RE.match(text)))
+        return _to_utc_naive(parsed)
     except (ValueError, TypeError, OverflowError):
         return None
 
