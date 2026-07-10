@@ -152,7 +152,9 @@ export class RankingService {
   }
 
   private salaryFit(profile: RankingProfileInput, job: CanonicalJob): number {
-    if (!profile.salaryTargetMin && !profile.salaryTargetMax) return 0.5;
+    // Explicit null checks, not falsy checks: salaryTargetMin/Max of 0 is a
+    // real, meaningful preference ("no floor/ceiling"), not "unset".
+    if (profile.salaryTargetMin == null && profile.salaryTargetMax == null) return 0.5;
     if (job.salaryMin == null && job.salaryMax == null) return 0.5;
 
     const jobMin = job.salaryMin ?? job.salaryMax ?? 0;
@@ -163,7 +165,6 @@ export class RankingService {
     const overlaps = jobMax >= targetMin && jobMin <= targetMax;
     if (!overlaps) return 0.1;
 
-    if (profile.salaryTargetMin && jobMax < profile.salaryTargetMin) return 0.3;
     return 1;
   }
 
