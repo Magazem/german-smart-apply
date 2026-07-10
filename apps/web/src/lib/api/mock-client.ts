@@ -386,7 +386,12 @@ export class MockApiClient implements ApiClient {
       const userId = this.requireUserId(db);
       const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
       if (!app) throw new Error('Application not found.');
-      if (app.status === status) return app;
+
+      // No same-status carve-out here, matching the real backend exactly:
+      // canTransition()'s table has no self-transitions, so a same-status
+      // request is rejected on both sides rather than silently no-op'd in
+      // the mock only - a caller that treated this as idempotent would
+      // otherwise pass here and 409 the moment it hits the real API.
 
       // Defense in depth: the UI never offers a control that would trigger
       // this, but the guard lives here too — approval-first is enforced at
