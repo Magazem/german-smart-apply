@@ -41,26 +41,33 @@ export default function ApplicationsPage() {
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
   const [history, setHistory] = useState<ApplicationEvent[]>([]);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const api = getApiClient();
-    const apps = await api.applications.list();
-    const loaded = await Promise.all(
-      apps.map(async (application) => {
-        const [detail, draft] = await Promise.all([
-          api.jobs.get(application.jobId),
-          api.applications.getDraft(application.id),
-        ]);
-        return { application, job: detail?.job ?? null, draft };
-      }),
-    );
-    setRows(loaded);
-    setLoading(false);
+    try {
+      const api = getApiClient();
+      const apps = await api.applications.list();
+      const loaded = await Promise.all(
+        apps.map(async (application) => {
+          const [detail, draft] = await Promise.all([
+            api.jobs.get(application.jobId),
+            api.applications.getDraft(application.id),
+          ]);
+          return { application, job: detail?.job ?? null, draft };
+        }),
+      );
+      setRows(loaded);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Could not load your applications.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     if (authLoading) return;
-    load();
+    void load();
   }, [authLoading, load]);
 
   const submitForApproval = async (row: Row) => {
@@ -114,6 +121,8 @@ export default function ApplicationsPage() {
           approval" to "applied" — there is no automatic or one-click shortcut.
         </p>
       </div>
+
+      {loadError && <p className="error-text">{loadError}</p>}
 
       {rows.length === 0 && (
         <div className="card" style={{ padding: 32, textAlign: 'center' }}>

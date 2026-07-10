@@ -13,22 +13,30 @@ export default function DashboardPage() {
   const [parsedCv, setParsedCv] = useState<ParsedCvResult | null>(null);
   const [topJobs, setTopJobs] = useState<Array<{ job: CanonicalJob; match: JobMatchScore }>>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading || !user) return;
     let cancelled = false;
     (async () => {
-      const api = getApiClient();
-      const [p, cv] = await Promise.all([api.profile.get(), api.cv.getLastParsed()]);
-      if (cancelled) return;
-      setProfile(p);
-      setParsedCv(cv);
-      if (p?.targetRole) {
-        const result = await api.jobs.search({ locationCountryCode: p.targetCountryCode, limit: 5 });
+      try {
+        const api = getApiClient();
+        const [p, cv] = await Promise.all([api.profile.get(), api.cv.getLastParsed()]);
         if (cancelled) return;
-        setTopJobs(result.jobs.map((job) => ({ job, match: result.matches[job.jobId] })));
+        setProfile(p);
+        setParsedCv(cv);
+        if (p?.targetRole) {
+          const result = await api.jobs.search({ locationCountryCode: p.targetCountryCode, limit: 5 });
+          if (cancelled) return;
+          setTopJobs(result.jobs.map((job) => ({ job, match: result.matches[job.jobId] })));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : 'Could not load your dashboard.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -58,6 +66,12 @@ export default function DashboardPage() {
           </Link>
         )}
       </div>
+
+      {loadError && (
+        <div className="card" style={{ padding: 20 }}>
+          <p className="error-text">{loadError}</p>
+        </div>
+      )}
 
       {needsOnboarding && (
         <div className="card" style={{ padding: 20 }}>

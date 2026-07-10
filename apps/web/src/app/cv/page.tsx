@@ -26,19 +26,44 @@ export default function CvWorkspacePage() {
 
   useEffect(() => {
     if (authLoading) return;
+    let cancelled = false;
     (async () => {
-      const api = getApiClient();
-      const [p, cv, apps] = await Promise.all([api.profile.get(), api.cv.getLastParsed(), api.applications.list()]);
-      setProfile(p);
-      setParsedCv(cv);
-      const withJobs = await Promise.all(
-        apps.map(async (a) => ({ application: a, job: (await api.jobs.get(a.jobId))?.job ?? null })),
-      );
-      setApplications(withJobs);
-      if (withJobs[0]) setSelectedAppId(withJobs[0].application.id);
-      setLoading(false);
+      try {
+        const api = getApiClient();
+        const [p, cv, apps] = await Promise.all([
+          api.profile.get(),
+          api.cv.getLastParsed(),
+          api.applications.list(),
+        ]);
+        if (cancelled) return;
+        setProfile(p);
+        setParsedCv(cv);
+        const withJobs = await Promise.all(
+          apps.map(async (a) => ({ application: a, job: (await api.jobs.get(a.jobId))?.job ?? null })),
+        );
+        if (cancelled) return;
+        setApplications(withJobs);
+        if (withJobs[0]) setSelectedAppId(withJobs[0].application.id);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Could not load your CV workspace.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading]);
+
+  if (!authLoading && !loading && error && !profile) {
+    return (
+      <div className="container" style={{ padding: '48px 24px' }}>
+        <p className="error-text">{error}</p>
+      </div>
+    );
+  }
 
   if (authLoading || loading || !profile) {
     return (

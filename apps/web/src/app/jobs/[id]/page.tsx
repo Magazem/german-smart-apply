@@ -28,6 +28,7 @@ export default function JobDetailPage() {
   const [draft, setDraft] = useState<ApplicationDraft | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [drafting, setDrafting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -35,23 +36,30 @@ export default function JobDetailPage() {
     if (authLoading) return;
     let cancelled = false;
     (async () => {
-      const api = getApiClient();
-      const detail = await api.jobs.get(params.id);
-      if (cancelled) return;
-      if (!detail) {
-        setNotFound(true);
-        setLoading(false);
-        return;
+      try {
+        const api = getApiClient();
+        const detail = await api.jobs.get(params.id);
+        if (cancelled) return;
+        if (!detail) {
+          setNotFound(true);
+          setLoading(false);
+          return;
+        }
+        setJob(detail.job);
+        setMatch(detail.match);
+        const app = await api.applications.create(detail.job.jobId);
+        if (cancelled) return;
+        setApplication(app);
+        const existingDraft = await api.applications.getDraft(app.id);
+        if (cancelled) return;
+        setDraft(existingDraft);
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : 'Could not load this job.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setJob(detail.job);
-      setMatch(detail.match);
-      const app = await api.applications.create(detail.job.jobId);
-      if (cancelled) return;
-      setApplication(app);
-      const existingDraft = await api.applications.getDraft(app.id);
-      if (cancelled) return;
-      setDraft(existingDraft);
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -106,6 +114,15 @@ export default function JobDetailPage() {
     return (
       <div className="container" style={{ padding: '48px 24px' }}>
         <div className="skeleton" style={{ height: 260 }} />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="container" style={{ padding: '48px 24px' }}>
+        <p className="error-text">{loadError}</p>
+        <Link href="/jobs">Back to search</Link>
       </div>
     );
   }
