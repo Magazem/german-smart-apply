@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Post,
   UploadedFile,
   UseGuards,
@@ -26,5 +27,10 @@ export class CvController {
     @Body('language') language?: string,
   ) {
     return this.cvService.uploadAndParse(user.id, file, language ?? 'en');
+  }
+
+  @Get('last')
+  getLastParsed(@CurrentUser() user: AuthenticatedUser) {
+    return this.cvService.getLastParsed(user.id);
   }
 }

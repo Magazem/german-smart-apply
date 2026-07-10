@@ -10,6 +10,7 @@ import { canTransition, type ApplicationStatus } from '@german-smart-apply/share
 import { PrismaService } from '../prisma/prisma.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
 import { toSharedCanonicalJob } from '../jobs/canonical-job.mapper.js';
+import { toSharedApplication, toSharedApplicationDraft } from './application.mapper.js';
 import type { CreateApplicationDto } from './dto/create-application.dto.js';
 import type { UpdateStatusDto } from './dto/update-status.dto.js';
 
@@ -20,45 +21,62 @@ export class ApplicationsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(userId: string) {
-    return this.prisma.client.application.findMany({
+    const rows = await this.prisma.client.application.findMany({
       where: { userId },
-      include: {
-        canonicalJob: { include: { rawJob: { include: { source: true } } } },
-        drafts: { orderBy: { createdAt: 'desc' }, take: 1 },
-      },
       orderBy: { updatedAt: 'desc' },
     });
+    return rows.map(toSharedApplication);
+  }
+
+  async getOne(userId: string, applicationId: string) {
+    const application = await this.getOwnedOrThrow(userId, applicationId);
+    return toSharedApplication(application);
+  }
+
+  async getLatestDraft(userId: string, applicationId: string) {
+    await this.getOwnedOrThrow(userId, applicationId);
+    const draft = await this.prisma.client.applicationDraft.findFirst({
+      where: { applicationId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!draft) {
+      throw new NotFoundException('No draft generated for this application yet');
+    }
+    return toSharedApplicationDraft(draft);
   }
 
   async create(userId: string, dto: CreateApplicationDto) {
     const job = await this.prisma.client.canonicalJob.findFirst({
-      where: { id: dto.canonicalJobId, isVisible: true },
+      where: { id: dto.jobId, isVisible: true },
     });
     if (!job) {
       throw new NotFoundException('Job not found');
     }
 
     const existing = await this.prisma.client.application.findUnique({
-      where: { userId_canonicalJobId: { userId, canonicalJobId: dto.canonicalJobId } },
+      where: { userId_canonicalJobId: { userId, canonicalJobId: dto.jobId } },
     });
     if (existing) {
       throw new ConflictException('An application for this job already exists');
     }
 
-    return this.prisma.client.$transaction(async (tx: Prisma.TransactionClient) => {
-      const application = await tx.application.create({
-        data: { userId, canonicalJobId: dto.canonicalJobId, status: 'new' },
-      });
-      await tx.applicationEvent.create({
-        data: {
-          applicationId: application.id,
-          fromStatus: null,
-          toStatus: 'new',
-          note: 'Application created',
-        },
-      });
-      return application;
-    });
+    const application = await this.prisma.client.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const created = await tx.application.create({
+          data: { userId, canonicalJobId: dto.jobId, status: 'new' },
+        });
+        await tx.applicationEvent.create({
+          data: {
+            applicationId: created.id,
+            fromStatus: null,
+            toStatus: 'new',
+            note: 'Application created',
+          },
+        });
+        return created;
+      },
+    );
+    return toSharedApplication(application);
   }
 
   async updateStatus(userId: string, applicationId: string, dto: UpdateStatusDto) {
@@ -70,21 +88,24 @@ export class ApplicationsService {
       );
     }
 
-    return this.prisma.client.$transaction(async (tx: Prisma.TransactionClient) => {
-      const updated = await tx.application.update({
-        where: { id: applicationId },
-        data: { status: dto.status },
-      });
-      await tx.applicationEvent.create({
-        data: {
-          applicationId,
-          fromStatus: application.status,
-          toStatus: dto.status,
-          note: dto.note ?? null,
-        },
-      });
-      return updated;
-    });
+    const updated = await this.prisma.client.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const result = await tx.application.update({
+          where: { id: applicationId },
+          data: { status: dto.status },
+        });
+        await tx.applicationEvent.create({
+          data: {
+            applicationId,
+            fromStatus: application.status,
+            toStatus: dto.status,
+            note: dto.note ?? null,
+          },
+        });
+        return result;
+      },
+    );
+    return toSharedApplication(updated);
   }
 
   async generateDraft(userId: string, applicationId: string, language?: string) {
@@ -120,30 +141,33 @@ export class ApplicationsService {
       this.aiProvider.generateCoverLetter(sharedProfile, sharedJob, lang),
     ]);
 
-    return this.prisma.client.$transaction(async (tx: Prisma.TransactionClient) => {
-      const draft = await tx.applicationDraft.create({
-        data: {
-          applicationId,
-          cvVariantText: cvVariant.text,
-          coverLetterText: coverLetter.text,
-          modelUsed: cvVariant.modelUsed,
-          tokensUsed: cvVariant.tokensUsed + coverLetter.tokensUsed,
-        },
-      });
-      await tx.application.update({
-        where: { id: applicationId },
-        data: { status: targetStatus },
-      });
-      await tx.applicationEvent.create({
-        data: {
-          applicationId,
-          fromStatus: application.status,
-          toStatus: targetStatus,
-          note: 'Draft generated',
-        },
-      });
-      return draft;
-    });
+    const draft = await this.prisma.client.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const created = await tx.applicationDraft.create({
+          data: {
+            applicationId,
+            cvVariantText: cvVariant.text,
+            coverLetterText: coverLetter.text,
+            modelUsed: cvVariant.modelUsed,
+            tokensUsed: cvVariant.tokensUsed + coverLetter.tokensUsed,
+          },
+        });
+        await tx.application.update({
+          where: { id: applicationId },
+          data: { status: targetStatus },
+        });
+        await tx.applicationEvent.create({
+          data: {
+            applicationId,
+            fromStatus: application.status,
+            toStatus: targetStatus,
+            note: 'Draft generated',
+          },
+        });
+        return created;
+      },
+    );
+    return toSharedApplicationDraft(draft);
   }
 
   private async getOwnedOrThrow(userId: string, applicationId: string) {

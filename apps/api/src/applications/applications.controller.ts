@@ -17,6 +17,16 @@ export class ApplicationsController {
     return this.applicationsService.list(user.id);
   }
 
+  @Get(':id')
+  getOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.applicationsService.getOne(user.id, id);
+  }
+
+  @Get(':id/draft')
+  getLatestDraft(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.applicationsService.getLatestDraft(user.id, id);
+  }
+
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateApplicationDto) {
     return this.applicationsService.create(user.id, dto);

@@ -10,32 +10,42 @@ import {
 } from 'class-validator';
 
 /**
- * Minimum required fields mirror plan.md's free-tier onboarding: "3-5 short
- * questions" (target role, country, preferred language, seniority,
- * location/remote preference). Everything else is the paid-tier "deeper
- * profile settings" layer and stays optional.
+ * Mirrors the shared ApiClient contract's `profile.update(patch: Partial<CandidateProfile>)`
+ * - every field is a partial-update candidate, none are required on the DTO
+ * itself. plan.md's free-tier onboarding ("3-5 short questions": target
+ * role, country, preferred language, seniority, location/remote preference)
+ * is a *product* flow spread across multiple partial saves (CV-parse
+ * prefill, then the questions step), not a single all-fields-required
+ * request - ProfileService fills in placeholder defaults for anything still
+ * missing when a profile is first created, the same way CV upload's own
+ * prefill already does.
  */
 export class UpdateProfileDto {
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  targetRole!: string;
+  targetRole?: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(2)
   @MaxLength(2)
-  targetCountryCode!: string;
+  targetCountryCode?: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(2)
-  preferredLanguage!: string;
+  preferredLanguage?: string;
 
+  @IsOptional()
   @IsString()
   @IsIn(['intern', 'junior', 'mid', 'senior', 'lead', 'principal'])
-  seniority!: string;
+  seniority?: string;
 
+  @IsOptional()
   @IsString()
   @IsIn(['onsite', 'hybrid', 'remote', 'any'])
-  locationPreference!: string;
+  locationPreference?: string;
 
   @IsOptional()
   @IsString()

@@ -45,12 +45,20 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/german_smart_apply?schema=public
       PORT: "3001"
-      JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret-change-me}
+      # Left genuinely unset (not defaulted to the known dev-only string) so
+      # that if NODE_ENV=production is ever set here, auth.module.ts's
+      # fail-closed check actually triggers instead of seeing an already-set
+      # (if insecure) secret and passing. Outside production, auth.module.ts
+      # supplies its own dev fallback when this is unset.
+      JWT_SECRET: ${JWT_SECRET:-}
       WEB_APP_URL: http://localhost:3100
       CV_UPLOAD_DIR: /app/apps/api/uploads/cv
-      # All three unset here on purpose (see env.example) - BillingService
-      # falls back to MockBillingProvider automatically until real keys
-      # are supplied, same for AnthropicAiProvider/ANTHROPIC_API_KEY below.
+      # All four below unset here on purpose (see env.example) - BillingService/
+      # createAiProvider() fall back to the mock providers until real keys are
+      # supplied. NODE_ENV is intentionally not set in this compose file either
+      # (see apps/api/Dockerfile) - setting it to "production" here without
+      # also supplying real JWT_SECRET/STRIPE_* values will make the api
+      # container refuse to start, by design.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_PRO_PRICE_ID: ${STRIPE_PRO_PRICE_ID:-}

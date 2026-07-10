@@ -21,10 +21,17 @@ export class ProfileService {
       where: { userId },
       create: {
         userId,
-        targetRole: dto.targetRole,
+        // targetRole/seniority have no DB default (unlike targetCountryCode/
+        // preferredLanguage/locationPreference, which the schema itself
+        // defaults) - a first partial save (e.g. onboarding's CV-parse step,
+        // which only sends fullName/skills/summary) still needs a valid row,
+        // matching the same placeholder strategy cv.service.ts's own
+        // prefillProfile already uses. The onboarding questions step's later
+        // partial save overwrites these with the user's real answers.
+        targetRole: dto.targetRole ?? 'Not specified yet',
         targetCountryCode: dto.targetCountryCode,
         preferredLanguage: dto.preferredLanguage,
-        seniority: dto.seniority,
+        seniority: dto.seniority ?? 'mid',
         locationPreference: dto.locationPreference,
         fullName: dto.fullName,
         skills: dto.skills ?? [],

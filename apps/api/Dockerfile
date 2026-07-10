@@ -28,7 +28,12 @@ RUN pnpm --filter @german-smart-apply/shared build \
  && pnpm --filter @german-smart-apply/api build
 
 FROM base AS runtime
-ENV NODE_ENV=production
+# NODE_ENV is intentionally not baked in here - it's environment-specific
+# (fly.toml/deployment secrets set NODE_ENV=production; local docker-compose
+# leaves it unset so the mock AI/billing providers stay available). Baking
+# NODE_ENV=production into the image would crash-loop any non-production use
+# of this image, since auth.module.ts/billing.service.ts refuse to start
+# under NODE_ENV=production without real JWT_SECRET/Stripe secrets configured.
 COPY --from=build /app /app
 WORKDIR /app/apps/api
 EXPOSE 3001

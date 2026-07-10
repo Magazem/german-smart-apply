@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { createAiProvider } from '@german-smart-apply/ai';
 import type { Prisma } from '@german-smart-apply/db';
 import type { ParsedCvResult } from '@german-smart-apply/shared';
@@ -77,6 +77,17 @@ export class CvService {
       });
       throw error;
     }
+  }
+
+  async getLastParsed(userId: string): Promise<ParsedCvResult> {
+    const document = await this.prisma.client.cvDocument.findFirst({
+      where: { userId, parseStatus: 'parsed' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!document || !document.parsedResult) {
+      throw new NotFoundException('No parsed CV yet — POST /cv/upload first');
+    }
+    return document.parsedResult as unknown as ParsedCvResult;
   }
 
   private async extractText(buffer: Buffer, mimeType: string): Promise<string> {

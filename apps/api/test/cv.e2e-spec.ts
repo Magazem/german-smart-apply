@@ -77,4 +77,28 @@ describe('CV upload (e2e)', () => {
       })
       .expect(400);
   });
+
+  it('reads back the most recently parsed CV', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/cv/last')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(res.body.email).toBe('jane.doe@example.com');
+  });
+
+  it('404s reading the last parsed CV for a user who never uploaded one', async () => {
+    const email = uniqueEmail('cv-none');
+    const authRes = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({ email, password: 'correct-horse-battery-staple' });
+    const token = authRes.body.accessToken;
+    const otherUserId = authRes.body.user.id;
+
+    await request(app.getHttpServer())
+      .get('/cv/last')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
+
+    await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
+  });
 });

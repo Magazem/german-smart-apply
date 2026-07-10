@@ -39,12 +39,33 @@ describe('Profile (e2e)', () => {
       .expect(404);
   });
 
-  it('rejects an incomplete onboarding payload (missing required fields)', async () => {
+  it('rejects an invalid enum value even on a partial payload', async () => {
     await request(app.getHttpServer())
       .put('/profile')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ targetRole: 'Backend Engineer' })
+      .send({ seniority: 'not-a-real-level' })
       .expect(400);
+  });
+
+  it('accepts a partial CV-parse-style payload before onboarding questions are answered, with placeholder defaults for the still-missing required-shaped fields', async () => {
+    const email = uniqueEmail('profile-partial');
+    const res = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({ email, password: 'correct-horse-battery-staple' });
+    const partialToken = res.body.accessToken as string;
+    const partialUserId = res.body.user.id as string;
+
+    const profileRes = await request(app.getHttpServer())
+      .put('/profile')
+      .set('Authorization', `Bearer ${partialToken}`)
+      .send({ fullName: 'Jane Doe', skills: ['typescript'], summary: 'Backend-leaning generalist.' })
+      .expect(200);
+
+    expect(profileRes.body.fullName).toBe('Jane Doe');
+    expect(profileRes.body.targetRole).toBe('Not specified yet');
+    expect(profileRes.body.seniority).toBe('mid');
+
+    await prisma.client.user.delete({ where: { id: partialUserId } }).catch(() => undefined);
   });
 
   it('creates the profile with the free-tier onboarding fields', async () => {

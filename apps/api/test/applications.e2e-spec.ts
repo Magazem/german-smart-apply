@@ -10,7 +10,7 @@ describe('Applications workflow (e2e)', () => {
   let accessToken: string;
   let userId: string;
   let sourceId: string;
-  let canonicalJobId: string;
+  let jobId: string;
   let applicationId: string;
 
   beforeAll(async () => {
@@ -40,7 +40,7 @@ describe('Applications workflow (e2e)', () => {
 
     const fixture = await createJobFixture(prisma, { jobTitle: 'Platform Engineer' });
     sourceId = fixture.source.id;
-    canonicalJobId = fixture.canonicalJob.id;
+    jobId = fixture.canonicalJob.id;
   });
 
   afterAll(async () => {
@@ -51,7 +51,7 @@ describe('Applications workflow (e2e)', () => {
 
   it('requires auth on every applications route', async () => {
     await request(app.getHttpServer()).get('/applications').expect(401);
-    await request(app.getHttpServer()).post('/applications').send({ canonicalJobId }).expect(401);
+    await request(app.getHttpServer()).post('/applications').send({ jobId }).expect(401);
     await request(app.getHttpServer())
       .patch('/applications/does-not-matter/status')
       .send({ status: 'viewed' })
@@ -62,7 +62,7 @@ describe('Applications workflow (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/applications')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ canonicalJobId })
+      .send({ jobId })
       .expect(201);
 
     expect(res.body.status).toBe('new');
@@ -73,7 +73,7 @@ describe('Applications workflow (e2e)', () => {
     await request(app.getHttpServer())
       .post('/applications')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ canonicalJobId })
+      .send({ jobId })
       .expect(409);
   });
 
@@ -140,7 +140,57 @@ describe('Applications workflow (e2e)', () => {
 
     const mine = res.body.find((a: { id: string }) => a.id === applicationId);
     expect(mine.status).toBe('applied');
-    expect(mine.drafts.length).toBe(1);
+    expect(mine.jobId).toBe(jobId);
+  });
+
+  it('reads a single application by id', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/applications/${applicationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(res.body).toMatchObject({ id: applicationId, jobId, status: 'applied' });
+  });
+
+  it('reads the latest draft for an application', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/applications/${applicationId}/draft`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(res.body.cvVariantText.length).toBeGreaterThan(0);
+    expect(res.body.coverLetterText.length).toBeGreaterThan(0);
+  });
+
+  it('404s reading a draft for an application with none generated yet', async () => {
+    const otherFixture = await createJobFixture(prisma, { jobTitle: 'No Draft Yet Role' });
+
+    const created = await request(app.getHttpServer())
+      .post('/applications')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ jobId: otherFixture.canonicalJob.id })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`/applications/${created.body.id}/draft`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await deleteJobFixture(prisma, otherFixture.source.id);
+  });
+
+  it('404s reading another user\'s application by id', async () => {
+    const email = uniqueEmail('applications-other-reader');
+    const authRes = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({ email, password: 'correct-horse-battery-staple' });
+    const otherToken = authRes.body.accessToken;
+    const otherUserId = authRes.body.user.id;
+
+    await request(app.getHttpServer())
+      .get(`/applications/${applicationId}`)
+      .set('Authorization', `Bearer ${otherToken}`)
+      .expect(404);
+
+    await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
   });
 
   it('recorded one application_event per status change plus the creation event', async () => {
@@ -176,7 +226,7 @@ describe('Applications workflow (e2e)', () => {
     const createRes = await request(app.getHttpServer())
       .post('/applications')
       .set('Authorization', `Bearer ${token}`)
-      .send({ canonicalJobId })
+      .send({ jobId })
       .expect(201);
 
     await request(app.getHttpServer())
