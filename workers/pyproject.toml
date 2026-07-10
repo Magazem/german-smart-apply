@@ -1,0 +1,29 @@
+[project]
+name = "gsa-workers"
+version = "0.1.0"
+description = "German Smart Apply - data ingestion workers (crawler, normalizer, deduplicator)"
+requires-python = ">=3.11"
+dependencies = [
+    "psycopg2-binary>=2.9",
+    "requests>=2.30",
+    "tenacity>=8.2",
+    "python-dateutil>=2.9",
+    "langdetect>=1.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "responses>=0.25",
+]
+
+[tool.setuptools.packages.find]
+include = ["common*", "crawler*", "normalizer*", "deduplicator*"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

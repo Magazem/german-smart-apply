@@ -1,0 +1,104 @@
+name: german-smart-apply
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: german_smart_apply
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-migrate:
+    build:
+      context: ..
+      dockerfile: infra/docker/db-migrate.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/german_smart_apply?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/german_smart_apply?schema=public
+      PORT: "3001"
+      # Left genuinely unset (not defaulted to the known dev-only string) so
+      # that if NODE_ENV=production is ever set here, auth.module.ts's
+      # fail-closed check actually triggers instead of seeing an already-set
+      # (if insecure) secret and passing. Outside production, auth.module.ts
+      # supplies its own dev fallback when this is unset.
+      JWT_SECRET: ${JWT_SECRET:-}
+      WEB_APP_URL: http://localhost:3100
+      CV_UPLOAD_DIR: /app/apps/api/uploads/cv
+      # All four below unset here on purpose (see env.example) - BillingService/
+      # createAiProvider() fall back to the mock providers until real keys are
+      # supplied. NODE_ENV is intentionally not set in this compose file either
+      # (see apps/api/Dockerfile) - setting it to "production" here without
+      # also supplying real JWT_SECRET/STRIPE_* values will make the api
+      # container refuse to start, by design.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRO_PRICE_ID: ${STRIPE_PRO_PRICE_ID:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "3001:3001"
+    volumes:
+      - cv_uploads:/app/apps/api/uploads/cv
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_USE_MOCK_API: "false"
+      PORT: "3100"
+    ports:
+      - "3100:3100"
+    depends_on:
+      - api
+
+  worker:
+    build:
+      context: ..
+      dockerfile: workers/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/german_smart_apply
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+volumes:
+  postgres_data:
+  cv_uploads:

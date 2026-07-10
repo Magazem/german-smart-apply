@@ -1,0 +1,10 @@
+# Runtime dependencies for workers/crawler, workers/normalizer, workers/deduplicator
+psycopg2-binary>=2.9
+requests>=2.30
+tenacity>=8.2
+python-dateutil>=2.9
+langdetect>=1.0.9
+
+# Dev / test dependencies
+pytest>=8.0
+responses>=0.25

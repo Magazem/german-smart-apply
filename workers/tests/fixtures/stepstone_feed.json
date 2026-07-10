@@ -1,0 +1,15 @@
+{
+  "jobs": [
+    {
+      "id": "ss-501",
+      "title": "Junior Data Analyst",
+      "company": "Beispiel Data GmbH",
+      "location": "Hamburg",
+      "description": "Entry level role for a Junior Data Analyst. SQL and Python knowledge required.",
+      "url": "https://www.stepstone.de/jobs/ss-501",
+      "postedAt": "2026-06-15T00:00:00Z",
+      "employmentType": "full_time",
+      "remote": false
+    }
+  ]
+}

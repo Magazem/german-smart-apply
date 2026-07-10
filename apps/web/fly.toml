@@ -1,0 +1,24 @@
+# Deploy from the repo root: `fly deploy --config apps/web/fly.toml --dockerfile apps/web/Dockerfile .`
+app = "german-smart-apply-web"
+primary_region = "fra"
+
+[build]
+  dockerfile = "apps/web/Dockerfile"
+
+[env]
+  PORT = "3100"
+  NEXT_PUBLIC_USE_MOCK_API = "false"
+  # NEXT_PUBLIC_API_URL should point at the deployed api app, e.g.
+  # https://german-smart-apply-api.fly.dev - set per environment:
+  #   fly secrets set NEXT_PUBLIC_API_URL=https://german-smart-apply-api.fly.dev --app german-smart-apply-web
+
+[http_service]
+  internal_port = 3100
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
