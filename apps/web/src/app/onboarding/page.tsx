@@ -119,7 +119,16 @@ export default function OnboardingPage() {
       setTopJobs(jobs);
 
       if (jobs[0]) {
-        const app = await api.applications.create(jobs[0].job.jobId);
+        let app = await api.applications.create(jobs[0].job.jobId);
+        // A fresh application starts "new" against the real API; draft
+        // generation requires "viewed"/"saved" first. The mock client
+        // fast-forwards create() straight to "viewed" internally (and
+        // rejects a same-status update, matching the real API's transition
+        // table), so this guard is required on both backends: unconditional
+        // would 409/throw against whichever one didn't already auto-view it.
+        if (app.status === 'new') {
+          app = await api.applications.updateStatus(app.id, 'viewed');
+        }
         const draft = await api.applications.draft(app.id);
         setExampleApp(app);
         setExampleJob(jobs[0].job);
