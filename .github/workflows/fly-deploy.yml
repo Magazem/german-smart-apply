@@ -13,7 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --config apps/api/fly.toml --dockerfile apps/api/Dockerfile --remote-only
+      # No separate --dockerfile flag: combined with --config it resolves
+      # relative to the wrong base and doubles the path (flyctl#400). The
+      # fly.toml's own [build] dockerfile is enough.
+      - run: flyctl deploy --config apps/api/fly.toml --remote-only .
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -24,6 +27,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --config apps/web/fly.toml --dockerfile apps/web/Dockerfile --remote-only
+      - run: flyctl deploy --config apps/web/fly.toml --remote-only .
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

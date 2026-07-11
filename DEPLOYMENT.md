@@ -21,15 +21,24 @@ setting real secrets is a manual step you do once per app.
 
 ## Deploy the API
 
+Run these from the repo root — not from inside `apps/api`. Don't pass a
+separate `--dockerfile` flag alongside `--config`: flyctl resolves it
+relative to the app directory implied by `--config` and doubles the path
+(e.g. `apps/api/apps/api/Dockerfile`, "no such file" - see
+[flyctl#400](https://github.com/superfly/flyctl/issues/400)). The
+`dockerfile` path already declared in each `fly.toml`'s `[build]` section is
+enough; the trailing `.` still sets the build context to the repo root
+(required so the Dockerfile can reach the pnpm workspace).
+
 ```sh
-fly launch --config apps/api/fly.toml --dockerfile apps/api/Dockerfile --no-deploy   # first time only, creates the app
+fly launch --config apps/api/fly.toml --no-deploy   # first time only, creates the app
 fly secrets set --app german-smart-apply-api \
   DATABASE_URL="postgresql://..." \
   JWT_SECRET="$(openssl rand -hex 32)" \
   WEB_APP_URL="https://german-smart-apply-web.fly.dev" \
   STRIPE_SECRET_KEY="sk_live_..." STRIPE_WEBHOOK_SECRET="whsec_..." STRIPE_PRO_PRICE_ID="price_..."
   # ANTHROPIC_API_KEY="sk-ant-..."  # optional — omit to run with the deterministic MockAiProvider
-fly deploy --config apps/api/fly.toml --dockerfile apps/api/Dockerfile .
+fly deploy --config apps/api/fly.toml .
 ```
 
 `JWT_SECRET` and all three `STRIPE_*` vars above are required with `NODE_ENV=production`
@@ -45,9 +54,11 @@ a release step): `DATABASE_URL=... pnpm --filter @german-smart-apply/db migrate:
 
 ## Deploy the frontend
 
+Same rule as above — no separate `--dockerfile` flag.
+
 ```sh
-fly launch --config apps/web/fly.toml --dockerfile apps/web/Dockerfile --no-deploy   # first time only
-fly deploy --config apps/web/fly.toml --dockerfile apps/web/Dockerfile .
+fly launch --config apps/web/fly.toml --no-deploy   # first time only
+fly deploy --config apps/web/fly.toml .
 ```
 
 `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_USE_MOCK_API` come from `apps/web/fly.toml`'s
@@ -66,7 +77,7 @@ if the API's URL differs from the default.
 push after enabling this:
 
 1. Create both Fly apps once, same as the manual path above:
-   `fly launch --config apps/api/fly.toml --dockerfile apps/api/Dockerfile --no-deploy`
+   `fly launch --config apps/api/fly.toml --no-deploy`
    and the equivalent for `apps/web`. This just registers the app names on
    Fly — it doesn't deploy anything yet.
 2. Set the runtime secrets on each app with `fly secrets set` exactly as in
