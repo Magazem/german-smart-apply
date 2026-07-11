@@ -167,7 +167,17 @@ export default function JobDetailPage() {
     if (!application) return;
     setActionError(null);
     try {
-      await getApiClient().applications.updateStatus(application.id, 'awaiting_approval');
+      // The preview above can show any variant the user tabbed to, not just
+      // the most recent one - record which one was on screen at submit time
+      // so the approval queue/history shows what was actually reviewed,
+      // instead of silently implying "the latest draft" regardless of what
+      // was selected.
+      const submittedLabel = selectedDraft?.variantLabel ?? 'standard';
+      await getApiClient().applications.updateStatus(
+        application.id,
+        'awaiting_approval',
+        `Submitted the "${submittedLabel}" draft for approval.`,
+      );
       router.push('/applications');
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Could not submit this for approval.');
@@ -381,7 +391,9 @@ export default function JobDetailPage() {
 
           {application?.status === 'draft_ready' && draft && (
             <button type="button" className="btn btn-primary" onClick={handleSubmitForApproval} data-testid="submit-for-approval-button">
-              Submit for approval
+              {allDrafts.length > 1
+                ? `Submit "${selectedDraft?.variantLabel ?? 'standard'}" draft for approval`
+                : 'Submit for approval'}
             </button>
           )}
 
