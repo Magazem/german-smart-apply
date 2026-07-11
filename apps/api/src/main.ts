@@ -16,7 +16,11 @@ async function bootstrap(): Promise<void> {
     }),
   );
   const port = process.env.PORT ? Number(process.env.PORT) : 3001;
-  await app.listen(port);
+  // Explicit '0.0.0.0', not just a port - Fly's fly-proxy specifically looks
+  // for a listener bound to 0.0.0.0 and won't route traffic to a process
+  // that only accepted the default (which doesn't reliably dual-stack to
+  // IPv4 the way fly-proxy expects, e.g. on the node:alpine/musl base image).
+  await app.listen(port, '0.0.0.0');
   console.log(`german-smart-apply API listening on port ${port}`);
 }
 
