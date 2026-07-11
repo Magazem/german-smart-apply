@@ -1,5 +1,10 @@
 FROM python:3.11-slim
 WORKDIR /app/workers
+# scripts/run_pipeline.py does `from common import db` etc. Running it as
+# `python scripts/run_pipeline.py` only puts scripts/ (the script's own dir)
+# on sys.path, not /app/workers, so those imports fail without this — pytest
+# doesn't hit it because pyproject.toml's pythonpath = ["."] covers test runs.
+ENV PYTHONPATH=/app/workers
 
 COPY workers/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
