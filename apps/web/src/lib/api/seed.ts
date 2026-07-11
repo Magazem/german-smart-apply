@@ -95,7 +95,7 @@ export function ensureDemoSeed(db: MockDb): void {
 
   const events: ApplicationEvent[] = [];
   const apps: Application[] = [];
-  const drafts: Record<string, ApplicationDraft> = {};
+  const drafts: Record<string, ApplicationDraft[]> = {};
 
   function pushEvent(applicationId: string, from: ApplicationEvent['fromStatus'], to: ApplicationEvent['toStatus'], note: string | null, at: string) {
     events.push({ id: uid('evt'), applicationId, fromStatus: from, toStatus: to, note, createdAt: at });
@@ -130,17 +130,20 @@ export function ensureDemoSeed(db: MockDb): void {
   pushEvent(app2Id, 'viewed', 'saved', null, '2026-07-06T09:10:00.000Z');
   pushEvent(app2Id, 'saved', 'draft_ready', 'Tailored CV variant + cover letter generated.', '2026-07-08T08:00:00.000Z');
   pushEvent(app2Id, 'draft_ready', 'awaiting_approval', 'Submitted for your review.', '2026-07-08T08:30:00.000Z');
-  drafts[app2Id] = {
-    id: uid('draft'),
-    applicationId: app2Id,
-    cvVariantText:
-      'Alex Demo — CV tailored for Senior Backend Engineer at Zalando.\n\nSummary: Backend engineer with 5 years building event-driven checkout and payments services at fintech and logistics scale.\n\nCore skills: Java, Kotlin, Kafka, TypeScript, PostgreSQL, AWS, Docker.\n\nExperience:\n- Backend Engineer, PayFlow GmbH (2022–present): own payments-ledger services handling 2M+ transactions/day; led migration to event-driven Kafka pipeline, cutting incident count by 40%.\n- Software Engineer, LogiTrack AG (2019–2021): built tracking APIs for a European logistics platform.',
-    coverLetterText:
-      'Dear Zalando Hiring Team,\n\nI am writing to apply for the Senior Backend Engineer role. My background building high-throughput, event-driven payment services at PayFlow closely mirrors the scale challenges of Zalando\'s checkout platform — 2M+ daily transactions with strict reliability requirements.\n\nI would welcome the chance to bring that experience to your team.\n\nBest regards,\nAlex Demo',
-    modelUsed: 'mock',
-    tokensUsed: 0,
-    createdAt: '2026-07-08T08:00:00.000Z',
-  };
+  drafts[app2Id] = [
+    {
+      id: uid('draft'),
+      applicationId: app2Id,
+      cvVariantText:
+        'Alex Demo — CV tailored for Senior Backend Engineer at Zalando.\n\nSummary: Backend engineer with 5 years building event-driven checkout and payments services at fintech and logistics scale.\n\nCore skills: Java, Kotlin, Kafka, TypeScript, PostgreSQL, AWS, Docker.\n\nExperience:\n- Backend Engineer, PayFlow GmbH (2022–present): own payments-ledger services handling 2M+ transactions/day; led migration to event-driven Kafka pipeline, cutting incident count by 40%.\n- Software Engineer, LogiTrack AG (2019–2021): built tracking APIs for a European logistics platform.',
+      coverLetterText:
+        'Dear Zalando Hiring Team,\n\nI am writing to apply for the Senior Backend Engineer role. My background building high-throughput, event-driven payment services at PayFlow closely mirrors the scale challenges of Zalando\'s checkout platform — 2M+ daily transactions with strict reliability requirements.\n\nI would welcome the chance to bring that experience to your team.\n\nBest regards,\nAlex Demo',
+      variantLabel: 'standard',
+      modelUsed: 'mock',
+      tokensUsed: 0,
+      createdAt: '2026-07-08T08:00:00.000Z',
+    },
+  ];
 
   // 3) Already applied (approved earlier), now in interview.
   const app3Id = uid('app');
@@ -158,17 +161,20 @@ export function ensureDemoSeed(db: MockDb): void {
   pushEvent(app3Id, 'draft_ready', 'awaiting_approval', 'Submitted for your review.', '2026-06-23T10:15:00.000Z');
   pushEvent(app3Id, 'awaiting_approval', 'applied', 'Approved and submitted by you.', '2026-06-24T08:00:00.000Z');
   pushEvent(app3Id, 'applied', 'interview', 'Recruiter scheduled a call.', '2026-07-01T09:00:00.000Z');
-  drafts[app3Id] = {
-    id: uid('draft'),
-    applicationId: app3Id,
-    cvVariantText:
-      'Alex Demo — CV tailored for DevOps Engineer at Delivery Hero.\n\nCore skills: Kubernetes, Terraform, AWS, Docker, Go.',
-    coverLetterText:
-      'Dear Delivery Hero Team,\n\nI am excited to apply for the DevOps Engineer role and bring my experience operating resilient, high-throughput platforms.\n\nBest regards,\nAlex Demo',
-    modelUsed: 'mock',
-    tokensUsed: 0,
-    createdAt: '2026-06-23T10:00:00.000Z',
-  };
+  drafts[app3Id] = [
+    {
+      id: uid('draft'),
+      applicationId: app3Id,
+      cvVariantText:
+        'Alex Demo — CV tailored for DevOps Engineer at Delivery Hero.\n\nCore skills: Kubernetes, Terraform, AWS, Docker, Go.',
+      coverLetterText:
+        'Dear Delivery Hero Team,\n\nI am excited to apply for the DevOps Engineer role and bring my experience operating resilient, high-throughput platforms.\n\nBest regards,\nAlex Demo',
+      variantLabel: 'standard',
+      modelUsed: 'mock',
+      tokensUsed: 0,
+      createdAt: '2026-06-23T10:00:00.000Z',
+    },
+  ];
 
   // 4) Merely viewed a high-risk listing — demonstrates risk is visible, not hidden, and nothing auto-advanced.
   const app4Id = uid('app');

@@ -23,4 +23,13 @@ describe('canTransition', () => {
     expect(canTransition('offer', 'archived')).toBe(true);
     expect(canTransition('rejected', 'archived')).toBe(true);
   });
+
+  it('allows regenerating a draft while already draft_ready (a different variant style, a retry, etc.)', () => {
+    expect(canTransition('draft_ready', 'draft_ready')).toBe(true);
+  });
+
+  it('still rejects draft_ready looping back to an earlier status', () => {
+    expect(canTransition('draft_ready', 'viewed')).toBe(false);
+    expect(canTransition('draft_ready', 'saved')).toBe(false);
+  });
 });

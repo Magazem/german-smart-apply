@@ -5,6 +5,7 @@ import type {
   ApplicationStatus,
   CandidateProfile,
   CanonicalJob,
+  CvVariantStyle,
   JobFeedbackType,
   JobMatchScore,
   JobSearchFilters,
@@ -96,8 +97,11 @@ export interface ApiClient {
     list(): Promise<Application[]>;
     get(id: string): Promise<Application | null>;
     getDraft(id: string): Promise<ApplicationDraft | null>;
+    /** Every generated variant for this application, most recent first. */
+    listDrafts(id: string): Promise<ApplicationDraft[]>;
     create(jobId: string): Promise<Application>;
-    draft(applicationId: string): Promise<ApplicationDraft>;
+    /** variantStyle defaults to 'standard' (free); 'concise'/'leadership' require Pro. */
+    draft(applicationId: string, variantStyle?: CvVariantStyle): Promise<ApplicationDraft>;
     updateStatus(
       applicationId: string,
       status: ApplicationStatus,

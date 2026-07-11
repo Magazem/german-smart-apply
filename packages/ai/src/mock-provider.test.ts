@@ -90,4 +90,25 @@ describe('MockAiProvider', () => {
     expect(result.text).toContain('senior backend engineer');
     expect(result.text).toContain('acme gmbh');
   });
+
+  it('defaults to the standard CV variant when no style is given', async () => {
+    const result = await provider.generateCvVariant(profile, job, 'en');
+    expect(result.text).not.toContain('concise variant');
+    expect(result.text).not.toContain('leadership variant');
+  });
+
+  it('produces a visibly different CV variant per style', async () => {
+    const concise = await provider.generateCvVariant(profile, job, 'en', 'concise');
+    const leadership = await provider.generateCvVariant(profile, job, 'en', 'leadership');
+    expect(concise.text).toContain('concise variant');
+    expect(leadership.text).toContain('leadership variant');
+    expect(concise.text).not.toBe(leadership.text);
+  });
+
+  it('produces a visibly different cover letter per style', async () => {
+    const concise = await provider.generateCoverLetter(profile, job, 'en', 'concise');
+    const leadership = await provider.generateCoverLetter(profile, job, 'en', 'leadership');
+    expect(concise.text).toContain('concise variant');
+    expect(leadership.text).toContain('leadership variant');
+  });
 });

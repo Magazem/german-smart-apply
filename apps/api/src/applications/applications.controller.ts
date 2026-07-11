@@ -27,6 +27,13 @@ export class ApplicationsController {
     return this.applicationsService.getLatestDraft(user.id, id);
   }
 
+  // Plural, distinct from GET :id/draft above - every generated variant for
+  // this application, not just the latest, so the UI can compare/pick.
+  @Get(':id/drafts')
+  listDrafts(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.applicationsService.listDrafts(user.id, id);
+  }
+
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateApplicationDto) {
     return this.applicationsService.create(user.id, dto);
@@ -38,7 +45,7 @@ export class ApplicationsController {
     @Param('id') id: string,
     @Body() dto: GenerateDraftDto,
   ) {
-    return this.applicationsService.generateDraft(user.id, id, dto.language);
+    return this.applicationsService.generateDraft(user.id, id, dto.language, dto.variantStyle);
   }
 
   @Patch(':id/status')

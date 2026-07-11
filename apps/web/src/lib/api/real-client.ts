@@ -4,6 +4,7 @@ import type {
   ApplicationEvent,
   ApplicationStatus,
   CandidateProfile,
+  CvVariantStyle,
   JobFeedbackType,
   JobSearchFilters,
   ParsedCvResult,
@@ -220,10 +221,15 @@ export class RealApiClient implements ApiClient {
         return null;
       }
     },
+    listDrafts: async (id: string): Promise<ApplicationDraft[]> =>
+      this.request<ApplicationDraft[]>(`/applications/${id}/drafts`),
     create: async (jobId: string): Promise<Application> =>
       this.request<Application>('/applications', { method: 'POST', body: JSON.stringify({ jobId }) }),
-    draft: async (applicationId: string): Promise<ApplicationDraft> =>
-      this.request<ApplicationDraft>(`/applications/${applicationId}/draft`, { method: 'POST' }),
+    draft: async (applicationId: string, variantStyle?: CvVariantStyle): Promise<ApplicationDraft> =>
+      this.request<ApplicationDraft>(`/applications/${applicationId}/draft`, {
+        method: 'POST',
+        body: JSON.stringify(variantStyle ? { variantStyle } : {}),
+      }),
     updateStatus: async (
       applicationId: string,
       status: ApplicationStatus,

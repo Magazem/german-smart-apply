@@ -350,7 +350,7 @@ Scope:
 Scope:
 - [x] Near-duplicate clustering (embedding similarity)
 - [x] Company alias dictionary (Germany)
-- [ ] Richer CV tailoring with multiple variants
+- [x] Richer CV tailoring with multiple variants
 - [x] Full application tracker
 - [x] Approval-first application queue with status machine
 - [ ] Email alerts and saved searches

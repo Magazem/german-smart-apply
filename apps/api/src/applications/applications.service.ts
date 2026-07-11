@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -8,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { AiProviderError, createAiProvider } from '@german-smart-apply/ai';
 import type { Prisma } from '@german-smart-apply/db';
-import { canTransition, type ApplicationStatus } from '@german-smart-apply/shared';
+import { canTransition, type ApplicationStatus, type CvVariantStyle } from '@german-smart-apply/shared';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TokenUsageService } from '../token-usage/token-usage.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
@@ -50,6 +51,16 @@ export class ApplicationsService {
       throw new NotFoundException('No draft generated for this application yet');
     }
     return toSharedApplicationDraft(draft);
+  }
+
+  /** All generated variants for this application, most recent first - lets the UI compare/pick between them. */
+  async listDrafts(userId: string, applicationId: string) {
+    await this.getOwnedOrThrow(userId, applicationId);
+    const drafts = await this.prisma.client.applicationDraft.findMany({
+      where: { applicationId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return drafts.map(toSharedApplicationDraft);
   }
 
   async create(userId: string, dto: CreateApplicationDto) {
@@ -115,7 +126,12 @@ export class ApplicationsService {
     return toSharedApplication(updated);
   }
 
-  async generateDraft(userId: string, applicationId: string, language?: string) {
+  async generateDraft(
+    userId: string,
+    applicationId: string,
+    language?: string,
+    variantStyle: CvVariantStyle = 'standard',
+  ) {
     const application = await this.getOwnedOrThrow(userId, applicationId);
     const targetStatus: ApplicationStatus = 'draft_ready';
 
@@ -124,6 +140,18 @@ export class ApplicationsService {
         `Cannot generate a draft while application is in status "${application.status}". ` +
           `Mark it "viewed" or "saved" first.`,
       );
+    }
+
+    if (variantStyle !== 'standard') {
+      const user = await this.prisma.client.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { subscriptionStatus: true },
+      });
+      if (user.subscriptionStatus !== 'pro') {
+        throw new ForbiddenException(
+          `The "${variantStyle}" variant style requires a Pro subscription - the standard style is free.`,
+        );
+      }
     }
 
     const profile = await this.prisma.client.candidateProfile.findUnique({ where: { userId } });
@@ -146,8 +174,8 @@ export class ApplicationsService {
     let cvVariant, coverLetter;
     try {
       [cvVariant, coverLetter] = await Promise.all([
-        this.aiProvider.generateCvVariant(sharedProfile, sharedJob, lang),
-        this.aiProvider.generateCoverLetter(sharedProfile, sharedJob, lang),
+        this.aiProvider.generateCvVariant(sharedProfile, sharedJob, lang, variantStyle),
+        this.aiProvider.generateCoverLetter(sharedProfile, sharedJob, lang, variantStyle),
       ]);
     } catch (err) {
       this.logger.error(`Draft generation failed for application ${applicationId}: ${String(err)}`);
@@ -171,6 +199,7 @@ export class ApplicationsService {
             applicationId,
             cvVariantText: cvVariant.text,
             coverLetterText: coverLetter.text,
+            variantLabel: variantStyle,
             modelUsed: cvVariant.modelUsed,
             tokensUsed: cvVariant.tokensUsed + coverLetter.tokensUsed,
           },

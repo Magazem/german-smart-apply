@@ -1,4 +1,9 @@
-import type { CandidateProfile, CanonicalJob, ParsedCvResult } from '@german-smart-apply/shared';
+import type {
+  CandidateProfile,
+  CanonicalJob,
+  CvVariantStyle,
+  ParsedCvResult,
+} from '@german-smart-apply/shared';
 
 export type ModelTier = 'cheap' | 'strong';
 
@@ -39,12 +44,14 @@ export interface AiProvider {
     profile: CandidateProfile,
     job: CanonicalJob,
     language: string,
+    variantStyle?: CvVariantStyle,
   ): Promise<AiGenerationResult>;
 
   generateCoverLetter(
     profile: CandidateProfile,
     job: CanonicalJob,
     language: string,
+    variantStyle?: CvVariantStyle,
   ): Promise<AiGenerationResult>;
 
   generateMatchExplanation(
@@ -78,4 +85,14 @@ export const TASK_MODEL_TIER: Record<
   cvVariant: 'strong',
   coverLetter: 'strong',
   matchExplanation: 'strong',
+};
+
+// Shared prompt-instruction fragments per variant style, so the real and
+// mock providers describe the same three styles consistently. 'standard' is
+// intentionally the empty-string case: today's existing single-variant
+// prompt wording, unchanged for free-tier users.
+export const CV_VARIANT_STYLE_INSTRUCTIONS: Record<CvVariantStyle, string> = {
+  standard: '',
+  concise: 'Keep this version notably shorter and punchier than a standard draft - trim to the essentials, favor short sentences, and cut any content that is not directly relevant to this specific role.',
+  leadership: 'Emphasize leadership, ownership, and cross-team impact throughout - frame achievements in terms of the people and initiatives led, not just individual technical contributions.',
 };

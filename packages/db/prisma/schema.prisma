@@ -338,6 +338,11 @@ model ApplicationDraft {
   application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   cvVariantText   String
   coverLetterText String
+  // 'standard' | 'concise' | 'leadership' - see CV_VARIANT_STYLES in
+  // packages/shared. Defaulted for existing rows predating this column;
+  // 'standard' is also the only style free-tier users can generate
+  // (ApplicationsService.generateDraft enforces Pro for the others).
+  variantLabel    String      @default("standard")
   modelUsed       String
   tokensUsed      Int         @default(0)
   createdAt       DateTime    @default(now())

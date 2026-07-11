@@ -2,13 +2,14 @@ import Anthropic from '@anthropic-ai/sdk';
 import type {
   CandidateProfile,
   CanonicalJob,
+  CvVariantStyle,
   MarketPack,
   ParsedCvEducation,
   ParsedCvExperience,
   ParsedCvResult,
 } from '@german-smart-apply/shared';
 import type { AiGenerationResult, AiProvider, CvSuggestionsResult, ParseCvResult } from './types.js';
-import { MODEL_ROUTING, TASK_MODEL_TIER } from './types.js';
+import { CV_VARIANT_STYLE_INSTRUCTIONS, MODEL_ROUTING, TASK_MODEL_TIER } from './types.js';
 
 /**
  * Minimal structural surface of the Anthropic SDK client this provider
@@ -397,6 +398,7 @@ export class AnthropicAiProvider implements AiProvider {
     profile: CandidateProfile,
     job: CanonicalJob,
     language: string,
+    variantStyle: CvVariantStyle = 'standard',
   ): Promise<AiGenerationResult> {
     const context = 'generateCvVariant';
     const model = MODEL_ROUTING[TASK_MODEL_TIER.cvVariant];
@@ -407,8 +409,11 @@ export class AnthropicAiProvider implements AiProvider {
       `Follow this market's formatting norms: ~${norms.preferredLengthPages} page(s), ${
         norms.photoExpected ? 'include a photo placeholder' : 'no photo'
       }, dates formatted as ${norms.dateFormat}. Mirror relevant terminology from the job description where truthful.`,
+      CV_VARIANT_STYLE_INSTRUCTIONS[variantStyle],
       'Return only the CV content, with no preamble or commentary.',
-    ].join('\n\n');
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
     const user = [formatProfileForPrompt(profile), 'Target job:', formatJobForPrompt(job)].join('\n\n');
 
@@ -428,6 +433,7 @@ export class AnthropicAiProvider implements AiProvider {
     profile: CandidateProfile,
     job: CanonicalJob,
     language: string,
+    variantStyle: CvVariantStyle = 'standard',
   ): Promise<AiGenerationResult> {
     const context = 'generateCoverLetter';
     const model = MODEL_ROUTING[TASK_MODEL_TIER.coverLetter];
@@ -437,8 +443,11 @@ export class AnthropicAiProvider implements AiProvider {
         jobTitle: job.jobTitleNormalized,
         companyName: job.companyNameNormalized,
       }),
+      CV_VARIANT_STYLE_INSTRUCTIONS[variantStyle],
       `Preferred length: ~${this.marketPack.cvFormattingNorms.preferredLengthPages} page(s). Return only the letter text, with no preamble or commentary.`,
-    ].join('\n\n');
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
     const user = [formatProfileForPrompt(profile), 'Job details:', formatJobForPrompt(job)].join('\n\n');
 

@@ -6,6 +6,7 @@ import {
   type ApplicationEvent,
   type ApplicationStatus,
   type CandidateProfile,
+  type CvVariantStyle,
   type JobFeedbackType,
   type JobSearchFilters,
 } from '@german-smart-apply/shared';
@@ -26,6 +27,18 @@ import type {
 } from './types';
 
 const aiProvider = new MockAiProvider();
+
+/**
+ * Normalizes db.applicationDrafts[id] into the current array shape. Guards
+ * against a pre-multi-variant localStorage payload (a single ApplicationDraft
+ * object per applicationId, from before this array shape existed) rather
+ * than crashing on `.length`/spread for a returning dev session.
+ */
+function draftsFor(db: MockDb, applicationId: string): ApplicationDraft[] {
+  const value = db.applicationDrafts[applicationId] as ApplicationDraft[] | ApplicationDraft | undefined;
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
 
 function toAuthUser(u: MockUser): AuthUser {
   return { id: u.id, email: u.email, fullName: u.fullName, tier: u.tier, createdAt: u.createdAt };
@@ -332,7 +345,16 @@ export class MockApiClient implements ApiClient {
       const userId = this.requireUserId(db);
       const app = db.applications.find((a) => a.id === id && a.userId === userId);
       if (!app) return null;
-      return db.applicationDrafts[id] ?? null;
+      return draftsFor(db, id)[0] ?? null;
+    },
+
+    listDrafts: async (id: string): Promise<ApplicationDraft[]> => {
+      await delay(80);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const app = db.applications.find((a) => a.id === id && a.userId === userId);
+      if (!app) return [];
+      return draftsFor(db, id);
     },
 
     create: async (jobId: string): Promise<Application> => {
@@ -356,12 +378,19 @@ export class MockApiClient implements ApiClient {
       return app;
     },
 
-    draft: async (applicationId: string): Promise<ApplicationDraft> => {
+    draft: async (applicationId: string, variantStyle: CvVariantStyle = 'standard'): Promise<ApplicationDraft> => {
       await delay(500);
       const db = this.getDb();
       const userId = this.requireUserId(db);
       const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
       if (!app) throw new Error('Application not found.');
+
+      if (variantStyle !== 'standard') {
+        const user = db.users.find((u) => u.id === userId);
+        if (user?.tier !== 'pro') {
+          throw new Error(`The "${variantStyle}" variant style requires a Pro subscription - the standard style is free.`);
+        }
+      }
 
       if (canTransition(app.status, 'draft_ready')) {
         this.recordTransition(db, app, 'draft_ready', 'Tailored CV variant + cover letter generated.');
@@ -381,8 +410,8 @@ export class MockApiClient implements ApiClient {
       }
 
       const [variant, coverLetter] = await Promise.all([
-        aiProvider.generateCvVariant(profile, job, profile.preferredLanguage),
-        aiProvider.generateCoverLetter(profile, job, profile.preferredLanguage),
+        aiProvider.generateCvVariant(profile, job, profile.preferredLanguage, variantStyle),
+        aiProvider.generateCoverLetter(profile, job, profile.preferredLanguage, variantStyle),
       ]);
 
       const draft: ApplicationDraft = {
@@ -390,11 +419,12 @@ export class MockApiClient implements ApiClient {
         applicationId,
         cvVariantText: variant.text,
         coverLetterText: coverLetter.text,
+        variantLabel: variantStyle,
         modelUsed: variant.modelUsed,
         tokensUsed: variant.tokensUsed + coverLetter.tokensUsed,
         createdAt: nowIso(),
       };
-      db.applicationDrafts[applicationId] = draft;
+      db.applicationDrafts[applicationId] = [draft, ...draftsFor(db, applicationId)];
       app.updatedAt = nowIso();
       saveDb(db);
       return draft;

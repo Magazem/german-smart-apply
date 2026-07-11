@@ -23,7 +23,8 @@ export interface MockDb {
   profiles: Record<string, CandidateProfile>;
   parsedCv: Record<string, ParsedCvResult>;
   applications: Application[];
-  applicationDrafts: Record<string, ApplicationDraft>;
+  /** applicationId -> every generated variant, most recent first. */
+  applicationDrafts: Record<string, ApplicationDraft[]>;
   applicationEvents: ApplicationEvent[];
   /** userId -> jobId -> feedback. Absent/undefined means no feedback recorded. */
   jobFeedback: Record<string, Record<string, JobFeedbackType>>;

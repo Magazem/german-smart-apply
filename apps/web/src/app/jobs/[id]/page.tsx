@@ -7,11 +7,13 @@ import type {
   Application,
   ApplicationDraft,
   CanonicalJob,
+  CvVariantStyle,
   JobFeedbackType,
   JobMatchScore,
 } from '@german-smart-apply/shared';
 import { getApiClient, riskLevel } from '@/lib/api-client';
 import { useRequireAuth } from '@/lib/use-require-auth';
+import { useAuth } from '@/lib/auth-context';
 import { RiskBadge, TrustBadge } from '@/components/risk-badge';
 import { MatchBreakdown, MatchScoreBar } from '@/components/match-score';
 import { StatusBadge } from '@/components/status-badge';
@@ -23,8 +25,15 @@ import {
   formatSeniority,
 } from '@/lib/format';
 
+const VARIANT_STYLE_OPTIONS: Array<{ value: CvVariantStyle; label: string; proOnly: boolean }> = [
+  { value: 'standard', label: 'Standard', proOnly: false },
+  { value: 'concise', label: 'Concise', proOnly: true },
+  { value: 'leadership', label: 'Leadership-focused', proOnly: true },
+];
+
 export default function JobDetailPage() {
   const { loading: authLoading } = useRequireAuth();
+  const { user } = useAuth();
   const params = useParams<{ id: string }>();
   const router = useRouter();
 
@@ -32,6 +41,9 @@ export default function JobDetailPage() {
   const [match, setMatch] = useState<JobMatchScore | null>(null);
   const [application, setApplication] = useState<Application | null>(null);
   const [draft, setDraft] = useState<ApplicationDraft | null>(null);
+  const [allDrafts, setAllDrafts] = useState<ApplicationDraft[]>([]);
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
+  const [variantStyle, setVariantStyle] = useState<CvVariantStyle>('standard');
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -39,6 +51,7 @@ export default function JobDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [myFeedback, setMyFeedback] = useState<JobFeedbackType | null>(null);
   const [feedbackPending, setFeedbackPending] = useState(false);
+  const isPro = user?.tier === 'pro';
 
   useEffect(() => {
     if (authLoading) return;
@@ -77,9 +90,14 @@ export default function JobDetailPage() {
         }
         if (cancelled) return;
         setApplication(app);
-        const existingDraft = await api.applications.getDraft(app.id);
+        const [existingDraft, drafts] = await Promise.all([
+          api.applications.getDraft(app.id),
+          api.applications.listDrafts(app.id),
+        ]);
         if (cancelled) return;
         setDraft(existingDraft);
+        setAllDrafts(drafts);
+        setSelectedDraftId(existingDraft?.id ?? null);
       } catch (err) {
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : 'Could not load this job.');
@@ -116,8 +134,11 @@ export default function JobDetailPage() {
     setActionError(null);
     try {
       const api = getApiClient();
-      const newDraft = await api.applications.draft(application.id);
+      const newDraft = await api.applications.draft(application.id, variantStyle);
       setDraft(newDraft);
+      setSelectedDraftId(newDraft.id);
+      const drafts = await api.applications.listDrafts(application.id);
+      setAllDrafts(drafts);
       await refreshApplication();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Could not generate a tailored draft.');
@@ -125,6 +146,8 @@ export default function JobDetailPage() {
       setDrafting(false);
     }
   };
+
+  const selectedDraft = allDrafts.find((d) => d.id === selectedDraftId) ?? draft;
 
   const handleFeedback = async (feedback: JobFeedbackType) => {
     if (!job || feedbackPending) return;
@@ -295,6 +318,40 @@ export default function JobDetailPage() {
 
         {actionError && <p className="error-text">{actionError}</p>}
 
+        {application && ['viewed', 'saved', 'draft_ready'].includes(application.status) && (
+          <div className="stack gap-8">
+            <span className="muted" style={{ fontSize: '0.82rem' }}>CV variant style</span>
+            <div className="row row-wrap gap-8">
+              {VARIANT_STYLE_OPTIONS.map((opt) => {
+                const locked = opt.proOnly && !isPro;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={variantStyle === opt.value ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+                    onClick={() => setVariantStyle(opt.value)}
+                    disabled={locked}
+                    title={locked ? 'Requires a Pro subscription' : undefined}
+                    data-testid={`variant-style-${opt.value}`}
+                  >
+                    {opt.label}
+                    {opt.proOnly && ' (Pro)'}
+                  </button>
+                );
+              })}
+            </div>
+            {VARIANT_STYLE_OPTIONS.some((o) => o.proOnly && !isPro) && (
+              <p className="muted" style={{ fontSize: '0.78rem' }}>
+                Concise and leadership-focused variants require{' '}
+                <Link href="/billing" style={{ color: 'var(--color-primary)' }}>
+                  Pro
+                </Link>
+                . Standard stays free.
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="row row-wrap gap-8" style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
           {application?.status !== 'saved' &&
             application?.status !== 'draft_ready' &&
@@ -314,7 +371,11 @@ export default function JobDetailPage() {
                 disabled={drafting}
                 data-testid="request-draft-button"
               >
-                {drafting ? 'Generating tailored draft…' : 'Request tailored CV & cover letter'}
+                {drafting
+                  ? 'Generating tailored draft…'
+                  : draft
+                    ? 'Regenerate tailored CV & cover letter'
+                    : 'Request tailored CV & cover letter'}
               </button>
             )}
 
@@ -337,13 +398,47 @@ export default function JobDetailPage() {
           )}
         </div>
 
-        {draft && (
+        {selectedDraft && (
           <div className="card stack gap-12" style={{ padding: 20, background: 'var(--color-surface-alt)' }}>
             <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Tailored draft preview</h3>
             <p className="muted" style={{ fontSize: '0.82rem' }}>
               Review carefully — you'll need to explicitly approve this in the application queue before anything is
               considered "applied".
             </p>
+
+            {allDrafts.length > 1 && (
+              <div className="row row-wrap gap-8">
+                {allDrafts.map((d, i) => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    className={d.id === selectedDraft.id ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
+                    onClick={() => setSelectedDraftId(d.id)}
+                    data-testid={`draft-variant-tab-${i}`}
+                  >
+                    {d.variantLabel} · {formatDate(d.createdAt)}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="stack gap-8">
+              <strong style={{ fontSize: '0.85rem' }}>CV variant</strong>
+              <pre
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  fontFamily: 'var(--font-sans)',
+                  fontSize: '0.85rem',
+                  background: 'var(--color-surface)',
+                  padding: 14,
+                  borderRadius: 'var(--radius-md)',
+                  margin: 0,
+                }}
+              >
+                {selectedDraft.cvVariantText}
+              </pre>
+            </div>
+
             <div className="stack gap-8">
               <strong style={{ fontSize: '0.85rem' }}>Cover letter</strong>
               <pre
@@ -357,7 +452,7 @@ export default function JobDetailPage() {
                   margin: 0,
                 }}
               >
-                {draft.coverLetterText}
+                {selectedDraft.coverLetterText}
               </pre>
             </div>
           </div>
