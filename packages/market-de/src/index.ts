@@ -89,10 +89,26 @@ export const marketDe: MarketPack = {
       'wire transfer',
     ],
   },
+  // Mirrored in workers/common/market_de.py::COMPANY_ALIASES -- see that
+  // file's comment for which entries are evidence-based (observed in real
+  // crawled raw_jobs) vs speculative seeding for currently-unconfigured
+  // ATS sources, and why corporate-family mergers (e.g. Audi/VW) are
+  // deliberately excluded.
   companyAliases: {
     'sap se': ['SAP', 'SAP AG', 'SAP Deutschland'],
     'zalando se': ['Zalando', 'Zalando SE'],
     'deutsche telekom ag': ['Deutsche Telekom', 'T-Systems', 'Telekom'],
+    'ergo': ['ERGO Group'],
+    'ferchau': [
+      'Ferchau GmbH',
+      'Ferchau GmbH Niederlassung Bremen City',
+      'Ferchau GmbH Niederlassung Lübeck',
+      'Ferchau GmbH Niederlassung Rosenheim',
+    ],
+    'siemens ag': ['Siemens', 'Siemens Deutschland'],
+    'robert bosch gmbh': ['Bosch', 'Robert Bosch'],
+    'allianz se': ['Allianz', 'Allianz Deutschland'],
+    'continental ag': ['Continental', 'Conti'],
   },
   rankingWeights: {
     titleSimilarity: 0.25,

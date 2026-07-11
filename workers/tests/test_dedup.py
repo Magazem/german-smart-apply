@@ -103,10 +103,15 @@ def test_scam_risk_score_mailto_to_a_non_suspicious_domain_is_not_flagged():
 def test_seed_company_aliases_inserts_only_genuinely_different_normalized_variants(pg_conn):
     inserted = seed_company_aliases(pg_conn)
     # "SAP"/"SAP AG" normalize to the same key as canonical "SAP SE" ("sap") and
-    # are skipped as self-mapping no-ops; only "SAP Deutschland" differs.
-    # Zalando's aliases all collapse to "zalando" too (0 inserted).
-    # Deutsche Telekom contributes "t-systems" and "telekom".
-    assert inserted == 3
+    # are skipped as self-mapping no-ops; only "SAP Deutschland" differs (1).
+    # Zalando's aliases all collapse to "zalando" too (0).
+    # Deutsche Telekom contributes "t-systems" and "telekom" (2).
+    # ERGO contributes "ergo group" (1).
+    # Ferchau's bare "GmbH" form is a no-op; its three branch-office variants
+    # each differ from canonical "ferchau" (3).
+    # Siemens/Bosch/Allianz/Continental each contribute exactly one genuine
+    # variant beyond their self-mapping bare form (4).
+    assert inserted == 1 + 0 + 2 + 1 + 3 + 4
 
 
 def test_resolve_company_key_via_alias(seeded_db):
@@ -116,6 +121,17 @@ def test_resolve_company_key_via_alias(seeded_db):
     assert dedup.resolve_company_key(cur, normalize_company_name("SAP Deutschland")) == "sap"
     assert dedup.resolve_company_key(cur, normalize_company_name("T-Systems")) == "deutsche telekom"
     assert dedup.resolve_company_key(cur, normalize_company_name("Telekom")) == "deutsche telekom"
+    assert dedup.resolve_company_key(cur, normalize_company_name("ERGO Group")) == "ergo"
+    assert (
+        dedup.resolve_company_key(cur, normalize_company_name("Ferchau GmbH Niederlassung Lübeck"))
+        == "ferchau"
+    )
+    assert (
+        dedup.resolve_company_key(cur, normalize_company_name("Ferchau GmbH Niederlassung Rosenheim"))
+        == "ferchau"
+    )
+    assert dedup.resolve_company_key(cur, normalize_company_name("Bosch")) == "robert bosch"
+    assert dedup.resolve_company_key(cur, normalize_company_name("Conti")) == "continental"
 
 
 def test_resolve_company_key_passthrough_for_unknown_company(seeded_db):
@@ -245,6 +261,71 @@ def test_run_dedup_does_not_collapse_near_miss_different_location(seeded_db):
     dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     dict_cur.execute('SELECT * FROM "canonical_jobs"')
     assert len(dict_cur.fetchall()) == 2
+
+
+def test_run_dedup_collapses_aliased_company_spelling_at_the_same_location(seeded_db):
+    """End-to-end: two sources spell the same real employer differently
+    (canonical "ergo" vs. the observed "ERGO Group" variant) but post the
+    identical role in the identical city - resolve_company_key must unify
+    them into one canonical_jobs row, same as an already-identical spelling
+    would.
+    """
+    conn, source_ids = seeded_db
+    cur = conn.cursor()
+
+    _insert_raw_job(
+        cur, source_ids["greenhouse-de"], originalJobId="ergo-1",
+        companyNameRaw="ERGO", companyNameNormalized="ergo",
+    )
+    _insert_raw_job(
+        cur, source_ids["lever-de"], originalJobId="ergo-2",
+        sourceUrl="https://jobs.lever.co/ergo/xyz-1",
+        companyNameRaw="ERGO Group", companyNameNormalized="ergo group",
+    )
+
+    result = dedup.run_dedup(conn)
+
+    assert result["groups"] == 1
+    assert result["canonicalJobsCreated"] == 1
+
+    dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    dict_cur.execute('SELECT * FROM "canonical_jobs"')
+    assert len(dict_cur.fetchall()) == 1
+
+
+def test_run_dedup_does_not_collapse_aliased_branch_offices_in_different_cities(seeded_db):
+    """The asymmetric-risk case: Ferchau's Lübeck and Rosenheim branches both
+    alias to the canonical "ferchau" key, but they are genuinely different
+    job openings in different cities - a wrong company-identity merge must
+    not also merge the postings themselves. compute_cluster_key includes
+    location, so these must remain two separate canonical_jobs rows.
+    """
+    conn, source_ids = seeded_db
+    cur = conn.cursor()
+
+    _insert_raw_job(
+        cur, source_ids["greenhouse-de"], originalJobId="ferchau-luebeck",
+        companyNameRaw="Ferchau GmbH Niederlassung Lübeck",
+        companyNameNormalized="ferchau gmbh niederlassung lübeck",
+        locationNormalized="Lübeck",
+    )
+    _insert_raw_job(
+        cur, source_ids["greenhouse-de"], originalJobId="ferchau-rosenheim",
+        companyNameRaw="Ferchau GmbH Niederlassung Rosenheim",
+        companyNameNormalized="ferchau gmbh niederlassung rosenheim",
+        locationNormalized="Rosenheim",
+    )
+
+    result = dedup.run_dedup(conn)
+
+    assert result["groups"] == 2
+    assert result["canonicalJobsCreated"] == 2
+
+    dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    dict_cur.execute('SELECT * FROM "canonical_jobs"')
+    canonical_rows = dict_cur.fetchall()
+    assert len(canonical_rows) == 2
+    assert {r["locationNormalized"] for r in canonical_rows} == {"Lübeck", "Rosenheim"}
 
 
 def test_run_dedup_does_not_collapse_near_miss_different_title(seeded_db):

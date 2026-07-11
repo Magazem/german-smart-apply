@@ -116,10 +116,46 @@ SCAM_HEURISTICS = {
 }
 
 # Mirrors marketDe.companyAliases: canonical companyNameNormalized -> known aliases.
+#
+# Entries below "ergo"/"ferchau" are seeded speculatively (no live-crawl
+# evidence yet) for the big, well-known employers most likely to post once
+# Greenhouse/Lever/Stepstone board tokens are configured (currently empty --
+# see SOURCE_CONFIG below). "ergo" and "ferchau" themselves *are* evidence-
+# based: both spelling variants were observed in the same real Arbeitsagentur
+# crawl (`SELECT "companyNameNormalized", COUNT(*) FROM raw_jobs GROUP BY 1`),
+# so unlike the speculative entries these are verified against real rows.
+#
+# Deliberately conservative about what counts as "the same employer": only
+# pure spelling/legal-form variants of one legal entity belong here, never
+# a corporate family (e.g. Audi/VW, Mercedes-Benz/Daimler Truck stay separate
+# -- merging them would hide genuinely distinct job postings, which is worse
+# than leaving a cosmetic near-duplicate company name unresolved).
 COMPANY_ALIASES: dict[str, list[str]] = {
     "sap se": ["SAP", "SAP AG", "SAP Deutschland"],
     "zalando se": ["Zalando", "Zalando SE"],
     "deutsche telekom ag": ["Deutsche Telekom", "T-Systems", "Telekom"],
+    # Observed directly in raw_jobs as both "ergo" and "ergo group".
+    "ergo": ["ERGO Group"],
+    # Observed directly in raw_jobs across three branch offices, each with
+    # "GmbH" mid-string (not stripped by normalize_company_name's end-of-
+    # string suffix pass) -- same legal employer (Ferchau Engineering GmbH),
+    # different offices, so each branch alias still resolves to one company
+    # even though the differing location keeps them as distinct job postings.
+    "ferchau": [
+        "Ferchau GmbH",
+        "Ferchau GmbH Niederlassung Bremen City",
+        "Ferchau GmbH Niederlassung Lübeck",
+        "Ferchau GmbH Niederlassung Rosenheim",
+    ],
+    # BASF/Bayer/adidas are deliberately NOT here: their only "alias" would be
+    # the bare brand name, which already collapses to the same key via
+    # normalize_company_name's legal-suffix stripping alone (e.g. "BASF SE"
+    # and "BASF" both normalize to "basf") -- an explicit entry would resolve
+    # zero genuinely different variants, just dead weight in this dict.
+    "siemens ag": ["Siemens", "Siemens Deutschland"],
+    "robert bosch gmbh": ["Bosch", "Robert Bosch"],
+    "allianz se": ["Allianz", "Allianz Deutschland"],
+    "continental ag": ["Continental", "Conti"],
 }
 
 # Not present in the TS pack (which only stores relative rankingWeights) --
