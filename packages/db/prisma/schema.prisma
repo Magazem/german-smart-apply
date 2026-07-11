@@ -201,6 +201,11 @@ enum SubscriptionStatus {
   past_due
 }
 
+enum UserRole {
+  user
+  admin
+}
+
 model User {
   id                   String             @id @default(uuid())
   email                String             @unique
@@ -210,6 +215,10 @@ model User {
   // becomes unused once authProviderId-based auth takes over.
   passwordHash         String?
   subscriptionStatus   SubscriptionStatus @default(free)
+  // No self-serve path to become admin, same as there's no self-serve path
+  // to bypass Stripe for Pro - promote via a manual DB update (documented in
+  // DEPLOYMENT.md) rather than exposing any in-app role switch.
+  role                 UserRole           @default(user)
   stripeCustomerId     String?            @unique
   stripeSubscriptionId String?            @unique
   createdAt            DateTime           @default(now())

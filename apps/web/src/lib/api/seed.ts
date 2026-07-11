@@ -26,6 +26,11 @@ export function ensureDemoSeed(db: MockDb): void {
     passwordHash: weakHash(DEMO_PASSWORD),
     fullName: 'Alex Demo',
     tier: 'pro',
+    // Pre-promoted so the demo account can showcase every feature —
+    // including the admin panel — without manual localStorage surgery.
+    // Mirrors the real world's "no self-serve path to admin" via a doc'd
+    // manual DB update; this is that same manual step, just pre-applied.
+    role: 'admin',
     createdAt: '2026-06-20T09:00:00.000Z',
   };
   db.users.push(demoUser);

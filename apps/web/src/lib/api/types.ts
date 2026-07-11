@@ -22,6 +22,9 @@ export interface AuthUser {
   email: string;
   fullName: string | null;
   tier: 'free' | 'pro';
+  // No self-serve path to become 'admin' - promoted via a manual DB update,
+  // same as there's no self-serve path to Pro without going through Stripe.
+  role: 'user' | 'admin';
   createdAt: string;
 }
 
@@ -58,6 +61,43 @@ export type CvUploadInput = { kind: 'file'; file: File } | { kind: 'text'; text:
 export interface TokenUsageSummary {
   totalTokens: number;
   byFeature: Array<{ feature: string; tokensUsed: number; callCount: number }>;
+}
+
+export interface SourceCrawlRun {
+  id: string;
+  status: 'running' | 'success' | 'partial_failure' | 'failure';
+  startedAt: string;
+  finishedAt: string | null;
+  jobsFetched: number;
+  jobsNew: number;
+  jobsUpdated: number;
+  errorLog: string | null;
+  retryCount: number;
+}
+
+export interface SourceHealth {
+  id: string;
+  sourceType: string;
+  displayName: string;
+  countryCode: string;
+  trustTier: 'low' | 'medium' | 'high';
+  isActive: boolean;
+  crawlFrequencyMinutes: number;
+  lastRun: SourceCrawlRun | null;
+  recentRunCount: number;
+  // null (not 0) when no run has completed yet for this source.
+  successRate: number | null;
+}
+
+export interface DedupStats {
+  totalRawJobs: number;
+  totalCanonicalJobs: number;
+  visibleCanonicalJobs: number;
+  hiddenByDuplication: number;
+  totalDuplicateClusters: number;
+  exactDuplicateClusters: number;
+  nearDuplicateClusters: number;
+  totalDuplicateClusterMembers: number;
 }
 
 /**
@@ -118,5 +158,11 @@ export interface ApiClient {
   };
   usage: {
     summary(): Promise<TokenUsageSummary>;
+  };
+  admin: {
+    /** Throws/rejects for a non-admin caller — both clients enforce this, not just the UI. */
+    listSources(): Promise<SourceHealth[]>;
+    sourceRuns(sourceId: string): Promise<{ source: SourceHealth; runs: SourceCrawlRun[] } | null>;
+    dedupStats(): Promise<DedupStats>;
   };
 }

@@ -354,7 +354,7 @@ Scope:
 - [x] Full application tracker
 - [x] Approval-first application queue with status machine
 - [ ] Email alerts and saved searches
-- [ ] Admin panel with source health monitoring
+- [x] Admin panel with source health monitoring
 - [x] User feedback loop (thumbs up/down per job)
 - [x] Token usage tracking per user and feature
 - [ ] Full test coverage for all workers

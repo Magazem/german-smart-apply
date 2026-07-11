@@ -10,6 +10,7 @@ import {
   type JobFeedbackType,
   type JobSearchFilters,
 } from '@german-smart-apply/shared';
+import { DEDUP_STATS_FIXTURE, SOURCE_HEALTH_FIXTURES } from './admin-fixtures';
 import { JOB_FIXTURES } from './fixtures';
 import { computeMatchScore } from './scoring';
 import { ensureDemoSeed } from './seed';
@@ -19,10 +20,13 @@ import type {
   AuthSession,
   AuthUser,
   CvUploadInput,
+  DedupStats,
   JobDetailResult,
   JobSearchResult,
   LoginInput,
   RegisterInput,
+  SourceCrawlRun,
+  SourceHealth,
   TokenUsageSummary,
 } from './types';
 
@@ -41,7 +45,14 @@ function draftsFor(db: MockDb, applicationId: string): ApplicationDraft[] {
 }
 
 function toAuthUser(u: MockUser): AuthUser {
-  return { id: u.id, email: u.email, fullName: u.fullName, tier: u.tier, createdAt: u.createdAt };
+  return {
+    id: u.id,
+    email: u.email,
+    fullName: u.fullName,
+    tier: u.tier,
+    role: u.role ?? 'user',
+    createdAt: u.createdAt,
+  };
 }
 
 function createDefaultProfile(userId: string): CandidateProfile {
@@ -485,6 +496,41 @@ export class MockApiClient implements ApiClient {
       await delay(80);
       this.requireUserId(this.getDb());
       return { totalTokens: 0, byFeature: [] };
+    },
+  };
+
+  private requireAdmin(db: MockDb): MockUser {
+    const userId = this.requireUserId(db);
+    const user = db.users.find((u) => u.id === userId);
+    // Defense in depth, matching AdminGuard server-side: enforced here too,
+    // not just by hiding the admin nav link in the UI.
+    if (!user || user.role !== 'admin') {
+      throw new Error('This area requires an admin account');
+    }
+    return user;
+  }
+
+  admin = {
+    // Demo-only fixture data (see admin-fixtures.ts) - the mock world has no
+    // concept of a real crawler fleet, so this can't be derived from db
+    // state the way every other mock endpoint is.
+    listSources: async (): Promise<SourceHealth[]> => {
+      await delay(150);
+      this.requireAdmin(this.getDb());
+      return SOURCE_HEALTH_FIXTURES.map((s) => s.health);
+    },
+    sourceRuns: async (
+      sourceId: string,
+    ): Promise<{ source: SourceHealth; runs: SourceCrawlRun[] } | null> => {
+      await delay(120);
+      this.requireAdmin(this.getDb());
+      const entry = SOURCE_HEALTH_FIXTURES.find((s) => s.health.id === sourceId);
+      return entry ? { source: entry.health, runs: entry.runs } : null;
+    },
+    dedupStats: async (): Promise<DedupStats> => {
+      await delay(100);
+      this.requireAdmin(this.getDb());
+      return DEDUP_STATS_FIXTURE;
     },
   };
 

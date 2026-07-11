@@ -15,6 +15,9 @@ export interface MockUser {
   passwordHash: string;
   fullName: string | null;
   tier: 'free' | 'pro';
+  // Absent on users created before this field existed (older localStorage
+  // payloads) - always read via `user.role ?? 'user'`, never bare.
+  role?: 'user' | 'admin';
   createdAt: string;
 }
 

@@ -56,7 +56,7 @@ export function Nav() {
 
         {!loading && user && (
           <nav className="row gap-16" style={{ flex: 1, justifyContent: 'center' }} aria-label="Primary">
-            {LINKS.map((link) => {
+            {(user.role === 'admin' ? [...LINKS, { href: '/admin', label: 'Admin' }] : LINKS).map((link) => {
               const active = pathname === link.href || pathname?.startsWith(`${link.href}/`);
               return (
                 <Link

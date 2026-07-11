@@ -14,10 +14,13 @@ import type {
   AuthSession,
   AuthUser,
   CvUploadInput,
+  DedupStats,
   JobDetailResult,
   JobSearchResult,
   LoginInput,
   RegisterInput,
+  SourceHealth,
+  SourceCrawlRun,
   TokenUsageSummary,
 } from './types';
 
@@ -43,6 +46,7 @@ interface RawMeResult {
   id: string;
   email: string;
   subscriptionStatus: 'free' | 'pro' | 'canceled' | 'past_due';
+  role: 'user' | 'admin';
   createdAt: string;
   candidateProfile: { fullName: string | null } | null;
 }
@@ -53,6 +57,7 @@ function toAuthUser(raw: RawMeResult): AuthUser {
     email: raw.email,
     fullName: raw.candidateProfile?.fullName ?? null,
     tier: raw.subscriptionStatus === 'pro' ? 'pro' : 'free',
+    role: raw.role,
     createdAt: raw.createdAt,
   };
 }
@@ -93,6 +98,7 @@ export class RealApiClient implements ApiClient {
         email: result.user.email,
         fullName: null,
         tier: 'free' as const,
+        role: 'user' as const,
         createdAt: new Date().toISOString(),
       };
       return { user, token: result.accessToken };
@@ -108,6 +114,7 @@ export class RealApiClient implements ApiClient {
         email: result.user.email,
         fullName: null,
         tier: 'free' as const,
+        role: 'user' as const,
         createdAt: new Date().toISOString(),
       };
       return { user, token: result.accessToken };
@@ -250,5 +257,22 @@ export class RealApiClient implements ApiClient {
 
   usage = {
     summary: async (): Promise<TokenUsageSummary> => this.request<TokenUsageSummary>('/usage'),
+  };
+
+  admin = {
+    listSources: async (): Promise<SourceHealth[]> =>
+      this.request<SourceHealth[]>('/admin/sources'),
+    sourceRuns: async (
+      sourceId: string,
+    ): Promise<{ source: SourceHealth; runs: SourceCrawlRun[] } | null> => {
+      try {
+        return await this.request<{ source: SourceHealth; runs: SourceCrawlRun[] }>(
+          `/admin/sources/${sourceId}/runs`,
+        );
+      } catch {
+        return null;
+      }
+    },
+    dedupStats: async (): Promise<DedupStats> => this.request<DedupStats>('/admin/dedup-stats'),
   };
 }
