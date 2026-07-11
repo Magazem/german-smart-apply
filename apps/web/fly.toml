@@ -7,7 +7,13 @@ app = 'german-smart-apply-web'
 primary_region = 'fra'
 
 [build]
-  dockerfile = 'apps/web/Dockerfile'
+  # Relative to this file's own directory (apps/web/), NOT the repo root -
+  # flyctl resolves it against wherever --config points, so "apps/web/Dockerfile"
+  # here doubled into apps/web/apps/web/Dockerfile. The build CONTEXT is a
+  # separate thing and still needs to be the repo root - pass "." explicitly
+  # on the fly deploy command (see DEPLOYMENT.md) so the Dockerfile's COPY
+  # packages/shared etc. can reach the rest of the pnpm workspace.
+  dockerfile = 'Dockerfile'
   # NEXT_PUBLIC_* are inlined into the client bundle by `next build` itself,
   # so they must reach the image as build args, not `[env]`/`fly secrets`
   # (both runtime-only - the image is already built by the time those apply).

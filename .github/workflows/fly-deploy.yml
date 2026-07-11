@@ -13,9 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      # No separate --dockerfile flag: combined with --config it resolves
-      # relative to the wrong base and doubles the path (flyctl#400). The
-      # fly.toml's own [build] dockerfile is enough.
+      # fly.toml's [build] dockerfile is relative to fly.toml's own
+      # directory (apps/api/), not the repo root - the trailing "." here is
+      # what keeps the build *context* at the repo root regardless, so the
+      # Dockerfile's COPY packages/shared etc. still resolve.
       - run: flyctl deploy --config apps/api/fly.toml --remote-only .
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

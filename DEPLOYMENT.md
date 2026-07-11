@@ -21,14 +21,15 @@ setting real secrets is a manual step you do once per app.
 
 ## Deploy the API
 
-Run these from the repo root — not from inside `apps/api`. Don't pass a
-separate `--dockerfile` flag alongside `--config`: flyctl resolves it
-relative to the app directory implied by `--config` and doubles the path
-(e.g. `apps/api/apps/api/Dockerfile`, "no such file" - see
-[flyctl#400](https://github.com/superfly/flyctl/issues/400)). The
-`dockerfile` path already declared in each `fly.toml`'s `[build]` section is
-enough; the trailing `.` still sets the build context to the repo root
-(required so the Dockerfile can reach the pnpm workspace).
+Run these from the repo root — not from inside `apps/api`. Each `fly.toml`'s
+`[build] dockerfile` value is relative to that `fly.toml`'s own directory
+(so just `Dockerfile`, not `apps/api/Dockerfile` - found by hitting the
+doubled path `apps/api/apps/api/Dockerfile not found` in a real deploy).
+The build *context* is a separate setting and still needs to be the repo
+root, which the trailing `.` on `fly deploy` provides - required so the
+Dockerfile's `COPY packages/shared` etc. can reach the rest of the pnpm
+workspace. Don't add a redundant `--dockerfile` flag on top of either of
+these; it doesn't help and isn't needed.
 
 ```sh
 fly launch --config apps/api/fly.toml --no-deploy   # first time only, creates the app
@@ -54,7 +55,9 @@ a release step): `DATABASE_URL=... pnpm --filter @german-smart-apply/db migrate:
 
 ## Deploy the frontend
 
-Same rule as above — no separate `--dockerfile` flag.
+Same rule as above — `dockerfile` in `apps/web/fly.toml` is relative to
+`apps/web/`, and the trailing `.` on `fly deploy` keeps the build context
+at the repo root.
 
 ```sh
 fly launch --config apps/web/fly.toml --no-deploy   # first time only

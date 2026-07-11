@@ -7,7 +7,13 @@ app = 'german-smart-apply-api'
 primary_region = 'fra'
 
 [build]
-  dockerfile = 'apps/api/Dockerfile'
+  # Relative to this file's own directory (apps/api/), NOT the repo root -
+  # flyctl resolves it against wherever --config points, so "apps/api/Dockerfile"
+  # here doubled into apps/api/apps/api/Dockerfile. The build CONTEXT is a
+  # separate thing and still needs to be the repo root - pass "." explicitly
+  # on the fly deploy command (see DEPLOYMENT.md) so the Dockerfile's COPY
+  # packages/shared etc. can reach the rest of the pnpm workspace.
+  dockerfile = 'Dockerfile'
 
 [env]
   PORT = '3001'
