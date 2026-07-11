@@ -1,27 +1,32 @@
-# Deploy from the repo root: `fly deploy --config apps/web/fly.toml --dockerfile apps/web/Dockerfile .`
-app = "german-smart-apply-web"
-primary_region = "fra"
+# fly.toml app configuration file generated for german-smart-apply-web on 2026-07-11T10:59:48+02:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'german-smart-apply-web'
+primary_region = 'fra'
 
 [build]
-  dockerfile = "apps/web/Dockerfile"
+  dockerfile = 'apps/web/Dockerfile'
   # NEXT_PUBLIC_* are inlined into the client bundle by `next build` itself,
   # so they must reach the image as build args, not `[env]`/`fly secrets`
   # (both runtime-only - the image is already built by the time those apply).
-  # Fly reads [build.args] for both `fly deploy` and `fly launch`.
+  # `fly launch` regenerates this whole file and drops this block - if you
+  # re-run `fly launch` on this app, restore it before deploying.
   [build.args]
-    NEXT_PUBLIC_API_URL = "https://german-smart-apply-api.fly.dev"
-    NEXT_PUBLIC_USE_MOCK_API = "false"
+    NEXT_PUBLIC_API_URL = 'https://german-smart-apply-api.fly.dev'
+    NEXT_PUBLIC_USE_MOCK_API = 'false'
 
 [env]
-  PORT = "3100"
+  PORT = '3100'
 
 [http_service]
   internal_port = 3100
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = 'shared-cpu-1x'
+  memory = '512mb'
