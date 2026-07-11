@@ -21,6 +21,16 @@ export interface MockUser {
   createdAt: string;
 }
 
+export interface MockSavedSearch {
+  id: string;
+  userId: string;
+  name: string;
+  filters: Record<string, unknown>;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MockDb {
   users: MockUser[];
   profiles: Record<string, CandidateProfile>;
@@ -31,6 +41,7 @@ export interface MockDb {
   applicationEvents: ApplicationEvent[];
   /** userId -> jobId -> feedback. Absent/undefined means no feedback recorded. */
   jobFeedback: Record<string, Record<string, JobFeedbackType>>;
+  savedSearches: MockSavedSearch[];
   sessionUserId: string | null;
 }
 
@@ -65,6 +76,7 @@ function emptyDb(): MockDb {
     applicationDrafts: {},
     applicationEvents: [],
     jobFeedback: {},
+    savedSearches: [],
     sessionUserId: null,
   };
 }

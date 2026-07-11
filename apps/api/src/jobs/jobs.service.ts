@@ -21,6 +21,7 @@ export interface RankedJobResult {
 // good matches outside the top `CANDIDATE_POOL_SIZE` most recent postings.
 const CANDIDATE_POOL_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 20;
+const ALERT_MATCH_LIMIT = 20;
 
 @Injectable()
 export class JobsService {
@@ -70,6 +71,26 @@ export class JobsService {
       offset,
       results: scored.slice(offset, offset + limit),
     };
+  }
+
+  /**
+   * Jobs matching `filters` that entered canonical_jobs after `since` -
+   * used by the alerting worker to find what's new for a saved search since
+   * its last delivery, rather than re-notifying on the same matches every
+   * run. Unranked (no ranking profile involved - a saved search has its own
+   * explicit filters, not a candidate profile to score against) and ordered
+   * by newest first, capped at ALERT_MATCH_LIMIT so one saved search can't
+   * generate an unbounded email.
+   */
+  async findNewMatches(filters: SearchJobsDto, since: Date): Promise<CanonicalJob[]> {
+    const where = this.buildWhere(filters);
+    const records = await this.prisma.client.canonicalJob.findMany({
+      where: { ...where, createdAt: { gt: since } },
+      include: { rawJob: { include: { source: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: ALERT_MATCH_LIMIT,
+    });
+    return records.map(toSharedCanonicalJob);
   }
 
   async getById(id: string, userId?: string): Promise<RankedJobResult> {

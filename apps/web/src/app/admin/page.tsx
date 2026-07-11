@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRequireAuth } from '@/lib/use-require-auth';
 import { getApiClient } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
-import type { DedupStats, SourceCrawlRun, SourceHealth } from '@/lib/api/types';
+import type { AlertRunSummary, DedupStats, SourceCrawlRun, SourceHealth } from '@/lib/api/types';
 
 function successRateBadge(rate: number | null): { className: string; label: string } {
   if (rate === null) return { className: 'badge badge-neutral', label: 'No runs yet' };
@@ -34,6 +34,9 @@ export default function AdminPage() {
   const [runsBySource, setRunsBySource] = useState<Record<string, SourceCrawlRun[]>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [alertRun, setAlertRun] = useState<AlertRunSummary | null>(null);
+  const [runningAlerts, setRunningAlerts] = useState(false);
+  const [alertRunError, setAlertRunError] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -57,6 +60,19 @@ export default function AdminPage() {
       cancelled = true;
     };
   }, [authLoading]);
+
+  const handleRunAlerts = async () => {
+    setRunningAlerts(true);
+    setAlertRunError(null);
+    try {
+      const result = await getApiClient().admin.runAlerts();
+      setAlertRun(result);
+    } catch (err) {
+      setAlertRunError(err instanceof Error ? err.message : 'Could not run alerts.');
+    } finally {
+      setRunningAlerts(false);
+    }
+  };
 
   const toggleExpanded = async (sourceId: string) => {
     if (expandedId === sourceId) {
@@ -119,6 +135,39 @@ export default function AdminPage() {
               </span>
             </div>
           </div>
+        </div>
+      )}
+
+      {!error && (
+        <div className="card stack gap-12" style={{ padding: 20 }} data-testid="admin-alerts-card">
+          <div className="row spread" style={{ flexWrap: 'wrap', gap: 12 }}>
+            <div className="stack gap-4">
+              <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>Saved search alerts</h2>
+              <p className="muted" style={{ fontSize: '0.8rem' }}>
+                Manually-invokable only — checks every active saved search for new matches and emails owners.
+                No standing scheduler runs this automatically yet.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={handleRunAlerts}
+              disabled={runningAlerts}
+              data-testid="admin-run-alerts"
+            >
+              {runningAlerts ? 'Running…' : 'Run alerts now'}
+            </button>
+          </div>
+          {alertRunError && (
+            <p style={{ fontSize: '0.82rem', color: 'var(--color-danger)' }}>{alertRunError}</p>
+          )}
+          {alertRun && (
+            <p style={{ fontSize: '0.85rem' }} data-testid="admin-alerts-result">
+              Checked {alertRun.searchesChecked} active saved search{alertRun.searchesChecked === 1 ? '' : 'es'} ·
+              sent {alertRun.emailsSent} email{alertRun.emailsSent === 1 ? '' : 's'} ·
+              {' '}{alertRun.totalJobsMatched} new job{alertRun.totalJobsMatched === 1 ? '' : 's'} matched
+            </p>
+          )}
         </div>
       )}
 

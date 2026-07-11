@@ -10,6 +10,7 @@ import type {
   ParsedCvResult,
 } from '@german-smart-apply/shared';
 import type {
+  AlertRunSummary,
   ApiClient,
   AuthSession,
   AuthUser,
@@ -19,6 +20,7 @@ import type {
   JobSearchResult,
   LoginInput,
   RegisterInput,
+  SavedSearch,
   SourceHealth,
   SourceCrawlRun,
   TokenUsageSummary,
@@ -212,6 +214,26 @@ export class RealApiClient implements ApiClient {
       }),
   };
 
+  savedSearches = {
+    list: async (): Promise<SavedSearch[]> => this.request<SavedSearch[]>('/saved-searches'),
+    create: async (name: string, filters: JobSearchFilters): Promise<SavedSearch> =>
+      this.request<SavedSearch>('/saved-searches', {
+        method: 'POST',
+        body: JSON.stringify({ name, filters }),
+      }),
+    update: async (
+      id: string,
+      patch: Partial<Pick<SavedSearch, 'name' | 'filters' | 'isActive'>>,
+    ): Promise<SavedSearch> =>
+      this.request<SavedSearch>(`/saved-searches/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+    remove: async (id: string): Promise<void> => {
+      await this.request(`/saved-searches/${id}`, { method: 'DELETE' });
+    },
+  };
+
   applications = {
     list: async (): Promise<Application[]> => this.request<Application[]>('/applications'),
     get: async (id: string): Promise<Application | null> => {
@@ -274,5 +296,7 @@ export class RealApiClient implements ApiClient {
       }
     },
     dedupStats: async (): Promise<DedupStats> => this.request<DedupStats>('/admin/dedup-stats'),
+    runAlerts: async (): Promise<AlertRunSummary> =>
+      this.request<AlertRunSummary>('/admin/alerts/run', { method: 'POST' }),
   };
 }

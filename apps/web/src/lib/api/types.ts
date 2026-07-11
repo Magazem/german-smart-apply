@@ -89,6 +89,15 @@ export interface SourceHealth {
   successRate: number | null;
 }
 
+export interface SavedSearch {
+  id: string;
+  name: string;
+  filters: JobSearchFilters;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DedupStats {
   totalRawJobs: number;
   totalCanonicalJobs: number;
@@ -98,6 +107,12 @@ export interface DedupStats {
   exactDuplicateClusters: number;
   nearDuplicateClusters: number;
   totalDuplicateClusterMembers: number;
+}
+
+export interface AlertRunSummary {
+  searchesChecked: number;
+  emailsSent: number;
+  totalJobsMatched: number;
 }
 
 /**
@@ -133,6 +148,12 @@ export interface ApiClient {
     /** Toggles like/skip: re-sending the currently-active value clears it (feedback: null). */
     recordFeedback(id: string, feedback: JobFeedbackType): Promise<{ feedback: JobFeedbackType | null }>;
   };
+  savedSearches: {
+    list(): Promise<SavedSearch[]>;
+    create(name: string, filters: JobSearchFilters): Promise<SavedSearch>;
+    update(id: string, patch: Partial<Pick<SavedSearch, 'name' | 'filters' | 'isActive'>>): Promise<SavedSearch>;
+    remove(id: string): Promise<void>;
+  };
   applications: {
     list(): Promise<Application[]>;
     get(id: string): Promise<Application | null>;
@@ -164,5 +185,7 @@ export interface ApiClient {
     listSources(): Promise<SourceHealth[]>;
     sourceRuns(sourceId: string): Promise<{ source: SourceHealth; runs: SourceCrawlRun[] } | null>;
     dedupStats(): Promise<DedupStats>;
+    /** Manually-invokable only — there is no standing scheduler. */
+    runAlerts(): Promise<AlertRunSummary>;
   };
 }

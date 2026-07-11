@@ -353,7 +353,7 @@ Scope:
 - [x] Richer CV tailoring with multiple variants
 - [x] Full application tracker
 - [x] Approval-first application queue with status machine
-- [ ] Email alerts and saved searches
+- [x] Email alerts and saved searches
 - [x] Admin panel with source health monitoring
 - [x] User feedback loop (thumbs up/down per job)
 - [x] Token usage tracking per user and feature

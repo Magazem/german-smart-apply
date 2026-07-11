@@ -14,8 +14,9 @@ import { DEDUP_STATS_FIXTURE, SOURCE_HEALTH_FIXTURES } from './admin-fixtures';
 import { JOB_FIXTURES } from './fixtures';
 import { computeMatchScore } from './scoring';
 import { ensureDemoSeed } from './seed';
-import { delay, loadDb, nowIso, saveDb, uid, weakHash, type MockDb, type MockUser } from './store';
+import { delay, loadDb, nowIso, saveDb, uid, weakHash, type MockDb, type MockSavedSearch, type MockUser } from './store';
 import type {
+  AlertRunSummary,
   ApiClient,
   AuthSession,
   AuthUser,
@@ -25,10 +26,22 @@ import type {
   JobSearchResult,
   LoginInput,
   RegisterInput,
+  SavedSearch,
   SourceCrawlRun,
   SourceHealth,
   TokenUsageSummary,
 } from './types';
+
+function toSavedSearch(s: MockSavedSearch): SavedSearch {
+  return {
+    id: s.id,
+    name: s.name,
+    filters: s.filters as JobSearchFilters,
+    isActive: s.isActive,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  };
+}
 
 const aiProvider = new MockAiProvider();
 
@@ -333,6 +346,63 @@ export class MockApiClient implements ApiClient {
     },
   };
 
+  savedSearches = {
+    list: async (): Promise<SavedSearch[]> => {
+      await delay(120);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      return (db.savedSearches ?? [])
+        .filter((s) => s.userId === userId)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .map(toSavedSearch);
+    },
+    create: async (name: string, filters: JobSearchFilters): Promise<SavedSearch> => {
+      await delay(150);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const now = nowIso();
+      const search: MockSavedSearch = {
+        id: uid('search'),
+        userId,
+        name,
+        filters: filters as Record<string, unknown>,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      db.savedSearches ??= [];
+      db.savedSearches.push(search);
+      saveDb(db);
+      return toSavedSearch(search);
+    },
+    update: async (
+      id: string,
+      patch: Partial<Pick<SavedSearch, 'name' | 'filters' | 'isActive'>>,
+    ): Promise<SavedSearch> => {
+      await delay(120);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const search = (db.savedSearches ?? []).find((s) => s.id === id && s.userId === userId);
+      if (!search) throw new Error('Saved search not found');
+      if (patch.name !== undefined) search.name = patch.name;
+      if (patch.filters !== undefined) search.filters = patch.filters as Record<string, unknown>;
+      if (patch.isActive !== undefined) search.isActive = patch.isActive;
+      search.updatedAt = nowIso();
+      saveDb(db);
+      return toSavedSearch(search);
+    },
+    remove: async (id: string): Promise<void> => {
+      await delay(100);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const before = db.savedSearches ?? [];
+      const existed = before.some((s) => s.id === id && s.userId === userId);
+      if (!existed) throw new Error('Saved search not found');
+      db.savedSearches = before.filter((s) => !(s.id === id && s.userId === userId));
+      saveDb(db);
+    },
+  };
+
   applications = {
     list: async (): Promise<Application[]> => {
       await delay(120);
@@ -531,6 +601,17 @@ export class MockApiClient implements ApiClient {
       await delay(100);
       this.requireAdmin(this.getDb());
       return DEDUP_STATS_FIXTURE;
+    },
+    // JOB_FIXTURES is a static demo dataset - nothing in it is ever "new"
+    // relative to a saved search's last check, so honestly reporting 0
+    // sent/matched (rather than inventing plausible-looking numbers) is the
+    // correct mock behavior here, unlike the fixture data above.
+    runAlerts: async (): Promise<AlertRunSummary> => {
+      await delay(300);
+      const db = this.getDb();
+      this.requireAdmin(db);
+      const searchesChecked = (db.savedSearches ?? []).filter((s) => s.isActive).length;
+      return { searchesChecked, emailsSent: 0, totalJobsMatched: 0 };
     },
   };
 

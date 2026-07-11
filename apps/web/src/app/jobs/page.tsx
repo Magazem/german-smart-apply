@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { CanonicalJob, JobMatchScore, JobSearchFilters, RemoteType, Seniority } from '@german-smart-apply/shared';
 import { getApiClient } from '@/lib/api-client';
@@ -50,6 +51,9 @@ export default function JobsPage() {
   const [matches, setMatches] = useState<Record<string, JobMatchScore>>({});
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [savingSearch, setSavingSearch] = useState(false);
+  const [searchName, setSearchName] = useState('');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   useEffect(() => {
     if (authLoading) return;
@@ -81,6 +85,19 @@ export default function JobsPage() {
       ...f,
       seniority: f.seniority.includes(s) ? f.seniority.filter((t) => t !== s) : [...f.seniority, s],
     }));
+  };
+
+  const handleSaveSearch = async () => {
+    if (!searchName.trim()) return;
+    setSaveStatus('saving');
+    try {
+      await getApiClient().savedSearches.create(searchName.trim(), toApiFilters(filters));
+      setSaveStatus('saved');
+      setSearchName('');
+      setSavingSearch(false);
+    } catch {
+      setSaveStatus('error');
+    }
   };
 
   return (
@@ -190,6 +207,64 @@ export default function JobsPage() {
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFilters(EMPTY_FILTERS)}>
             Clear filters
           </button>
+
+          <div className="stack gap-8" style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
+            {!savingSearch && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setSavingSearch(true);
+                  setSaveStatus('idle');
+                }}
+                data-testid="save-search-open"
+              >
+                Save this search
+              </button>
+            )}
+            {savingSearch && (
+              <div className="stack gap-8">
+                <input
+                  className="input"
+                  placeholder="Name this search"
+                  value={searchName}
+                  onChange={(e) => setSearchName(e.target.value)}
+                  data-testid="save-search-name"
+                  autoFocus
+                />
+                <div className="row gap-8">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    disabled={!searchName.trim() || saveStatus === 'saving'}
+                    onClick={handleSaveSearch}
+                    data-testid="save-search-confirm"
+                  >
+                    {saveStatus === 'saving' ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      setSavingSearch(false);
+                      setSearchName('');
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {saveStatus === 'saved' && (
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-success)' }} data-testid="save-search-success">
+                Saved — you’ll get email alerts on new matches. Manage it on the{' '}
+                <Link href="/saved-searches">saved searches page</Link>.
+              </p>
+            )}
+            {saveStatus === 'error' && (
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-danger)' }}>Could not save this search.</p>
+            )}
+          </div>
         </aside>
 
         <div className="stack gap-16">

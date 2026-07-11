@@ -8,6 +8,7 @@ import { initials } from '@/lib/format';
 const LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/jobs', label: 'Job search' },
+  { href: '/saved-searches', label: 'Saved searches' },
   { href: '/applications', label: 'Applications' },
   { href: '/cv', label: 'CV workspace' },
   { href: '/billing', label: 'Billing' },
