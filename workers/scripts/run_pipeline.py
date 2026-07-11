@@ -21,6 +21,16 @@ will fetch anything out of the box.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+# Running this file directly (`python scripts/run_pipeline.py`) only puts
+# scripts/ itself on sys.path, not workers/ - so `from common import db` etc.
+# below fail unless something else adds workers/ first. pytest does that via
+# pyproject.toml's pythonpath = ["."]; a container does it via the
+# Dockerfile's PYTHONPATH; a bare `python scripts/run_pipeline.py` invocation
+# (e.g. running this once against a real database from a local checkout) has
+# neither, so do it here instead of relying on the caller's environment.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import requests
 
