@@ -71,10 +71,19 @@ export class JobsService {
   }
 
   async getById(id: string, userId?: string): Promise<RankedJobResult> {
-    const record = await this.prisma.client.canonicalJob.findFirst({
+    let record = await this.prisma.client.canonicalJob.findFirst({
       where: { id, isVisible: true },
       include: { rawJob: { include: { source: true } } },
     });
+
+    if (!record) {
+      // Not found outright, or hidden because near-duplicate clustering
+      // (workers/deduplicator/near_duplicates.py) merged it into a
+      // still-visible winner. An existing Application/SavedJob can point
+      // at this now-hidden id, so resolve through the cluster rather than
+      // 404ing on what the user's tracker still shows as "their" job.
+      record = await this.resolveThroughNearDupCluster(id);
+    }
     if (!record) {
       throw new NotFoundException('Job not found');
     }
@@ -87,11 +96,11 @@ export class JobsService {
     let myFeedback: JobFeedbackType | null = null;
     if (userId) {
       await this.prisma.client.jobInteraction
-        .create({ data: { userId, canonicalJobId: id, interactionType: 'view' } })
+        .create({ data: { userId, canonicalJobId: record.id, interactionType: 'view' } })
         .catch(() => undefined);
 
       const feedbackRow = await this.prisma.client.jobInteraction.findFirst({
-        where: { userId, canonicalJobId: id, interactionType: { in: ['like', 'skip'] } },
+        where: { userId, canonicalJobId: record.id, interactionType: { in: ['like', 'skip'] } },
       });
       if (feedbackRow) {
         myFeedback = feedbackRow.interactionType as JobFeedbackType;
@@ -130,6 +139,33 @@ export class JobsService {
     }
 
     return { job, score, myFeedback };
+  }
+
+  /**
+   * `id` exists (or existed) but isVisible=false. That only happens via
+   * near-duplicate clustering hiding a loser in favor of a winner (exact
+   * dedup never creates a canonical_jobs row that later gets hidden) - walk
+   * rawJobId -> duplicate_cluster_members -> duplicate_clusters.canonicalJobId
+   * to find that winner, still isVisible=true.
+   */
+  private async resolveThroughNearDupCluster(id: string) {
+    const hidden = await this.prisma.client.canonicalJob.findUnique({ where: { id } });
+    if (!hidden) return null;
+
+    // Every near-dup candidate was already its OWN exact-dedup winner, so
+    // its rawJobId also has a pre-existing self-referencing membership row
+    // from run_dedup - the clusterKey prefix disambiguates that from the
+    // real near-dup membership pointing at the *other* job's winner.
+    const member = await this.prisma.client.duplicateClusterMember.findFirst({
+      where: { rawJobId: hidden.rawJobId, duplicateCluster: { clusterKey: { startsWith: 'near-dup:' } } },
+      include: { duplicateCluster: true },
+    });
+    if (!member) return null;
+
+    return this.prisma.client.canonicalJob.findFirst({
+      where: { id: member.duplicateCluster.canonicalJobId, isVisible: true },
+      include: { rawJob: { include: { source: true } } },
+    });
   }
 
   /**

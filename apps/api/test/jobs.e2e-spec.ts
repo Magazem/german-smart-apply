@@ -235,4 +235,65 @@ describe('Jobs search & detail (e2e)', () => {
         .expect(404);
     });
   });
+
+  describe('resolving a job hidden by near-duplicate clustering', () => {
+    let winnerSourceId: string;
+    let loserSourceId: string;
+
+    afterAll(async () => {
+      await deleteJobFixture(prisma, winnerSourceId);
+      await deleteJobFixture(prisma, loserSourceId);
+    });
+
+    it('redirects an application/saved-job pointing at a now-hidden loser to the still-visible winner instead of 404ing', async () => {
+      const winner = await createJobFixture(prisma, { jobTitle: 'Platform Engineer' });
+      const loser = await createJobFixture(prisma, { jobTitle: 'Platform Engineer II' });
+      winnerSourceId = winner.source.id;
+      loserSourceId = loser.source.id;
+
+      // Simulate exactly what workers/deduplicator/near_duplicates.py does
+      // on a real merge: a "near-dup:"-prefixed cluster, membership rows for
+      // both sides, and the loser flipped to isVisible=false.
+      const cluster = await prisma.client.duplicateCluster.create({
+        data: {
+          canonicalJobId: winner.canonicalJob.id,
+          clusterKey: `near-dup:${winner.canonicalJob.id}:${loser.canonicalJob.id}`,
+        },
+      });
+      await prisma.client.duplicateClusterMember.create({
+        data: {
+          duplicateClusterId: cluster.id,
+          rawJobId: winner.rawJob.id,
+          similarityScore: 1.0,
+          isCanonicalPick: true,
+        },
+      });
+      await prisma.client.duplicateClusterMember.create({
+        data: {
+          duplicateClusterId: cluster.id,
+          rawJobId: loser.rawJob.id,
+          similarityScore: 0.87,
+          isCanonicalPick: false,
+        },
+      });
+      await prisma.client.canonicalJob.update({
+        where: { id: loser.canonicalJob.id },
+        data: { isVisible: false },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/jobs/${loser.canonicalJob.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.job.jobId).toBe(winner.canonicalJob.id);
+      expect(res.body.job.jobTitleNormalized).toBe('platform engineer');
+    });
+
+    it('still 404s for a job id that never existed at all', async () => {
+      await request(app.getHttpServer())
+        .get('/jobs/00000000-0000-0000-0000-000000000001')
+        .expect(404);
+    });
+  });
 });

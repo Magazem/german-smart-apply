@@ -83,7 +83,14 @@ export class RankingService {
       : 0.5;
 
     const sourceTrust = job.sourceTrustScore;
-    const duplicateConfidence = 1; // populated by caller when known; default neutral
+    // Hardcoded, not read from job: canonical_jobs.duplicateConfidence is
+    // genuinely populated now (near_duplicates.py sets it below 1.0 on a
+    // near-dup merge survivor), but canonical-job.mapper.ts doesn't surface
+    // it onto the shared CanonicalJob type this function receives, so there
+    // is nothing to read yet. Written but unconsumed - wiring it into the
+    // ranking formula (as plan.md's scoring inputs list intends) is a
+    // separate follow-up, not yet done.
+    const duplicateConfidence = 1;
     const riskPenalty = job.scamRiskScore;
 
     let totalScore =
