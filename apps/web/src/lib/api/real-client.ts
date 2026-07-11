@@ -17,6 +17,7 @@ import type {
   JobSearchResult,
   LoginInput,
   RegisterInput,
+  TokenUsageSummary,
 } from './types';
 
 const TOKEN_STORAGE_KEY = 'gsa_auth_token';
@@ -239,5 +240,9 @@ export class RealApiClient implements ApiClient {
         return [];
       }
     },
+  };
+
+  usage = {
+    summary: async (): Promise<TokenUsageSummary> => this.request<TokenUsageSummary>('/usage'),
   };
 }

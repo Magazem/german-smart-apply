@@ -101,9 +101,10 @@ describe('AnthropicAiProvider (live integration)', () => {
       ].join('\n');
 
       const result = await provider.parseCv(cvText, 'en');
-      expect(result.fullName).toBe('Jane Doe');
-      expect(result.email).toBe('jane@example.com');
-      expect(result.skills.length).toBeGreaterThan(0);
+      expect(result.parsed.fullName).toBe('Jane Doe');
+      expect(result.parsed.email).toBe('jane@example.com');
+      expect(result.parsed.skills.length).toBeGreaterThan(0);
+      expect(result.tokensUsed).toBeGreaterThan(0);
     },
     30_000,
   );

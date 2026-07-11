@@ -191,7 +191,9 @@ describe('AnthropicAiProvider', () => {
       expect(params.tools?.[0]?.name).toBe('record_parsed_cv');
       expect(params.system).toContain('en');
 
-      expect(result).toEqual(parsedInput);
+      expect(result.parsed).toEqual(parsedInput);
+      expect(result.modelUsed).toBe('claude-haiku-4-5');
+      expect(result.tokensUsed).toBe(150);
     });
 
     it('throws a malformed_response error when the model does not call the tool', async () => {

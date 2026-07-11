@@ -356,7 +356,7 @@ Scope:
 - [ ] Email alerts and saved searches
 - [ ] Admin panel with source health monitoring
 - [x] User feedback loop (thumbs up/down per job)
-- [ ] Token usage tracking per user and feature
+- [x] Token usage tracking per user and feature
 - [ ] Full test coverage for all workers
 
 ### Phase 3 — Growth

@@ -10,6 +10,7 @@ import { AiProviderError, createAiProvider } from '@german-smart-apply/ai';
 import type { Prisma } from '@german-smart-apply/db';
 import { canTransition, type ApplicationStatus } from '@german-smart-apply/shared';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TokenUsageService } from '../token-usage/token-usage.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
 import { toSharedCanonicalJob } from '../jobs/canonical-job.mapper.js';
 import { toSharedApplication, toSharedApplicationDraft } from './application.mapper.js';
@@ -21,7 +22,10 @@ export class ApplicationsService {
   private readonly logger = new Logger(ApplicationsService.name);
   private readonly aiProvider = createAiProvider();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tokenUsage: TokenUsageService,
+  ) {}
 
   async list(userId: string) {
     const rows = await this.prisma.client.application.findMany({
@@ -154,6 +158,11 @@ export class ApplicationsService {
       }
       throw err;
     }
+
+    await Promise.all([
+      this.tokenUsage.record(userId, 'cvVariant', cvVariant.modelUsed, cvVariant.tokensUsed),
+      this.tokenUsage.record(userId, 'coverLetter', coverLetter.modelUsed, coverLetter.tokensUsed),
+    ]);
 
     const draft = await this.prisma.client.$transaction(
       async (tx: Prisma.TransactionClient) => {

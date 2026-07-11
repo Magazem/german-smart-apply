@@ -14,6 +14,12 @@ export interface CvSuggestionsResult {
   tokensUsed: number;
 }
 
+export interface ParseCvResult {
+  parsed: ParsedCvResult;
+  modelUsed: string;
+  tokensUsed: number;
+}
+
 /**
  * The single seam between the product (API, workers) and any model backend.
  * Swap the provider returned by createAiProvider() without touching callers -
@@ -21,7 +27,7 @@ export interface CvSuggestionsResult {
  * SDK or prompt.
  */
 export interface AiProvider {
-  parseCv(rawText: string, language: string): Promise<ParsedCvResult>;
+  parseCv(rawText: string, language: string): Promise<ParseCvResult>;
 
   generateCvSuggestions(
     profile: CandidateProfile,

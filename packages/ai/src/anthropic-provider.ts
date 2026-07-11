@@ -7,7 +7,7 @@ import type {
   ParsedCvExperience,
   ParsedCvResult,
 } from '@german-smart-apply/shared';
-import type { AiGenerationResult, AiProvider, CvSuggestionsResult } from './types.js';
+import type { AiGenerationResult, AiProvider, CvSuggestionsResult, ParseCvResult } from './types.js';
 import { MODEL_ROUTING, TASK_MODEL_TIER } from './types.js';
 
 /**
@@ -322,7 +322,7 @@ export class AnthropicAiProvider implements AiProvider {
     return message;
   }
 
-  async parseCv(rawText: string, language: string): Promise<ParsedCvResult> {
+  async parseCv(rawText: string, language: string): Promise<ParseCvResult> {
     const context = 'parseCv';
     const model = MODEL_ROUTING[TASK_MODEL_TIER.parseCv];
     const { dateFormat } = this.marketPack.cvFormattingNorms;
@@ -347,7 +347,8 @@ export class AnthropicAiProvider implements AiProvider {
     );
 
     const toolInput = extractToolInput(message, PARSED_CV_TOOL_NAME, context);
-    return parseParsedCvInput(toolInput, context);
+    const parsed = parseParsedCvInput(toolInput, context);
+    return { parsed, modelUsed: message.model, tokensUsed: totalTokens(message.usage) };
   }
 
   async generateCvSuggestions(

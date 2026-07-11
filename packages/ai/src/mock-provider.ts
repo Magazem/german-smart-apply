@@ -1,8 +1,9 @@
-import type { CandidateProfile, CanonicalJob, ParsedCvResult } from '@german-smart-apply/shared';
+import type { CandidateProfile, CanonicalJob } from '@german-smart-apply/shared';
 import type {
   AiGenerationResult,
   AiProvider,
   CvSuggestionsResult,
+  ParseCvResult,
 } from './types.js';
 
 /**
@@ -11,7 +12,7 @@ import type {
  * *shape* rather than model quality. No network calls.
  */
 export class MockAiProvider implements AiProvider {
-  async parseCv(rawText: string, language: string): Promise<ParsedCvResult> {
+  async parseCv(rawText: string, language: string): Promise<ParseCvResult> {
     const lines = rawText
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -27,18 +28,22 @@ export class MockAiProvider implements AiProvider {
       : [];
 
     return {
-      fullName: lines[0] ?? null,
-      email: emailMatch ? emailMatch[0] : null,
-      phone: null,
-      summary: lines.slice(0, 3).join(' '),
-      skills,
-      experience: [],
-      education: [],
-      languages: [language],
-      suggestions: [
-        'Quantify achievements with concrete metrics (%, revenue, users).',
-        'Move the most relevant skills to the top third of the document.',
-      ],
+      parsed: {
+        fullName: lines[0] ?? null,
+        email: emailMatch ? emailMatch[0] : null,
+        phone: null,
+        summary: lines.slice(0, 3).join(' '),
+        skills,
+        experience: [],
+        education: [],
+        languages: [language],
+        suggestions: [
+          'Quantify achievements with concrete metrics (%, revenue, users).',
+          'Move the most relevant skills to the top third of the document.',
+        ],
+      },
+      modelUsed: 'mock',
+      tokensUsed: 0,
     };
   }
 

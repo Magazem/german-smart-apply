@@ -3,6 +3,7 @@ import { createAiProvider } from '@german-smart-apply/ai';
 import type { Prisma } from '@german-smart-apply/db';
 import type { CanonicalJob, JobFeedbackType, JobMatchScore } from '@german-smart-apply/shared';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TokenUsageService } from '../token-usage/token-usage.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
 import { toSharedCanonicalJob } from './canonical-job.mapper.js';
 import type { SearchJobsDto } from './dto/search-jobs.dto.js';
@@ -29,6 +30,7 @@ export class JobsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ranking: RankingService,
+    private readonly tokenUsage: TokenUsageService,
   ) {}
 
   async search(filters: SearchJobsDto, userId?: string) {
@@ -133,6 +135,12 @@ export class JobsService {
           profile.preferredLanguage,
         );
         score.explanation = explanationResult.text;
+        await this.tokenUsage.record(
+          profile.userId,
+          'matchExplanation',
+          explanationResult.modelUsed,
+          explanationResult.tokensUsed,
+        );
       } catch (err) {
         this.logger.warn(`Match explanation generation failed for job ${id}: ${String(err)}`);
       }

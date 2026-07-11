@@ -22,6 +22,7 @@ import type {
   JobSearchResult,
   LoginInput,
   RegisterInput,
+  TokenUsageSummary,
 } from './types';
 
 const aiProvider = new MockAiProvider();
@@ -180,10 +181,10 @@ export class MockApiClient implements ApiClient {
       }
       await delay(350);
       const profile = db.profiles[userId];
-      const result = await aiProvider.parseCv(text, profile?.preferredLanguage || 'en');
-      db.parsedCv[userId] = result;
+      const { parsed } = await aiProvider.parseCv(text, profile?.preferredLanguage || 'en');
+      db.parsedCv[userId] = parsed;
       saveDb(db);
-      return result;
+      return parsed;
     },
 
     getLastParsed: async () => {
@@ -442,6 +443,18 @@ export class MockApiClient implements ApiClient {
       return db.applicationEvents
         .filter((e) => e.applicationId === applicationId)
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    },
+  };
+
+  usage = {
+    // The mock world's AI provider (MockAiProvider) never reports real
+    // tokens, matching what the real backend also reports for a user whose
+    // requests all hit the mock provider - genuinely zero usage, not a
+    // shortcut.
+    summary: async (): Promise<TokenUsageSummary> => {
+      await delay(80);
+      this.requireUserId(this.getDb());
+      return { totalTokens: 0, byFeature: [] };
     },
   };
 

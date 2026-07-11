@@ -54,6 +54,11 @@ export interface JobDetailResult {
 
 export type CvUploadInput = { kind: 'file'; file: File } | { kind: 'text'; text: string };
 
+export interface TokenUsageSummary {
+  totalTokens: number;
+  byFeature: Array<{ feature: string; tokensUsed: number; callCount: number }>;
+}
+
 /**
  * The single seam between every page/component and "the backend". Both the
  * mock (in-memory + localStorage, used today) and real (fetch against
@@ -106,5 +111,8 @@ export interface ApiClient {
      * apps/api defines the real one.
      */
     history(applicationId: string): Promise<ApplicationEvent[]>;
+  };
+  usage: {
+    summary(): Promise<TokenUsageSummary>;
   };
 }

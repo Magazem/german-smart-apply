@@ -61,9 +61,11 @@ describe('MockAiProvider', () => {
       'Jane Doe\njane@example.com\nSkills: TypeScript, PostgreSQL',
       'en',
     );
-    expect(result.fullName).toBe('Jane Doe');
-    expect(result.email).toBe('jane@example.com');
-    expect(result.skills).toEqual(['TypeScript', 'PostgreSQL']);
+    expect(result.parsed.fullName).toBe('Jane Doe');
+    expect(result.parsed.email).toBe('jane@example.com');
+    expect(result.parsed.skills).toEqual(['TypeScript', 'PostgreSQL']);
+    expect(result.modelUsed).toBe('mock');
+    expect(result.tokensUsed).toBe(0);
   });
 
   it('generates a cover letter referencing the job and company', async () => {

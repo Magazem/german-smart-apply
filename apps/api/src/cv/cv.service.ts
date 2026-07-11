@@ -8,6 +8,7 @@ import type { ParsedCvResult } from '@german-smart-apply/shared';
 import pdfParse from 'pdf-parse';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TokenUsageService } from '../token-usage/token-usage.service.js';
 
 // TODO: Phase-later — move CV storage to S3-compatible object storage per
 // plan.md's stack table. Local disk is a fine stand-in for the sandbox/dev.
@@ -30,7 +31,10 @@ export class CvService {
   private readonly logger = new Logger(CvService.name);
   private readonly aiProvider = createAiProvider();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tokenUsage: TokenUsageService,
+  ) {}
 
   async uploadAndParse(userId: string, file: UploadedFileLike, language = 'en') {
     if (!file) {
@@ -59,7 +63,8 @@ export class CvService {
 
     try {
       const text = await this.extractText(file.buffer, file.mimetype);
-      const parsed = await this.aiProvider.parseCv(text, language);
+      const { parsed, modelUsed, tokensUsed } = await this.aiProvider.parseCv(text, language);
+      await this.tokenUsage.record(userId, 'parseCv', modelUsed, tokensUsed);
 
       const updatedDocument = await this.prisma.client.cvDocument.update({
         where: { id: cvDocument.id },
