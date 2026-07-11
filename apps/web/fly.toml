@@ -4,13 +4,16 @@ primary_region = "fra"
 
 [build]
   dockerfile = "apps/web/Dockerfile"
+  # NEXT_PUBLIC_* are inlined into the client bundle by `next build` itself,
+  # so they must reach the image as build args, not `[env]`/`fly secrets`
+  # (both runtime-only - the image is already built by the time those apply).
+  # Fly reads [build.args] for both `fly deploy` and `fly launch`.
+  [build.args]
+    NEXT_PUBLIC_API_URL = "https://german-smart-apply-api.fly.dev"
+    NEXT_PUBLIC_USE_MOCK_API = "false"
 
 [env]
   PORT = "3100"
-  NEXT_PUBLIC_USE_MOCK_API = "false"
-  # NEXT_PUBLIC_API_URL should point at the deployed api app, e.g.
-  # https://german-smart-apply-api.fly.dev - set per environment:
-  #   fly secrets set NEXT_PUBLIC_API_URL=https://german-smart-apply-api.fly.dev --app german-smart-apply-web
 
 [http_service]
   internal_port = 3100

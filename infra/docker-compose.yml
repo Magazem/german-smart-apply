@@ -77,6 +77,12 @@ services:
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
+      # NEXT_PUBLIC_* are inlined into the client bundle at `next build` time -
+      # they must be passed here (build args), not just below in `environment`
+      # (runtime-only, too late for Next.js's client bundle - see Dockerfile).
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3001
+        NEXT_PUBLIC_USE_MOCK_API: "false"
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:3001
       NEXT_PUBLIC_USE_MOCK_API: "false"

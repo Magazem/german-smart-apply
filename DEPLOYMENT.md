@@ -41,10 +41,17 @@ a release step): `DATABASE_URL=... pnpm --filter @german-smart-apply/db migrate:
 
 ```sh
 fly launch --config apps/web/fly.toml --dockerfile apps/web/Dockerfile --no-deploy   # first time only
-fly secrets set --app german-smart-apply-web \
-  NEXT_PUBLIC_API_URL="https://german-smart-apply-api.fly.dev"
 fly deploy --config apps/web/fly.toml --dockerfile apps/web/Dockerfile .
 ```
+
+`NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_USE_MOCK_API` come from `apps/web/fly.toml`'s
+`[build.args]`, not `fly secrets`/`[env]` — Next.js inlines `NEXT_PUBLIC_*` vars into
+the client bundle when `next build` runs, which happens during `fly deploy`'s image
+build, before any runtime secret or `[env]` value exists. Setting them only at
+runtime (as an earlier version of this doc suggested) silently ships a frontend
+that's still wired to the mock data layer no matter what you set at runtime -
+edit the `[build.args]` values in `fly.toml` (or pass `--build-arg` to `fly deploy`)
+if the API's URL differs from the default.
 
 ## Workers (crawler/normalizer/deduplicator)
 

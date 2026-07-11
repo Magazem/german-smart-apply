@@ -14,6 +14,15 @@ COPY packages/ai/package.json packages/ai/package.json
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
+# NEXT_PUBLIC_* vars are inlined into the client bundle by `next build` itself
+# - setting them in docker-compose's/fly.toml's runtime `environment`/`[env]`
+# has no effect, since the image is already built by then. They must be
+# ARGs available at build time (docker-compose `build.args` / `fly deploy
+# --build-arg`), not just runtime env vars.
+ARG NEXT_PUBLIC_API_URL=http://localhost:3001
+ARG NEXT_PUBLIC_USE_MOCK_API=false
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_USE_MOCK_API=$NEXT_PUBLIC_USE_MOCK_API
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY packages/market-de packages/market-de
