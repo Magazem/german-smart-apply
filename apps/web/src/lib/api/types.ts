@@ -5,6 +5,7 @@ import type {
   ApplicationStatus,
   CandidateProfile,
   CanonicalJob,
+  JobFeedbackType,
   JobMatchScore,
   JobSearchFilters,
   ParsedCvResult,
@@ -48,6 +49,7 @@ export interface JobSearchResult {
 export interface JobDetailResult {
   job: CanonicalJob;
   match: JobMatchScore | null;
+  myFeedback?: JobFeedbackType | null;
 }
 
 export type CvUploadInput = { kind: 'file'; file: File } | { kind: 'text'; text: string };
@@ -82,6 +84,8 @@ export interface ApiClient {
   jobs: {
     search(filters: JobSearchFilters): Promise<JobSearchResult>;
     get(id: string): Promise<JobDetailResult | null>;
+    /** Toggles like/skip: re-sending the currently-active value clears it (feedback: null). */
+    recordFeedback(id: string, feedback: JobFeedbackType): Promise<{ feedback: JobFeedbackType | null }>;
   };
   applications: {
     list(): Promise<Application[]>;

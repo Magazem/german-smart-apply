@@ -4,6 +4,7 @@ import type {
   ApplicationEvent,
   ApplicationStatus,
   CandidateProfile,
+  JobFeedbackType,
   JobSearchFilters,
   ParsedCvResult,
 } from '@german-smart-apply/shared';
@@ -182,14 +183,24 @@ export class RealApiClient implements ApiClient {
     },
     get: async (id: string): Promise<JobDetailResult | null> => {
       try {
-        const raw = await this.request<{ job: JobDetailResult['job']; score: JobDetailResult['match'] }>(
-          `/jobs/${id}`,
-        );
-        return { job: raw.job, match: raw.score };
+        const raw = await this.request<{
+          job: JobDetailResult['job'];
+          score: JobDetailResult['match'];
+          myFeedback?: JobFeedbackType | null;
+        }>(`/jobs/${id}`);
+        return { job: raw.job, match: raw.score, myFeedback: raw.myFeedback ?? null };
       } catch {
         return null;
       }
     },
+    recordFeedback: async (
+      id: string,
+      feedback: JobFeedbackType,
+    ): Promise<{ feedback: JobFeedbackType | null }> =>
+      this.request<{ feedback: JobFeedbackType | null }>(`/jobs/${id}/feedback`, {
+        method: 'POST',
+        body: JSON.stringify({ feedback }),
+      }),
   };
 
   applications = {

@@ -1,5 +1,13 @@
 export type RemoteType = 'onsite' | 'hybrid' | 'remote';
 
+/**
+ * A user's explicit thumbs up/down on a job, distinct from the passive
+ * 'view'/'share' JobInteraction rows recorded automatically. Feeds
+ * RankingService's interactionBias — see apps/api/src/jobs/jobs.service.ts.
+ */
+export const JOB_FEEDBACK_TYPES = ['like', 'skip'] as const;
+export type JobFeedbackType = (typeof JOB_FEEDBACK_TYPES)[number];
+
 export type EmploymentType =
   | 'full_time'
   | 'part_time'

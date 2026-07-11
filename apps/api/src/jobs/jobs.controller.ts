@@ -1,9 +1,11 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/jwt-payload.js';
 import { JobsService } from './jobs.service.js';
 import { SearchJobsDto } from './dto/search-jobs.dto.js';
+import { RecordFeedbackDto } from './dto/record-feedback.dto.js';
 
 @Controller('jobs')
 @UseGuards(OptionalJwtAuthGuard)
@@ -18,5 +20,18 @@ export class JobsController {
   @Get(':id')
   getById(@Param('id') id: string, @CurrentUser() user?: AuthenticatedUser) {
     return this.jobsService.getById(id, user?.id);
+  }
+
+  // Stacks on top of the controller-level OptionalJwtAuthGuard: that one
+  // never rejects, so JwtAuthGuard here is what actually enforces auth —
+  // recording feedback requires a real user, unlike browsing.
+  @Post(':id/feedback')
+  @UseGuards(JwtAuthGuard)
+  recordFeedback(
+    @Param('id') id: string,
+    @Body() dto: RecordFeedbackDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.jobsService.recordFeedback(user.id, id, dto.feedback);
   }
 }

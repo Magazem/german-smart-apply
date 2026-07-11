@@ -6,6 +6,7 @@ import {
   type ApplicationEvent,
   type ApplicationStatus,
   type CandidateProfile,
+  type JobFeedbackType,
   type JobSearchFilters,
 } from '@german-smart-apply/shared';
 import { JOB_FIXTURES } from './fixtures';
@@ -281,7 +282,29 @@ export class MockApiClient implements ApiClient {
         const explanation = await aiProvider.generateMatchExplanation(profile, job, profile.preferredLanguage);
         match = { ...match, explanation: explanation.text };
       }
-      return { job, match };
+      const myFeedback = userId ? ((db.jobFeedback ?? {})[userId]?.[id] ?? null) : null;
+      return { job, match, myFeedback };
+    },
+    recordFeedback: async (
+      id: string,
+      feedback: JobFeedbackType,
+    ): Promise<{ feedback: JobFeedbackType | null }> => {
+      await delay(80);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      if (!JOB_FIXTURES.some((j) => j.jobId === id)) {
+        throw new Error('Job not found');
+      }
+      db.jobFeedback ??= {};
+      const forUser = (db.jobFeedback[userId] ??= {});
+      const result: JobFeedbackType | null = forUser[id] === feedback ? null : feedback;
+      if (result === null) {
+        delete forUser[id];
+      } else {
+        forUser[id] = result;
+      }
+      saveDb(db);
+      return { feedback: result };
     },
   };
 

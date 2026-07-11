@@ -3,7 +3,13 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import type { Application, ApplicationDraft, CanonicalJob, JobMatchScore } from '@german-smart-apply/shared';
+import type {
+  Application,
+  ApplicationDraft,
+  CanonicalJob,
+  JobFeedbackType,
+  JobMatchScore,
+} from '@german-smart-apply/shared';
 import { getApiClient, riskLevel } from '@/lib/api-client';
 import { useRequireAuth } from '@/lib/use-require-auth';
 import { RiskBadge, TrustBadge } from '@/components/risk-badge';
@@ -31,6 +37,8 @@ export default function JobDetailPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [drafting, setDrafting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [myFeedback, setMyFeedback] = useState<JobFeedbackType | null>(null);
+  const [feedbackPending, setFeedbackPending] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -47,6 +55,7 @@ export default function JobDetailPage() {
         }
         setJob(detail.job);
         setMatch(detail.match);
+        setMyFeedback(detail.myFeedback ?? null);
         // create() isn't idempotent against the real API (409s if you already
         // applied to this job, unlike the mock client's find-or-create) - fall
         // back to finding the existing application instead of erroring the
@@ -114,6 +123,20 @@ export default function JobDetailPage() {
       setActionError(err instanceof Error ? err.message : 'Could not generate a tailored draft.');
     } finally {
       setDrafting(false);
+    }
+  };
+
+  const handleFeedback = async (feedback: JobFeedbackType) => {
+    if (!job || feedbackPending) return;
+    setFeedbackPending(true);
+    setActionError(null);
+    try {
+      const res = await getApiClient().jobs.recordFeedback(job.jobId, feedback);
+      setMyFeedback(res.feedback);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not record your feedback.');
+    } finally {
+      setFeedbackPending(false);
     }
   };
 
@@ -202,6 +225,34 @@ export default function JobDetailPage() {
         <div className="row row-wrap gap-8">
           <RiskBadge scamRiskScore={job.scamRiskScore} />
           <TrustBadge sourceTrustScore={job.sourceTrustScore} />
+        </div>
+
+        <div className="row gap-8" style={{ alignItems: 'center' }}>
+          <span className="muted" style={{ fontSize: '0.85rem' }}>
+            Not seeing enough roles like this?
+          </span>
+          <button
+            type="button"
+            className={myFeedback === 'like' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+            onClick={() => handleFeedback('like')}
+            disabled={feedbackPending}
+            aria-pressed={myFeedback === 'like'}
+            data-testid="feedback-like-button"
+            title="More like this"
+          >
+            👍
+          </button>
+          <button
+            type="button"
+            className={myFeedback === 'skip' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+            onClick={() => handleFeedback('skip')}
+            disabled={feedbackPending}
+            aria-pressed={myFeedback === 'skip'}
+            data-testid="feedback-skip-button"
+            title="Fewer like this"
+          >
+            👎
+          </button>
         </div>
 
         {application && (

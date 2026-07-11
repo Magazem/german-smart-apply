@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { createAiProvider } from '@german-smart-apply/ai';
 import type { Prisma } from '@german-smart-apply/db';
-import type { CanonicalJob, JobMatchScore } from '@german-smart-apply/shared';
+import type { CanonicalJob, JobFeedbackType, JobMatchScore } from '@german-smart-apply/shared';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
 import { toSharedCanonicalJob } from './canonical-job.mapper.js';
@@ -11,6 +11,7 @@ import { RankingService, type RankingProfileInput } from './ranking.service.js';
 export interface RankedJobResult {
   job: CanonicalJob;
   score: JobMatchScore;
+  myFeedback?: JobFeedbackType | null;
 }
 
 // Hard-filtered candidate pool size before in-app scoring/sorting. Fine at
@@ -83,10 +84,18 @@ export class JobsService {
       ? await this.prisma.client.candidateProfile.findUnique({ where: { userId } })
       : null;
 
+    let myFeedback: JobFeedbackType | null = null;
     if (userId) {
       await this.prisma.client.jobInteraction
         .create({ data: { userId, canonicalJobId: id, interactionType: 'view' } })
         .catch(() => undefined);
+
+      const feedbackRow = await this.prisma.client.jobInteraction.findFirst({
+        where: { userId, canonicalJobId: id, interactionType: { in: ['like', 'skip'] } },
+      });
+      if (feedbackRow) {
+        myFeedback = feedbackRow.interactionType as JobFeedbackType;
+      }
     }
 
     const rankingProfile: RankingProfileInput | null = profile
@@ -120,7 +129,44 @@ export class JobsService {
       }
     }
 
-    return { job, score };
+    return { job, score, myFeedback };
+  }
+
+  /**
+   * Thumbs up/down are mutually exclusive per (user, job) — unlike 'view',
+   * which is an append-only log, at most one like/skip row may exist at a
+   * time so RankingService's interactionBias lookup is unambiguous.
+   * Re-sending the currently-active feedback toggles it off (undo).
+   */
+  async recordFeedback(
+    userId: string,
+    canonicalJobId: string,
+    feedback: JobFeedbackType,
+  ): Promise<{ feedback: JobFeedbackType | null }> {
+    const job = await this.prisma.client.canonicalJob.findFirst({
+      where: { id: canonicalJobId, isVisible: true },
+    });
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    return this.prisma.client.$transaction(async (tx: Prisma.TransactionClient) => {
+      const existing = await tx.jobInteraction.findFirst({
+        where: { userId, canonicalJobId, interactionType: { in: ['like', 'skip'] } },
+      });
+
+      if (existing) {
+        await tx.jobInteraction.delete({ where: { id: existing.id } });
+        if (existing.interactionType === feedback) {
+          return { feedback: null };
+        }
+      }
+
+      await tx.jobInteraction.create({
+        data: { userId, canonicalJobId, interactionType: feedback },
+      });
+      return { feedback };
+    });
   }
 
   private buildWhere(filters: SearchJobsDto): Prisma.CanonicalJobWhereInput {

@@ -3,6 +3,7 @@ import type {
   ApplicationDraft,
   ApplicationEvent,
   CandidateProfile,
+  JobFeedbackType,
   ParsedCvResult,
 } from '@german-smart-apply/shared';
 
@@ -24,6 +25,8 @@ export interface MockDb {
   applications: Application[];
   applicationDrafts: Record<string, ApplicationDraft>;
   applicationEvents: ApplicationEvent[];
+  /** userId -> jobId -> feedback. Absent/undefined means no feedback recorded. */
+  jobFeedback: Record<string, Record<string, JobFeedbackType>>;
   sessionUserId: string | null;
 }
 
@@ -57,6 +60,7 @@ function emptyDb(): MockDb {
     applications: [],
     applicationDrafts: {},
     applicationEvents: [],
+    jobFeedback: {},
     sessionUserId: null,
   };
 }
