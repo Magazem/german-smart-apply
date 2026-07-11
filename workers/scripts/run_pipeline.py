@@ -2,7 +2,8 @@
 """Manual/production entrypoint wiring the three workers together:
 
     seed sources + company_aliases -> crawl every active source ->
-    normalize new snapshots -> exact-dedup into canonical_jobs
+    normalize new snapshots -> exact-dedup into canonical_jobs ->
+    near-duplicate clustering across the resulting canonical_jobs
 
 This script is NOT exercised by the pytest suite (which uses fixture payloads
 and a FakeClient so it never touches the network or depends on this script).
@@ -38,6 +39,7 @@ from common import db
 from crawler.runner import run_crawl
 from crawler.seed import seed_sources
 from deduplicator.dedup import run_dedup
+from deduplicator.near_duplicates import run_near_duplicate_clustering
 from deduplicator.seed import seed_company_aliases
 from normalizer.pipeline import run_normalizer
 
@@ -75,6 +77,10 @@ def main() -> int:
         dedup_result = run_dedup(conn)
         conn.commit()
         print(f"[dedup] {dedup_result}")
+
+        near_dup_result = run_near_duplicate_clustering(conn)
+        conn.commit()
+        print(f"[near-dedup] {near_dup_result}")
         return 0
     except Exception:  # noqa: BLE001
         conn.rollback()

@@ -348,14 +348,14 @@ Scope:
 ### Phase 2 — Quality and Depth
 
 Scope:
-- [ ] Near-duplicate clustering (embedding similarity)
-- [ ] Company alias dictionary (Germany)
+- [x] Near-duplicate clustering (embedding similarity)
+- [x] Company alias dictionary (Germany)
 - [ ] Richer CV tailoring with multiple variants
-- [ ] Full application tracker
-- [ ] Approval-first application queue with status machine
+- [x] Full application tracker
+- [x] Approval-first application queue with status machine
 - [ ] Email alerts and saved searches
 - [ ] Admin panel with source health monitoring
-- [ ] User feedback loop (thumbs up/down per job)
+- [x] User feedback loop (thumbs up/down per job)
 - [ ] Token usage tracking per user and feature
 - [ ] Full test coverage for all workers
 
