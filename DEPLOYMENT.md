@@ -7,6 +7,12 @@ doesn't have, and pushing to a shared production target is not something to
 do without your explicit go-ahead. Everything below is prepared and ready to
 run once you have an account.
 
+Two paths to deploy: manually via `flyctl` (below), or continuously via the
+`.github/workflows/fly-deploy.yml` GitHub Actions workflow that deploys both
+apps on every push to `main` — see "Continuous deployment" further down.
+Either way, the one-time app-creation step (`fly launch --no-deploy`) and
+setting real secrets is a manual step you do once per app.
+
 ## Prerequisites
 
 - A Postgres instance reachable from the deployed apps (`fly postgres create`,
@@ -52,6 +58,29 @@ runtime (as an earlier version of this doc suggested) silently ships a frontend
 that's still wired to the mock data layer no matter what you set at runtime -
 edit the `[build.args]` values in `fly.toml` (or pass `--build-arg` to `fly deploy`)
 if the API's URL differs from the default.
+
+## Continuous deployment (GitHub Actions)
+
+`.github/workflows/fly-deploy.yml` deploys both apps on every push to `main`
+(and via manual "Run workflow" dispatch). One-time setup before the first
+push after enabling this:
+
+1. Create both Fly apps once, same as the manual path above:
+   `fly launch --config apps/api/fly.toml --dockerfile apps/api/Dockerfile --no-deploy`
+   and the equivalent for `apps/web`. This just registers the app names on
+   Fly — it doesn't deploy anything yet.
+2. Set the runtime secrets on each app with `fly secrets set` exactly as in
+   "Deploy the API" above (`DATABASE_URL`, `JWT_SECRET`, the three `STRIPE_*`
+   vars, optionally `ANTHROPIC_API_KEY`). GitHub Actions never sees these -
+   they live on Fly, set once via the CLI.
+3. Generate a deploy token: `fly tokens create deploy -x 999999h --app german-smart-apply-api`
+   (repeat for `-web`, or use one token scoped to your org if you prefer).
+4. Add it as a GitHub Actions secret named `FLY_API_TOKEN`: repo Settings ->
+   Secrets and variables -> Actions -> New repository secret.
+
+After that, every push to `main` runs `flyctl deploy` for both apps using the
+`fly.toml`/Dockerfile config already in the repo - including the `NEXT_PUBLIC_*`
+`[build.args]` fix, so the web app builds against the real API by default.
 
 ## Workers (crawler/normalizer/deduplicator)
 
