@@ -8,6 +8,8 @@ the real pipeline does.
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import psycopg2.extras
 
 from deduplicator import dedup, near_duplicates
@@ -43,6 +45,33 @@ def test_similarity_falls_back_to_title_only_when_description_too_short_to_shing
     job_b = {"jobTitleNormalized": "senior backend engineer", "jobDescriptionText": "Join us."}
     # Both descriptions are below MIN_DESCRIPTION_TOKENS -- title-only signal.
     assert near_duplicates.similarity(job_a, job_b) == 1.0
+
+
+def test_jaccard_returns_zero_when_either_set_is_empty():
+    # similarity()'s own title/description guards mean an empty *description*
+    # shingle set never reaches _jaccard (it short-circuits to title-only
+    # first) - but an empty *title* token set (a job with a blank
+    # jobTitleNormalized) does reach this exact function, so it's tested
+    # directly here rather than only indirectly through similarity().
+    assert near_duplicates._jaccard(set(), {"a", "b"}) == 0.0
+    assert near_duplicates._jaccard({"a", "b"}, set()) == 0.0
+    assert near_duplicates._jaccard(set(), set()) == 0.0
+
+
+def test_similarity_title_only_when_one_description_is_too_short_and_the_other_is_not():
+    """_jaccard's empty-set guard: a substantial description compared against
+    a too-short-to-shingle one must fall back to title-only, not divide by a
+    partial/lopsided shingle overlap.
+    """
+    job_a = {"jobTitleNormalized": "senior backend engineer", "jobDescriptionText": "Apply now."}
+    job_b = {
+        "jobTitleNormalized": "senior backend engineer",
+        "jobDescriptionText": (
+            "We are looking for a Senior Backend Engineer with strong Python and "
+            "PostgreSQL experience to join our growing platform team in Berlin."
+        ),
+    }
+    assert near_duplicates.similarity(job_a, job_b) == 1.0  # title-only signal, both titles identical
 
 
 def test_similarity_scores_a_reworded_near_duplicate_above_threshold():
@@ -260,3 +289,44 @@ def test_is_idempotent_across_repeated_runs(seeded_db):
     dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     dict_cur.execute('SELECT * FROM "duplicate_clusters" WHERE "clusterKey" LIKE %s', ("near-dup:%",))
     assert len(dict_cur.fetchall()) == 1
+
+
+def test_a_later_winner_does_not_reprocess_a_loser_already_hidden_by_an_earlier_winner(seeded_db):
+    """Three postings in the same company+location bucket: A absorbs C as a
+    near-dup, but B (sorted between them, genuinely unrelated to both) does
+    not match A. When B becomes the next winner candidate, its own inner
+    loop reaches C again - C must be skipped as already-hidden rather than
+    re-evaluated and folded into a second, incorrect cluster crediting B
+    instead of A as the winner.
+    """
+    conn, source_ids = seeded_db
+    cur = conn.cursor()
+    base_time = datetime(2026, 6, 1, tzinfo=timezone.utc)
+
+    insert_raw_job(
+        cur, source_ids["greenhouse-de"], originalJobId="gh-a",
+        jobTitleNormalized="senior backend engineer", jobDescriptionText=_REWORDED_DESCRIPTION_A,
+        postedAt=base_time,
+    )
+    insert_raw_job(
+        cur, source_ids["greenhouse-de"], originalJobId="gh-b-unrelated",
+        jobTitleNormalized="warehouse logistics coordinator",
+        jobDescriptionText="We need someone to manage inbound shipments and pallet inventory daily.",
+        postedAt=base_time + timedelta(days=1),
+    )
+    insert_raw_job(
+        cur, source_ids["greenhouse-de"], originalJobId="gh-c",
+        jobTitleNormalized="backend engineer senior", jobDescriptionText=_REWORDED_DESCRIPTION_B,
+        postedAt=base_time + timedelta(days=2),
+    )
+    dedup.run_dedup(conn)
+
+    result = near_duplicates.run_near_duplicate_clustering(conn)
+
+    assert result["nearDuplicateClustersCreated"] == 1
+    assert result["jobsHidden"] == 1
+
+    dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    dict_cur.execute('SELECT * FROM "canonical_jobs" WHERE "isVisible" = true')
+    visible_titles = {row["jobTitleNormalized"] for row in dict_cur.fetchall()}
+    assert visible_titles == {"senior backend engineer", "warehouse logistics coordinator"}

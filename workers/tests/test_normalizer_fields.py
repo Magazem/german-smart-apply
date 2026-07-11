@@ -31,6 +31,15 @@ def test_normalize_company_name(raw, expected):
     assert fields.normalize_company_name(raw) == expected
 
 
+def test_normalize_company_name_of_only_a_legal_suffix_falls_back_to_the_original_string():
+    """Every token stripped (the raw name was nothing but a legal-form
+    suffix) must fall back to the original string, not return an empty
+    company name that would collide with every other empty/missing name.
+    """
+    assert fields.normalize_company_name("GmbH") == "gmbh"
+    assert fields.normalize_company_name("GmbH & Co. KG") == "gmbh & co. kg"
+
+
 # ---------------------------------------------------------------------------
 # Job title normalization
 # ---------------------------------------------------------------------------
@@ -137,6 +146,22 @@ def test_parse_salary_empty_text():
     assert fields.parse_salary("") == (None, None, None)
 
 
+def test_parse_salary_with_mismatched_separator_args_skips_the_unparsable_number():
+    """thousands_separator/decimal_separator are per-call configuration, not
+    baked into the regex itself (which always captures the German "."
+    thousands / "," decimal shape, e.g. "1.234.567" for over a million).
+    Passing the wrong pair for a given market's convention means the
+    thousands dots never get stripped, leaving a string with more than one
+    "." -- not a parseable float. That match must be skipped (falling
+    through to "no salary found"), not raise and take the whole normalizer
+    run down with it.
+    """
+    result = fields.parse_salary(
+        "Gehalt: EUR 1.234.567", thousands_separator=",", decimal_separator="."
+    )
+    assert result == (None, None, None)
+
+
 # ---------------------------------------------------------------------------
 # Language detection
 # ---------------------------------------------------------------------------
@@ -161,6 +186,31 @@ def test_detect_language_empty_defaults_to_english():
     assert fields.detect_language("") == "en"
 
 
+def test_detect_language_falls_back_to_heuristic_when_langdetect_raises(monkeypatch):
+    """langdetect is a third-party library call around otherwise-pure logic
+    -- if it ever throws for any reason (an internal bug, an unsupported
+    input shape), normalization must degrade to the keyword-count heuristic
+    rather than take the whole normalizer run down.
+    """
+
+    def boom(_text):
+        raise RuntimeError("langdetect internal error")
+
+    monkeypatch.setattr(fields, "detect", boom)
+    text = (
+        "Wir suchen einen erfahrenen Softwareentwickler mit Kenntnissen in Python. "
+        "Unsere Aufgaben umfassen die Entwicklung und das Team."
+    )
+    assert fields.detect_language(text) == "de"
+
+
+def test_heuristic_detect_language_scores_by_stopword_overlap():
+    de_text = "Wir suchen unser Team fuer die Entwicklung und Bewerbung."
+    en_text = "We are looking for our team for the development and application."
+    assert fields._heuristic_detect_language(de_text) == "de"
+    assert fields._heuristic_detect_language(en_text) == "en"
+
+
 # ---------------------------------------------------------------------------
 # Seniority inference
 # ---------------------------------------------------------------------------
@@ -177,6 +227,8 @@ def test_detect_language_empty_defaults_to_english():
         ("Berufseinsteiger Consultant", "junior"),
         ("Software Engineer", None),
         ("Senior Lead Engineer", "lead"),  # more-senior keyword wins when both present
+        ("", None),
+        (None, None),
     ],
 )
 def test_infer_seniority(title, expected):
@@ -232,6 +284,16 @@ def test_infer_remote_type_defaults_onsite():
 
 def test_infer_remote_type_from_bool_hint():
     assert fields.infer_remote_type("Berlin", remote_hint=True) == "remote"
+
+
+def test_infer_remote_type_from_string_hint():
+    # Some structured sources pass a raw string (e.g. a locationType field)
+    # rather than a boolean flag -- this must feed into the same keyword scan.
+    assert fields.infer_remote_type("Berlin", remote_hint="Remote-friendly") == "remote"
+
+
+def test_infer_remote_type_both_remote_and_hybrid_keywords_present_prefers_hybrid():
+    assert fields.infer_remote_type("Berlin (Remote or Hybrid)") == "hybrid"
 
 
 # ---------------------------------------------------------------------------

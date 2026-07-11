@@ -96,3 +96,30 @@ def test_run_crawl_records_failure_on_domain_violation(seeded_sources):
     row = cur.fetchone()
     assert row[0] == "failure"
     assert row[1] is not None
+
+
+def test_run_crawl_records_failure_for_an_unregistered_adapter_instead_of_crashing(seeded_sources):
+    """A source row with a sourceType no adapter is registered for (a config
+    mistake, or a new source added to market_de before its adapter module
+    exists) must degrade to a recorded failed run - the same resilience
+    guarantee as any other adapter-side exception - not take down the whole
+    crawl process for every other source.
+    """
+    conn, source_ids = seeded_sources
+    source_id = source_ids["greenhouse-de"]
+
+    cur = conn.cursor()
+    cur.execute('UPDATE "sources" SET "sourceType" = %s WHERE "id" = %s', ("unknown-board", source_id))
+    source_row = _load_source_row(conn, source_id)
+    client = FakeClient()
+
+    result = runner.run_crawl(conn, client, source_row)
+
+    assert result["status"] == "failure"
+    assert "unknown-board" in result["error"]
+    assert client.calls == []
+
+    cur.execute('SELECT "status", "errorLog" FROM "source_crawl_runs" WHERE "id" = %s', (result["run_id"],))
+    row = cur.fetchone()
+    assert row[0] == "failure"
+    assert "unknown-board" in row[1]
