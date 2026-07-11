@@ -1,10 +1,14 @@
+import { fileURLToPath } from 'node:url';
 import swc from 'unplugin-swc';
 import { defineConfig } from 'vitest/config';
 
 process.env.DATABASE_URL ??=
   'postgresql://postgres:postgres@localhost:5432/german_smart_apply?schema=public';
 process.env.JWT_SECRET ??= 'test-only-jwt-secret';
-process.env.CV_UPLOAD_DIR ??= new URL('./test/.uploads', import.meta.url).pathname;
+// fileURLToPath (not `.pathname`) — `.pathname` leaves a leading "/" before
+// the drive letter on Windows (e.g. "/C:/Users/..."), which path.join then
+// mangles into an invalid "C:\C:\Users\..." path.
+process.env.CV_UPLOAD_DIR ??= fileURLToPath(new URL('./test/.uploads', import.meta.url));
 
 export default defineConfig({
   test: {
