@@ -47,7 +47,25 @@ export default function JobDetailPage() {
         }
         setJob(detail.job);
         setMatch(detail.match);
-        const app = await api.applications.create(detail.job.jobId);
+        // create() isn't idempotent against the real API (409s if you already
+        // applied to this job, unlike the mock client's find-or-create) - fall
+        // back to finding the existing application instead of erroring the
+        // whole page out on a second visit.
+        let app: Application;
+        try {
+          app = await api.applications.create(detail.job.jobId);
+        } catch {
+          const existing = (await api.applications.list()).find((a) => a.jobId === detail.job.jobId);
+          if (!existing) throw new Error('Could not load your application for this job.');
+          app = existing;
+        }
+        // A fresh application starts "new"; the API only allows draft
+        // generation from "viewed"/"saved". Opening this page IS the user
+        // viewing the job, so reflect that immediately rather than 409ing
+        // the moment they click "Request draft".
+        if (app.status === 'new') {
+          app = await api.applications.updateStatus(app.id, 'viewed');
+        }
         if (cancelled) return;
         setApplication(app);
         const existingDraft = await api.applications.getDraft(app.id);
