@@ -29,6 +29,26 @@ export interface ApplicationDraft {
   createdAt: string;
 }
 
+export interface FollowUpDraft {
+  id: string;
+  applicationId: string;
+  subject: string;
+  body: string;
+  modelUsed: string;
+  tokensUsed: number;
+  createdAt: string;
+}
+
+export interface InterviewPrepDraft {
+  id: string;
+  applicationId: string;
+  questions: string[];
+  talkingPoints: string[];
+  modelUsed: string;
+  tokensUsed: number;
+  createdAt: string;
+}
+
 export interface Application {
   id: string;
   userId: string;

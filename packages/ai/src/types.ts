@@ -19,6 +19,20 @@ export interface CvSuggestionsResult {
   tokensUsed: number;
 }
 
+export interface FollowUpEmailResult {
+  subject: string;
+  body: string;
+  modelUsed: string;
+  tokensUsed: number;
+}
+
+export interface InterviewPrepResult {
+  questions: string[];
+  talkingPoints: string[];
+  modelUsed: string;
+  tokensUsed: number;
+}
+
 export interface ParseCvResult {
   parsed: ParsedCvResult;
   modelUsed: string;
@@ -59,6 +73,19 @@ export interface AiProvider {
     job: CanonicalJob,
     language: string,
   ): Promise<AiGenerationResult>;
+
+  generateFollowUpEmail(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+    language: string,
+    daysSinceApplied: number,
+  ): Promise<FollowUpEmailResult>;
+
+  generateInterviewPrep(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+    language: string,
+  ): Promise<InterviewPrepResult>;
 }
 
 // Model IDs verified current via the claude-api skill's model catalog
@@ -77,7 +104,13 @@ export const MODEL_ROUTING: Record<ModelTier, string> = {
 // cheaper model for extraction/tagging/parsing, stronger model for
 // candidate-facing writing.
 export const TASK_MODEL_TIER: Record<
-  'parseCv' | 'cvSuggestions' | 'cvVariant' | 'coverLetter' | 'matchExplanation',
+  | 'parseCv'
+  | 'cvSuggestions'
+  | 'cvVariant'
+  | 'coverLetter'
+  | 'matchExplanation'
+  | 'followUpEmail'
+  | 'interviewPrep',
   ModelTier
 > = {
   parseCv: 'cheap',
@@ -85,6 +118,8 @@ export const TASK_MODEL_TIER: Record<
   cvVariant: 'strong',
   coverLetter: 'strong',
   matchExplanation: 'strong',
+  followUpEmail: 'strong',
+  interviewPrep: 'strong',
 };
 
 // Shared prompt-instruction fragments per variant style, so the real and

@@ -8,6 +8,7 @@ import type {
   ApplicationEvent,
   ApplicationStatus,
   CanonicalJob,
+  FollowUpDraft,
 } from '@german-smart-apply/shared';
 import { getApiClient } from '@/lib/api-client';
 import { useRequireAuth } from '@/lib/use-require-auth';
@@ -42,6 +43,9 @@ export default function ApplicationsPage() {
   const [history, setHistory] = useState<ApplicationEvent[]>([]);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [expandedFollowUps, setExpandedFollowUps] = useState<string | null>(null);
+  const [followUps, setFollowUps] = useState<FollowUpDraft[]>([]);
+  const [followUpPending, setFollowUpPending] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -98,6 +102,34 @@ export default function ApplicationsPage() {
     const events = await getApiClient().applications.history(applicationId);
     setHistory(events);
     setExpandedHistory(applicationId);
+  };
+
+  const toggleFollowUps = async (applicationId: string) => {
+    if (expandedFollowUps === applicationId) {
+      setExpandedFollowUps(null);
+      return;
+    }
+    const drafts = await getApiClient().applications.listFollowUps(applicationId);
+    setFollowUps(drafts);
+    setExpandedFollowUps(applicationId);
+  };
+
+  const draftFollowUp = async (row: Row) => {
+    setRowError(null);
+    setFollowUpPending(row.application.id);
+    try {
+      await getApiClient().applications.generateFollowUp(row.application.id);
+      const drafts = await getApiClient().applications.listFollowUps(row.application.id);
+      setFollowUps(drafts);
+      setExpandedFollowUps(row.application.id);
+    } catch (err) {
+      setRowError({
+        id: row.application.id,
+        message: err instanceof Error ? err.message : 'Could not draft a follow-up email.',
+      });
+    } finally {
+      setFollowUpPending(null);
+    }
   };
 
   if (authLoading || loading) {
@@ -222,6 +254,18 @@ export default function ApplicationsPage() {
                         </>
                       )}
 
+                      {['applied', 'interview'].includes(row.application.status) && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => draftFollowUp(row)}
+                          disabled={followUpPending === row.application.id}
+                          data-testid="draft-follow-up-button"
+                        >
+                          {followUpPending === row.application.id ? 'Drafting…' : 'Draft follow-up email'}
+                        </button>
+                      )}
+
                       {['new', 'viewed', 'saved', 'applied', 'interview', 'offer', 'rejected'].includes(
                         row.application.status,
                       ) && (
@@ -233,6 +277,17 @@ export default function ApplicationsPage() {
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleHistory(row.application.id)}>
                         {expandedHistory === row.application.id ? 'Hide history' : 'History'}
                       </button>
+
+                      {['applied', 'interview'].includes(row.application.status) && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => toggleFollowUps(row.application.id)}
+                          data-testid="toggle-follow-ups-button"
+                        >
+                          {expandedFollowUps === row.application.id ? 'Hide follow-ups' : 'Follow-ups'}
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -240,6 +295,52 @@ export default function ApplicationsPage() {
                     <p className="error-text" style={{ marginTop: 12 }}>
                       {rowError.message}
                     </p>
+                  )}
+
+                  {expandedFollowUps === row.application.id && (
+                    <div
+                      className="stack gap-12"
+                      style={{ marginTop: 14, borderTop: '1px solid var(--color-border)', paddingTop: 12 }}
+                    >
+                      {followUps.length === 0 && (
+                        <p className="muted" style={{ fontSize: '0.82rem' }}>
+                          No follow-up drafted yet — click "Draft follow-up email" above.
+                        </p>
+                      )}
+                      {followUps.map((followUp) => (
+                        <div
+                          key={followUp.id}
+                          className="stack gap-4"
+                          data-testid="follow-up-draft"
+                          style={{ background: 'var(--color-surface-alt)', padding: 12, borderRadius: 'var(--radius-md)' }}
+                        >
+                          <div className="row spread" style={{ alignItems: 'center' }}>
+                            <strong style={{ fontSize: '0.85rem' }}>{followUp.subject}</strong>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => navigator.clipboard.writeText(`${followUp.subject}\n\n${followUp.body}`)}
+                            >
+                              Copy
+                            </button>
+                          </div>
+                          <pre
+                            style={{
+                              whiteSpace: 'pre-wrap',
+                              fontFamily: 'var(--font-sans)',
+                              fontSize: '0.82rem',
+                              margin: 0,
+                            }}
+                          >
+                            {followUp.body}
+                          </pre>
+                          <span className="muted" style={{ fontSize: '0.75rem' }}>
+                            Drafted {formatDate(followUp.createdAt)} — review and send this yourself; we never send it
+                            for you.
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   )}
 
                   {expandedHistory === row.application.id && (

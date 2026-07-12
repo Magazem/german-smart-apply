@@ -22,6 +22,11 @@ export class AdminController {
     return this.adminService.dedupStats();
   }
 
+  @Get('analytics')
+  analytics() {
+    return this.adminService.analytics();
+  }
+
   @Get('sources/:id/runs')
   async runHistory(@Param('id') id: string) {
     const result = await this.adminService.runHistory(id);

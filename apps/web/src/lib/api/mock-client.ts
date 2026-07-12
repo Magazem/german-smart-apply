@@ -1,5 +1,6 @@
 import { MockAiProvider } from '@german-smart-apply/ai/mock';
 import {
+  APPLICATION_STATUSES,
   canTransition,
   type Application,
   type ApplicationDraft,
@@ -7,6 +8,8 @@ import {
   type ApplicationStatus,
   type CandidateProfile,
   type CvVariantStyle,
+  type FollowUpDraft,
+  type InterviewPrepDraft,
   type JobFeedbackType,
   type JobSearchFilters,
 } from '@german-smart-apply/shared';
@@ -17,6 +20,7 @@ import { ensureDemoSeed } from './seed';
 import { delay, loadDb, nowIso, saveDb, uid, weakHash, type MockDb, type MockSavedSearch, type MockUser } from './store';
 import type {
   AlertRunSummary,
+  AnalyticsSummary,
   ApiClient,
   AuthSession,
   AuthUser,
@@ -56,6 +60,18 @@ function draftsFor(db: MockDb, applicationId: string): ApplicationDraft[] {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
 }
+
+/** Guards against a pre-follow-up-feature localStorage payload where db.followUpDrafts doesn't exist yet. */
+function followUpsFor(db: MockDb, applicationId: string): FollowUpDraft[] {
+  return (db.followUpDrafts ?? {})[applicationId] ?? [];
+}
+
+/** Guards against a pre-interview-prep-feature localStorage payload where db.interviewPrepDrafts doesn't exist yet. */
+function interviewPrepsFor(db: MockDb, applicationId: string): InterviewPrepDraft[] {
+  return (db.interviewPrepDrafts ?? {})[applicationId] ?? [];
+}
+
+const FOLLOW_UP_ELIGIBLE_STATUSES: ApplicationStatus[] = ['applied', 'interview'];
 
 function toAuthUser(u: MockUser): AuthUser {
   return {
@@ -555,6 +571,132 @@ export class MockApiClient implements ApiClient {
         .filter((e) => e.applicationId === applicationId)
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     },
+
+    // Real client renders an actual PDF server-side (verified against a real
+    // pdf-parse round-trip); a plain-text stand-in here is enough for
+    // interface parity in the mock demo - genuinely built from mock DB state,
+    // just not PDF bytes. The caller must save it as .txt, not .pdf.
+    downloadPdf: async (applicationId: string, draftId?: string): Promise<Blob> => {
+      await delay(150);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
+      if (!app) throw new Error('Application not found.');
+      const drafts = draftsFor(db, applicationId);
+      const draft = draftId ? drafts.find((d) => d.id === draftId) : drafts[0];
+      if (!draft) throw new Error('No draft found for this application.');
+      const job = JOB_FIXTURES.find((j) => j.jobId === app.jobId);
+      const user = db.users.find((u) => u.id === userId);
+      const profile = db.profiles[userId];
+
+      const text = [
+        profile?.fullName ?? user?.email ?? '',
+        user?.email ?? '',
+        '',
+        job ? `${job.jobTitleRaw} at ${job.companyNameRaw}` : '',
+        '',
+        'Cover Letter',
+        draft.coverLetterText,
+        '',
+        `Tailored CV (${draft.variantLabel})`,
+        draft.cvVariantText,
+      ].join('\n');
+      return new Blob([text], { type: 'text/plain' });
+    },
+
+    generateFollowUp: async (applicationId: string, language?: string): Promise<FollowUpDraft> => {
+      await delay(400);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
+      if (!app) throw new Error('Application not found.');
+      if (!FOLLOW_UP_ELIGIBLE_STATUSES.includes(app.status)) {
+        throw new Error(
+          `Cannot draft a follow-up while application is in status "${app.status}". A follow-up only makes sense once the application has actually been applied.`,
+        );
+      }
+
+      const profile = db.profiles[userId];
+      if (!profile || !profile.targetRole) {
+        throw new Error('Complete your profile before drafting a follow-up.');
+      }
+      const job = JOB_FIXTURES.find((j) => j.jobId === app.jobId);
+      if (!job) throw new Error('Job no longer available.');
+
+      const appliedEvent = db.applicationEvents
+        .filter((e) => e.applicationId === applicationId && e.toStatus === 'applied')
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0];
+      const since = new Date(appliedEvent?.createdAt ?? app.createdAt).getTime();
+      const daysSinceApplied = Math.max(0, Math.floor((Date.now() - since) / (1000 * 60 * 60 * 24)));
+
+      const result = await aiProvider.generateFollowUpEmail(
+        profile,
+        job,
+        language ?? profile.preferredLanguage,
+        daysSinceApplied,
+      );
+      const followUp: FollowUpDraft = {
+        id: uid('followup'),
+        applicationId,
+        subject: result.subject,
+        body: result.body,
+        modelUsed: result.modelUsed,
+        tokensUsed: result.tokensUsed,
+        createdAt: nowIso(),
+      };
+      db.followUpDrafts ??= {};
+      db.followUpDrafts[applicationId] = [followUp, ...followUpsFor(db, applicationId)];
+      saveDb(db);
+      return followUp;
+    },
+
+    listFollowUps: async (applicationId: string): Promise<FollowUpDraft[]> => {
+      await delay(80);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
+      if (!app) return [];
+      return followUpsFor(db, applicationId);
+    },
+
+    generateInterviewPrep: async (applicationId: string, language?: string): Promise<InterviewPrepDraft> => {
+      await delay(400);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
+      if (!app) throw new Error('Application not found.');
+
+      const profile = db.profiles[userId];
+      if (!profile || !profile.targetRole) {
+        throw new Error('Complete your profile before generating interview prep.');
+      }
+      const job = JOB_FIXTURES.find((j) => j.jobId === app.jobId);
+      if (!job) throw new Error('Job no longer available.');
+
+      const result = await aiProvider.generateInterviewPrep(profile, job, language ?? profile.preferredLanguage);
+      const prep: InterviewPrepDraft = {
+        id: uid('interviewprep'),
+        applicationId,
+        questions: result.questions,
+        talkingPoints: result.talkingPoints,
+        modelUsed: result.modelUsed,
+        tokensUsed: result.tokensUsed,
+        createdAt: nowIso(),
+      };
+      db.interviewPrepDrafts ??= {};
+      db.interviewPrepDrafts[applicationId] = [prep, ...interviewPrepsFor(db, applicationId)];
+      saveDb(db);
+      return prep;
+    },
+
+    listInterviewPreps: async (applicationId: string): Promise<InterviewPrepDraft[]> => {
+      await delay(80);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
+      if (!app) return [];
+      return interviewPrepsFor(db, applicationId);
+    },
   };
 
   usage = {
@@ -612,6 +754,39 @@ export class MockApiClient implements ApiClient {
       this.requireAdmin(db);
       const searchesChecked = (db.savedSearches ?? []).filter((s) => s.isActive).length;
       return { searchesChecked, emailsSent: 0, totalJobsMatched: 0 };
+    },
+    // User counts and the application funnel ARE real mock-world state
+    // (db.users / db.applications), unlike source health/dedup-stats above -
+    // genuinely computed, not fixture data. Token usage stays honestly zero,
+    // matching usage.summary() above: MockAiProvider never reports real tokens.
+    analytics: async (): Promise<AnalyticsSummary> => {
+      await delay(120);
+      const db = this.getDb();
+      this.requireAdmin(db);
+
+      const userCounts = { total: db.users.length, free: 0, pro: 0, canceled: 0, past_due: 0 };
+      for (const user of db.users) {
+        userCounts[user.tier === 'pro' ? 'pro' : 'free'] += 1;
+      }
+
+      const applicationFunnel = Object.fromEntries(
+        APPLICATION_STATUSES.map((status) => [status, 0]),
+      ) as Record<ApplicationStatus, number>;
+      for (const app of db.applications) {
+        applicationFunnel[app.status] += 1;
+      }
+
+      const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const signupsLast30Days = db.users.filter(
+        (user) => new Date(user.createdAt).getTime() >= thirtyDaysAgoMs,
+      ).length;
+
+      return {
+        userCounts,
+        applicationFunnel,
+        tokenUsage: { totalTokens: 0, byFeature: [] },
+        signupsLast30Days,
+      };
     },
   };
 

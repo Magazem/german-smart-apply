@@ -68,6 +68,8 @@ const testMarketPack: MarketPack = {
     cvSummary: 'Summarize this CV in {{language}}.',
     coverLetter: 'Write a cover letter in {{language}} for {{jobTitle}} at {{companyName}}.',
     matchExplanation: 'Explain in {{language}} why this candidate fits {{jobTitle}}.',
+    followUpEmail: 'Write a follow-up email in {{language}} for {{jobTitle}} at {{companyName}}, {{daysSinceApplied}} days since applying.',
+    interviewPrep: 'Prepare the candidate in {{language}} for an interview for {{jobTitle}} at {{companyName}}.',
   },
   cvFormattingNorms: {
     preferredLengthPages: 2,
@@ -361,6 +363,79 @@ describe('AnthropicAiProvider', () => {
       expect(params.model).toBe(MODEL_ROUTING.strong);
       expect(params.system).toContain('Explain in en why this candidate fits senior backend engineer.');
       expect(result.text).toBe('Strong match on TypeScript and PostgreSQL.');
+    });
+  });
+
+  describe('generateFollowUpEmail', () => {
+    it('routes to the strong tier, interpolates days-since-applied into the market prompt, and forces the tool', async () => {
+      const { client, create } = fakeClient(() =>
+        toolUseMessage(
+          'record_follow_up_email',
+          { subject: 'Following up', body: 'Sehr geehrte Damen und Herren, ...' },
+          { model: 'claude-sonnet-5', usage: baseUsage({ input_tokens: 150, output_tokens: 60 }) },
+        ),
+      );
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      const result = await provider.generateFollowUpEmail(profile, job, 'de', 14);
+
+      const params = create.mock.calls[0][0] as Anthropic.MessageCreateParamsNonStreaming;
+      expect(params.model).toBe(MODEL_ROUTING.strong);
+      expect(params.system).toContain(
+        'Write a follow-up email in de for senior backend engineer at acme gmbh, 14 days since applying.',
+      );
+      expect(params.tool_choice).toEqual({ type: 'tool', name: 'record_follow_up_email' });
+      expect(result.subject).toBe('Following up');
+      expect(result.body).toContain('Sehr geehrte');
+      expect(result.modelUsed).toBe('claude-sonnet-5');
+      expect(result.tokensUsed).toBe(210);
+    });
+
+    it('throws malformed_response when the tool input is missing subject or body', async () => {
+      const { client } = fakeClient(() => toolUseMessage('record_follow_up_email', { subject: 'Hi' }));
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      await expect(provider.generateFollowUpEmail(profile, job, 'en', 7)).rejects.toMatchObject({
+        code: 'malformed_response',
+      });
+    });
+  });
+
+  describe('generateInterviewPrep', () => {
+    it('routes to the strong tier, interpolates the market prompt, and forces the tool', async () => {
+      const { client, create } = fakeClient(() =>
+        toolUseMessage(
+          'record_interview_prep',
+          {
+            questions: ['Why this role?', 'Tell me about a challenging project.'],
+            talkingPoints: ['Emphasize TypeScript experience.'],
+          },
+          { model: 'claude-sonnet-5', usage: baseUsage({ input_tokens: 180, output_tokens: 90 }) },
+        ),
+      );
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      const result = await provider.generateInterviewPrep(profile, job, 'en');
+
+      const params = create.mock.calls[0][0] as Anthropic.MessageCreateParamsNonStreaming;
+      expect(params.model).toBe(MODEL_ROUTING.strong);
+      expect(params.system).toContain('Prepare the candidate in en for an interview for senior backend engineer at acme gmbh.');
+      expect(params.tool_choice).toEqual({ type: 'tool', name: 'record_interview_prep' });
+      expect(result.questions).toEqual(['Why this role?', 'Tell me about a challenging project.']);
+      expect(result.talkingPoints).toEqual(['Emphasize TypeScript experience.']);
+      expect(result.modelUsed).toBe('claude-sonnet-5');
+      expect(result.tokensUsed).toBe(270);
+    });
+
+    it('throws malformed_response when the tool input is missing questions or talkingPoints', async () => {
+      const { client } = fakeClient(() =>
+        toolUseMessage('record_interview_prep', { questions: ['Why this role?'] }),
+      );
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      await expect(provider.generateInterviewPrep(profile, job, 'en')).rejects.toMatchObject({
+        code: 'malformed_response',
+      });
     });
   });
 

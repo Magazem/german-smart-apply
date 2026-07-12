@@ -194,4 +194,63 @@ describe('Admin source health (e2e)', () => {
       await deleteJobFixture(prisma, nearLoser.source.id);
     });
   });
+
+  describe('analytics', () => {
+    it('rejects a regular user with 403', async () => {
+      await request(app.getHttpServer())
+        .get('/admin/analytics')
+        .set('Authorization', `Bearer ${userToken}`)
+        .expect(403);
+    });
+
+    it('reflects new signups, subscription tiers, and application statuses (as deltas, since this table is shared across e2e files)', async () => {
+      const before = await request(app.getHttpServer())
+        .get('/admin/analytics')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const freeRes = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email: uniqueEmail('analytics-free'), password: 'correct-horse-battery-staple' });
+      const proRes = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email: uniqueEmail('analytics-pro'), password: 'correct-horse-battery-staple' });
+      await prisma.client.user.update({
+        where: { id: proRes.body.user.id },
+        data: { subscriptionStatus: 'pro' },
+      });
+
+      const fixture = await createJobFixture(prisma, { jobTitle: 'Analytics Test Role' });
+      const created = await request(app.getHttpServer())
+        .post('/applications')
+        .set('Authorization', `Bearer ${freeRes.body.accessToken}`)
+        .send({ jobId: fixture.canonicalJob.id })
+        .expect(201);
+      // Drive straight to "applied" via PATCH /status (no profile needed - see
+      // the equivalent trick in applications.e2e-spec.ts's follow-up tests).
+      for (const status of ['viewed', 'draft_ready', 'awaiting_approval', 'applied']) {
+        await request(app.getHttpServer())
+          .patch(`/applications/${created.body.id}/status`)
+          .set('Authorization', `Bearer ${freeRes.body.accessToken}`)
+          .send({ status })
+          .expect(200);
+      }
+
+      const after = await request(app.getHttpServer())
+        .get('/admin/analytics')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(after.body.userCounts.total - before.body.userCounts.total).toBe(2);
+      expect(after.body.userCounts.free - before.body.userCounts.free).toBe(1);
+      expect(after.body.userCounts.pro - before.body.userCounts.pro).toBe(1);
+      expect(after.body.applicationFunnel.applied - before.body.applicationFunnel.applied).toBe(1);
+      expect(after.body.signupsLast30Days - before.body.signupsLast30Days).toBe(2);
+      expect(after.body.tokenUsage).toEqual(expect.objectContaining({ totalTokens: expect.any(Number) }));
+
+      await deleteJobFixture(prisma, fixture.source.id);
+      await prisma.client.user.delete({ where: { id: freeRes.body.user.id } }).catch(() => undefined);
+      await prisma.client.user.delete({ where: { id: proRes.body.user.id } }).catch(() => undefined);
+    });
+  });
 });

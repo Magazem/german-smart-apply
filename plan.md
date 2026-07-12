@@ -363,13 +363,13 @@ Scope:
 
 Scope:
 - [ ] pgvector semantic matching layer
-- [ ] Interview prep module
-- [ ] Follow-up email drafts
-- [ ] PDF export for application packets
+- [x] Interview prep module
+- [x] Follow-up email drafts
+- [x] PDF export for application packets
 - [ ] France market pack
 - [ ] Public API for partner integrations
 - [ ] Referral system
-- [ ] Analytics dashboard for admins
+- [x] Analytics dashboard for admins
 
 ---
 

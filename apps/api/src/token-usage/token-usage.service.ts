@@ -1,10 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 
-// The 4 AI-provider methods actually called from the API today.
+// The AI-provider methods actually called from the API today.
 // generateCvSuggestions exists on the AiProvider interface but has no
 // caller yet (no wired endpoint) - nothing to instrument until it does.
-export type TokenUsageFeature = 'parseCv' | 'cvVariant' | 'coverLetter' | 'matchExplanation';
+export type TokenUsageFeature =
+  | 'parseCv'
+  | 'cvVariant'
+  | 'coverLetter'
+  | 'matchExplanation'
+  | 'followUpEmail'
+  | 'interviewPrep';
 
 export interface TokenUsageSummary {
   totalTokens: number;
@@ -40,9 +46,18 @@ export class TokenUsageService {
   }
 
   async summaryForUser(userId: string): Promise<TokenUsageSummary> {
+    return this.summarize({ userId });
+  }
+
+  /** Same shape as summaryForUser, but aggregated across every user - for the admin analytics view. */
+  async summaryAllUsers(): Promise<TokenUsageSummary> {
+    return this.summarize({});
+  }
+
+  private async summarize(where: { userId?: string }): Promise<TokenUsageSummary> {
     const rows = await this.prisma.client.tokenUsageEvent.groupBy({
       by: ['feature'],
-      where: { userId },
+      where,
       _sum: { tokensUsed: true },
       _count: { _all: true },
     });

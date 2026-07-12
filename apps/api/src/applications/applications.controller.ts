@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Param,
+  Patch,
+  Post,
+  Query,
+  StreamableFile,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/jwt-payload.js';
@@ -6,6 +17,8 @@ import { ApplicationsService } from './applications.service.js';
 import { CreateApplicationDto } from './dto/create-application.dto.js';
 import { UpdateStatusDto } from './dto/update-status.dto.js';
 import { GenerateDraftDto } from './dto/generate-draft.dto.js';
+import { GenerateFollowUpDto } from './dto/generate-follow-up.dto.js';
+import { GenerateInterviewPrepDto } from './dto/generate-interview-prep.dto.js';
 
 @Controller('applications')
 @UseGuards(JwtAuthGuard)
@@ -46,6 +59,46 @@ export class ApplicationsController {
     @Body() dto: GenerateDraftDto,
   ) {
     return this.applicationsService.generateDraft(user.id, id, dto.language, dto.variantStyle);
+  }
+
+  @Get(':id/follow-ups')
+  listFollowUps(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.applicationsService.listFollowUps(user.id, id);
+  }
+
+  @Post(':id/follow-up')
+  generateFollowUp(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: GenerateFollowUpDto,
+  ) {
+    return this.applicationsService.generateFollowUp(user.id, id, dto.language);
+  }
+
+  @Get(':id/interview-preps')
+  listInterviewPreps(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.applicationsService.listInterviewPreps(user.id, id);
+  }
+
+  @Post(':id/interview-prep')
+  generateInterviewPrep(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: GenerateInterviewPrepDto,
+  ) {
+    return this.applicationsService.generateInterviewPrep(user.id, id, dto.language);
+  }
+
+  @Get(':id/pdf')
+  @Header('Content-Type', 'application/pdf')
+  @Header('Content-Disposition', 'attachment; filename="application.pdf"')
+  async downloadPdf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Query('draftId') draftId?: string,
+  ) {
+    const pdf = await this.applicationsService.generatePdf(user.id, id, draftId);
+    return new StreamableFile(pdf);
   }
 
   @Patch(':id/status')

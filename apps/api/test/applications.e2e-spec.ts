@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
+import pdfParse from 'pdf-parse';
 import type { INestApplication } from '@nestjs/common';
 import { createTestApp, type TestApp } from './test-app.js';
 import { createJobFixture, deleteJobFixture, uniqueEmail } from './fixtures.js';
@@ -347,6 +348,408 @@ describe('Applications workflow (e2e)', () => {
         .expect(200);
       expect(listRes.body.length).toBe(3);
       expect(listRes.body[0].variantLabel).toBe('concise');
+    });
+  });
+
+  describe('PDF export', () => {
+    it('requires auth', async () => {
+      await request(app.getHttpServer()).get(`/applications/${applicationId}/pdf`).expect(401);
+    });
+
+    it('404s for an application with no draft yet', async () => {
+      const fixture = await createJobFixture(prisma, { jobTitle: 'PDF No Draft Role' });
+      const created = await request(app.getHttpServer())
+        .post('/applications')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ jobId: fixture.canonicalJob.id })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .get(`/applications/${created.body.id}/pdf`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+
+      await deleteJobFixture(prisma, fixture.source.id);
+    });
+
+    it("404s exporting another user's application", async () => {
+      const email = uniqueEmail('pdf-other-reader');
+      const authRes = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email, password: 'correct-horse-battery-staple' });
+      const otherToken = authRes.body.accessToken;
+      const otherUserId = authRes.body.user.id;
+
+      await request(app.getHttpServer())
+        .get(`/applications/${applicationId}/pdf`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .expect(404);
+
+      await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
+    });
+
+    it('renders the latest draft as a real PDF containing the job and cover letter text', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/applications/${applicationId}/pdf`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200)
+        .buffer(true)
+        .parse((response, callback) => {
+          const chunks: Buffer[] = [];
+          response.on('data', (chunk: Buffer) => chunks.push(chunk));
+          response.on('end', () => callback(null, Buffer.concat(chunks)));
+        });
+
+      expect(res.headers['content-type']).toBe('application/pdf');
+      const body = res.body as Buffer;
+      expect(body.subarray(0, 4).toString('ascii')).toBe('%PDF');
+
+      const draftRes = await request(app.getHttpServer())
+        .get(`/applications/${applicationId}/draft`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      const parsed = await pdfParse(body);
+      expect(parsed.text).toContain('Platform Engineer');
+      // Whitespace-normalized comparison: pdf-parse doesn't reliably preserve
+      // blank-line spacing from pdfkit's rendered output, only line content.
+      const normalizedPdfText = parsed.text.replace(/\s+/g, ' ');
+      const normalizedCoverLetterStart = draftRes.body.coverLetterText
+        .replace(/\s+/g, ' ')
+        .slice(0, 40);
+      expect(normalizedPdfText).toContain(normalizedCoverLetterStart);
+    });
+
+    describe('draftId selection', () => {
+      let pdfSourceId: string;
+      let pdfApplicationId: string;
+
+      afterAll(async () => {
+        await deleteJobFixture(prisma, pdfSourceId);
+      });
+
+      beforeAll(async () => {
+        // accessToken's user became Pro earlier in this file (the "allows a
+        // Pro-tier user to generate a concise-style variant" test), so both
+        // variant styles are available here without another billing webhook.
+        const fixture = await createJobFixture(prisma, { jobTitle: 'PDF Variant Role' });
+        pdfSourceId = fixture.source.id;
+
+        const created = await request(app.getHttpServer())
+          .post('/applications')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({ jobId: fixture.canonicalJob.id })
+          .expect(201);
+        pdfApplicationId = created.body.id;
+
+        await request(app.getHttpServer())
+          .patch(`/applications/${pdfApplicationId}/status`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({ status: 'viewed' })
+          .expect(200);
+
+        await request(app.getHttpServer())
+          .post(`/applications/${pdfApplicationId}/draft`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({})
+          .expect(201);
+        await request(app.getHttpServer())
+          .post(`/applications/${pdfApplicationId}/draft`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({ variantStyle: 'concise' })
+          .expect(201);
+      });
+
+      it('exports a specific draft variant by draftId, not just the latest', async () => {
+        const draftsRes = await request(app.getHttpServer())
+          .get(`/applications/${pdfApplicationId}/drafts`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(200);
+
+        const conciseDraft = draftsRes.body.find(
+          (d: { variantLabel: string }) => d.variantLabel === 'concise',
+        );
+        const standardDraft = draftsRes.body.find(
+          (d: { variantLabel: string }) => d.variantLabel === 'standard',
+        );
+        expect(conciseDraft).toBeDefined();
+        expect(standardDraft).toBeDefined();
+
+        const fetchPdfText = async (draftId: string) => {
+          const res = await request(app.getHttpServer())
+            .get(`/applications/${pdfApplicationId}/pdf`)
+            .query({ draftId })
+            .set('Authorization', `Bearer ${accessToken}`)
+            .expect(200)
+            .buffer(true)
+            .parse((response, callback) => {
+              const chunks: Buffer[] = [];
+              response.on('data', (chunk: Buffer) => chunks.push(chunk));
+              response.on('end', () => callback(null, Buffer.concat(chunks)));
+            });
+          return pdfParse(res.body as Buffer).then((p) => p.text);
+        };
+
+        const conciseText = await fetchPdfText(conciseDraft.id);
+        const standardText = await fetchPdfText(standardDraft.id);
+        expect(conciseText).toContain('Tailored CV (concise)');
+        expect(standardText).toContain('Tailored CV (standard)');
+      });
+    });
+  });
+
+  describe('Follow-up email drafts', () => {
+    let followUpSourceId: string;
+    let followUpApplicationId: string;
+
+    afterAll(async () => {
+      await deleteJobFixture(prisma, followUpSourceId);
+    });
+
+    beforeAll(async () => {
+      const fixture = await createJobFixture(prisma, { jobTitle: 'Follow-up Test Role' });
+      followUpSourceId = fixture.source.id;
+
+      const created = await request(app.getHttpServer())
+        .post('/applications')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ jobId: fixture.canonicalJob.id })
+        .expect(201);
+      followUpApplicationId = created.body.id;
+
+      await request(app.getHttpServer())
+        .patch(`/applications/${followUpApplicationId}/status`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'viewed' })
+        .expect(200);
+    });
+
+    it('requires auth', async () => {
+      await request(app.getHttpServer())
+        .post(`/applications/${followUpApplicationId}/follow-up`)
+        .send({})
+        .expect(401);
+    });
+
+    it('rejects drafting a follow-up before the application has actually been applied', async () => {
+      // Still "viewed" at this point in the describe block - not applied yet.
+      await request(app.getHttpServer())
+        .post(`/applications/${followUpApplicationId}/follow-up`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(409);
+    });
+
+    it('404s for an unowned application', async () => {
+      const email = uniqueEmail('follow-up-other-user');
+      const authRes = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email, password: 'correct-horse-battery-staple' });
+      const otherToken = authRes.body.accessToken;
+      const otherUserId = authRes.body.user.id;
+
+      await request(app.getHttpServer())
+        .post(`/applications/${followUpApplicationId}/follow-up`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .send({})
+        .expect(404);
+
+      await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
+    });
+
+    it('drafts a follow-up email once the application reaches "applied"', async () => {
+      await request(app.getHttpServer())
+        .post(`/applications/${followUpApplicationId}/draft`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/applications/${followUpApplicationId}/status`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'awaiting_approval' })
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/applications/${followUpApplicationId}/status`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'applied' })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .post(`/applications/${followUpApplicationId}/follow-up`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(201);
+
+      expect(res.body.subject).toEqual(expect.any(String));
+      expect(res.body.subject.length).toBeGreaterThan(0);
+      expect(res.body.body).toContain('follow-up test role');
+      expect(res.body.applicationId).toBe(followUpApplicationId);
+    });
+
+    it('also allows drafting a follow-up from "interview" status', async () => {
+      await request(app.getHttpServer())
+        .patch(`/applications/${followUpApplicationId}/status`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'interview' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/applications/${followUpApplicationId}/follow-up`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(201);
+    });
+
+    it('lists every generated follow-up, most recent first', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/applications/${followUpApplicationId}/follow-ups`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.length).toBe(2);
+      const createdAts = res.body.map((f: { createdAt: string }) => new Date(f.createdAt).getTime());
+      expect(createdAts[0]).toBeGreaterThanOrEqual(createdAts[1]);
+    });
+
+    it('rejects drafting a follow-up for a user with no candidate profile yet', async () => {
+      const email = uniqueEmail('follow-up-no-profile');
+      const authRes = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email, password: 'correct-horse-battery-staple' });
+      const token = authRes.body.accessToken;
+      const otherUserId = authRes.body.user.id;
+
+      const fixture = await createJobFixture(prisma, { jobTitle: 'No Profile Follow-up Role' });
+      const created = await request(app.getHttpServer())
+        .post('/applications')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ jobId: fixture.canonicalJob.id })
+        .expect(201);
+
+      // Drive status straight to "applied" via PATCH /status (which only
+      // checks canTransition, not profile completeness) rather than through
+      // POST /draft, so this user genuinely never needs a candidate profile
+      // to get here - isolating generateFollowUp's own profile check.
+      for (const status of ['viewed', 'draft_ready', 'awaiting_approval', 'applied']) {
+        await request(app.getHttpServer())
+          .patch(`/applications/${created.body.id}/status`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ status })
+          .expect(200);
+      }
+
+      const res = await request(app.getHttpServer())
+        .post(`/applications/${created.body.id}/follow-up`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(400);
+      expect(res.body.message).toContain('candidate profile');
+
+      await deleteJobFixture(prisma, fixture.source.id);
+      await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
+    });
+  });
+
+  describe('Interview prep drafts', () => {
+    let interviewPrepSourceId: string;
+    let interviewPrepApplicationId: string;
+
+    afterAll(async () => {
+      await deleteJobFixture(prisma, interviewPrepSourceId);
+    });
+
+    beforeAll(async () => {
+      const fixture = await createJobFixture(prisma, { jobTitle: 'Interview Prep Test Role' });
+      interviewPrepSourceId = fixture.source.id;
+
+      const created = await request(app.getHttpServer())
+        .post('/applications')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ jobId: fixture.canonicalJob.id })
+        .expect(201);
+      interviewPrepApplicationId = created.body.id;
+    });
+
+    it('requires auth', async () => {
+      await request(app.getHttpServer())
+        .post(`/applications/${interviewPrepApplicationId}/interview-prep`)
+        .send({})
+        .expect(401);
+    });
+
+    it('404s for an unowned application', async () => {
+      const email = uniqueEmail('interview-prep-other-user');
+      const authRes = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email, password: 'correct-horse-battery-staple' });
+      const otherToken = authRes.body.accessToken;
+      const otherUserId = authRes.body.user.id;
+
+      await request(app.getHttpServer())
+        .post(`/applications/${interviewPrepApplicationId}/interview-prep`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .send({})
+        .expect(404);
+
+      await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
+    });
+
+    it('generates interview prep even while the application is still "new" - no status gate, unlike follow-ups', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/applications/${interviewPrepApplicationId}/interview-prep`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(201);
+
+      expect(Array.isArray(res.body.questions)).toBe(true);
+      expect(res.body.questions.length).toBeGreaterThan(0);
+      expect(res.body.questions.some((q: string) => q.includes('interview prep test role'))).toBe(true);
+      expect(Array.isArray(res.body.talkingPoints)).toBe(true);
+      expect(res.body.talkingPoints.length).toBeGreaterThan(0);
+      expect(res.body.applicationId).toBe(interviewPrepApplicationId);
+    });
+
+    it('lists every generated interview prep draft, most recent first', async () => {
+      await request(app.getHttpServer())
+        .post(`/applications/${interviewPrepApplicationId}/interview-prep`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get(`/applications/${interviewPrepApplicationId}/interview-preps`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.length).toBe(2);
+      const createdAts = res.body.map((p: { createdAt: string }) => new Date(p.createdAt).getTime());
+      expect(createdAts[0]).toBeGreaterThanOrEqual(createdAts[1]);
+    });
+
+    it('rejects generating interview prep for a user with no candidate profile yet', async () => {
+      const email = uniqueEmail('interview-prep-no-profile');
+      const authRes = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email, password: 'correct-horse-battery-staple' });
+      const token = authRes.body.accessToken;
+      const otherUserId = authRes.body.user.id;
+
+      const fixture = await createJobFixture(prisma, { jobTitle: 'No Profile Interview Prep Role' });
+      const created = await request(app.getHttpServer())
+        .post('/applications')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ jobId: fixture.canonicalJob.id })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post(`/applications/${created.body.id}/interview-prep`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(400);
+      expect(res.body.message).toContain('candidate profile');
+
+      await deleteJobFixture(prisma, fixture.source.id);
+      await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
     });
   });
 });

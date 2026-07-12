@@ -8,6 +8,7 @@ import type {
   ApplicationDraft,
   CanonicalJob,
   CvVariantStyle,
+  InterviewPrepDraft,
   JobFeedbackType,
   JobMatchScore,
 } from '@german-smart-apply/shared';
@@ -48,6 +49,9 @@ export default function JobDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [drafting, setDrafting] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [interviewPreps, setInterviewPreps] = useState<InterviewPrepDraft[]>([]);
+  const [generatingPrep, setGeneratingPrep] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [myFeedback, setMyFeedback] = useState<JobFeedbackType | null>(null);
   const [feedbackPending, setFeedbackPending] = useState(false);
@@ -90,14 +94,16 @@ export default function JobDetailPage() {
         }
         if (cancelled) return;
         setApplication(app);
-        const [existingDraft, drafts] = await Promise.all([
+        const [existingDraft, drafts, preps] = await Promise.all([
           api.applications.getDraft(app.id),
           api.applications.listDrafts(app.id),
+          api.applications.listInterviewPreps(app.id),
         ]);
         if (cancelled) return;
         setDraft(existingDraft);
         setAllDrafts(drafts);
         setSelectedDraftId(existingDraft?.id ?? null);
+        setInterviewPreps(preps);
       } catch (err) {
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : 'Could not load this job.');
@@ -148,6 +154,42 @@ export default function JobDetailPage() {
   };
 
   const selectedDraft = allDrafts.find((d) => d.id === selectedDraftId) ?? draft;
+
+  const handleDownloadPdf = async () => {
+    if (!application || !selectedDraft) return;
+    setDownloadingPdf(true);
+    setActionError(null);
+    try {
+      const blob = await getApiClient().applications.downloadPdf(application.id, selectedDraft.id);
+      // The mock client returns a text/plain stand-in (see mock-client.ts) -
+      // name the download by its actual type so it opens cleanly either way.
+      const extension = blob.type === 'application/pdf' ? 'pdf' : 'txt';
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `application-${job?.companyNameNormalized ?? 'packet'}.${extension}`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not download the application packet.');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  const handleGenerateInterviewPrep = async () => {
+    if (!application) return;
+    setGeneratingPrep(true);
+    setActionError(null);
+    try {
+      const prep = await getApiClient().applications.generateInterviewPrep(application.id);
+      setInterviewPreps((prev) => [prep, ...prev]);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not generate interview prep.');
+    } finally {
+      setGeneratingPrep(false);
+    }
+  };
 
   const handleFeedback = async (feedback: JobFeedbackType) => {
     if (!job || feedbackPending) return;
@@ -410,9 +452,66 @@ export default function JobDetailPage() {
           )}
         </div>
 
+        {application && (
+          <div className="card stack gap-12" style={{ padding: 20, background: 'var(--color-surface-alt)' }}>
+            <div className="row spread" style={{ alignItems: 'center' }}>
+              <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Interview prep</h3>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleGenerateInterviewPrep}
+                disabled={generatingPrep}
+                data-testid="generate-interview-prep-button"
+              >
+                {generatingPrep
+                  ? 'Generating…'
+                  : interviewPreps.length > 0
+                    ? 'Regenerate interview prep'
+                    : 'Generate interview prep'}
+              </button>
+            </div>
+            <p className="muted" style={{ fontSize: '0.82rem' }}>
+              Likely interview questions and talking points for this role, generated from your profile. Available any
+              time - no need to wait until you've applied.
+            </p>
+
+            {interviewPreps[0] && (
+              <div className="stack gap-12" data-testid="interview-prep-content">
+                <div className="stack gap-8">
+                  <strong style={{ fontSize: '0.85rem' }}>Likely questions</strong>
+                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem' }}>
+                    {interviewPreps[0].questions.map((q, i) => (
+                      <li key={i}>{q}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="stack gap-8">
+                  <strong style={{ fontSize: '0.85rem' }}>Talking points</strong>
+                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem' }}>
+                    {interviewPreps[0].talkingPoints.map((t, i) => (
+                      <li key={i}>{t}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {selectedDraft && (
           <div className="card stack gap-12" style={{ padding: 20, background: 'var(--color-surface-alt)' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Tailored draft preview</h3>
+            <div className="row spread" style={{ alignItems: 'center' }}>
+              <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Tailored draft preview</h3>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleDownloadPdf}
+                disabled={downloadingPdf}
+                data-testid="download-pdf-button"
+              >
+                {downloadingPdf ? 'Preparing…' : 'Download PDF'}
+              </button>
+            </div>
             <p className="muted" style={{ fontSize: '0.82rem' }}>
               Review carefully — you'll need to explicitly approve this in the application queue before anything is
               considered "applied".

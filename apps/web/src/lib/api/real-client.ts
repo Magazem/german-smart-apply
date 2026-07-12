@@ -5,12 +5,15 @@ import type {
   ApplicationStatus,
   CandidateProfile,
   CvVariantStyle,
+  FollowUpDraft,
+  InterviewPrepDraft,
   JobFeedbackType,
   JobSearchFilters,
   ParsedCvResult,
 } from '@german-smart-apply/shared';
 import type {
   AlertRunSummary,
+  AnalyticsSummary,
   ApiClient,
   AuthSession,
   AuthUser,
@@ -275,6 +278,29 @@ export class RealApiClient implements ApiClient {
         return [];
       }
     },
+    downloadPdf: async (applicationId: string, draftId?: string): Promise<Blob> => {
+      const token = getToken();
+      const query = draftId ? `?draftId=${encodeURIComponent(draftId)}` : '';
+      const res = await fetch(`${this.baseUrl}/applications/${applicationId}/pdf${query}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error(`PDF export failed: ${res.status}`);
+      return res.blob();
+    },
+    generateFollowUp: async (applicationId: string, language?: string): Promise<FollowUpDraft> =>
+      this.request<FollowUpDraft>(`/applications/${applicationId}/follow-up`, {
+        method: 'POST',
+        body: JSON.stringify(language ? { language } : {}),
+      }),
+    listFollowUps: async (applicationId: string): Promise<FollowUpDraft[]> =>
+      this.request<FollowUpDraft[]>(`/applications/${applicationId}/follow-ups`),
+    generateInterviewPrep: async (applicationId: string, language?: string): Promise<InterviewPrepDraft> =>
+      this.request<InterviewPrepDraft>(`/applications/${applicationId}/interview-prep`, {
+        method: 'POST',
+        body: JSON.stringify(language ? { language } : {}),
+      }),
+    listInterviewPreps: async (applicationId: string): Promise<InterviewPrepDraft[]> =>
+      this.request<InterviewPrepDraft[]>(`/applications/${applicationId}/interview-preps`),
   };
 
   usage = {
@@ -298,5 +324,6 @@ export class RealApiClient implements ApiClient {
     dedupStats: async (): Promise<DedupStats> => this.request<DedupStats>('/admin/dedup-stats'),
     runAlerts: async (): Promise<AlertRunSummary> =>
       this.request<AlertRunSummary>('/admin/alerts/run', { method: 'POST' }),
+    analytics: async (): Promise<AnalyticsSummary> => this.request<AnalyticsSummary>('/admin/analytics'),
   };
 }

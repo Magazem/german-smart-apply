@@ -6,6 +6,8 @@ import type {
   CandidateProfile,
   CanonicalJob,
   CvVariantStyle,
+  FollowUpDraft,
+  InterviewPrepDraft,
   JobFeedbackType,
   JobMatchScore,
   JobSearchFilters,
@@ -115,6 +117,13 @@ export interface AlertRunSummary {
   totalJobsMatched: number;
 }
 
+export interface AnalyticsSummary {
+  userCounts: { total: number; free: number; pro: number; canceled: number; past_due: number };
+  applicationFunnel: Record<ApplicationStatus, number>;
+  tokenUsage: TokenUsageSummary;
+  signupsLast30Days: number;
+}
+
 /**
  * The single seam between every page/component and "the backend". Both the
  * mock (in-memory + localStorage, used today) and real (fetch against
@@ -176,6 +185,24 @@ export interface ApiClient {
      * apps/api defines the real one.
      */
     history(applicationId: string): Promise<ApplicationEvent[]>;
+    /** Renders a draft's CV + cover letter + job details as a PDF. Defaults to the latest draft. */
+    downloadPdf(applicationId: string, draftId?: string): Promise<Blob>;
+    /**
+     * Drafts a follow-up email for the candidate to review and send
+     * themselves - only valid once the application is "applied"/"interview".
+     * Never sends anything on the candidate's behalf.
+     */
+    generateFollowUp(applicationId: string, language?: string): Promise<FollowUpDraft>;
+    /** Every generated follow-up email for this application, most recent first. */
+    listFollowUps(applicationId: string): Promise<FollowUpDraft[]>;
+    /**
+     * Generates likely interview questions and talking points for this
+     * application's job. Purely informational - no status gate, unlike
+     * follow-ups, since there's no "sent on your behalf" concern.
+     */
+    generateInterviewPrep(applicationId: string, language?: string): Promise<InterviewPrepDraft>;
+    /** Every generated interview prep draft for this application, most recent first. */
+    listInterviewPreps(applicationId: string): Promise<InterviewPrepDraft[]>;
   };
   usage: {
     summary(): Promise<TokenUsageSummary>;
@@ -187,5 +214,6 @@ export interface ApiClient {
     dedupStats(): Promise<DedupStats>;
     /** Manually-invokable only — there is no standing scheduler. */
     runAlerts(): Promise<AlertRunSummary>;
+    analytics(): Promise<AnalyticsSummary>;
   };
 }

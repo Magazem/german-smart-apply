@@ -3,6 +3,8 @@ import type {
   AiGenerationResult,
   AiProvider,
   CvSuggestionsResult,
+  FollowUpEmailResult,
+  InterviewPrepResult,
   ParseCvResult,
 } from './types.js';
 
@@ -106,5 +108,44 @@ export class MockAiProvider implements AiProvider {
       ? `Strong match: you share ${overlap.length} skill(s) (${overlap.join(', ')}) with this ${job.jobTitleNormalized} role.`
       : `Potential match based on your target role "${profile.targetRole}" and seniority "${profile.seniority}".`;
     return { text, modelUsed: 'mock', tokensUsed: 0 };
+  }
+
+  async generateFollowUpEmail(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+    language: string,
+    daysSinceApplied: number,
+  ): Promise<FollowUpEmailResult> {
+    const greeting = language.startsWith('de') ? 'Sehr geehrte Damen und Herren,' : 'Dear Hiring Team,';
+    const name = profile.fullName ?? '';
+    return {
+      subject: `Following up: ${job.jobTitleNormalized} application`,
+      body: `${greeting}\n\nI applied for the ${job.jobTitleNormalized} role at ${job.companyNameNormalized} ${daysSinceApplied} day(s) ago and wanted to reaffirm my strong interest. Could you share an update on the status of my application?\n\nBest regards,\n${name}`,
+      modelUsed: 'mock',
+      tokensUsed: 0,
+    };
+  }
+
+  async generateInterviewPrep(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+    _language: string,
+  ): Promise<InterviewPrepResult> {
+    const overlap = profile.skills.filter((s) =>
+      job.techStackTags.some((t) => t.toLowerCase() === s.toLowerCase()),
+    );
+    const questions = [
+      `Why are you interested in the ${job.jobTitleNormalized} role at ${job.companyNameNormalized}?`,
+      `Walk me through a time you used ${overlap[0] ?? profile.skills[0] ?? 'a relevant skill'} to solve a difficult problem.`,
+      `How would you approach your first 90 days as a ${job.jobTitleNormalized}?`,
+      `Tell me about a time you disagreed with a teammate or manager. How did you handle it?`,
+      `What do you know about ${job.companyNameNormalized} and why do you want to work here?`,
+    ];
+    const talkingPoints = overlap.length
+      ? overlap
+          .slice(0, 3)
+          .map((skill) => `Highlight your hands-on experience with ${skill}, since it directly matches this role's requirements.`)
+      : [`Connect your experience toward "${profile.targetRole}" to the responsibilities of this ${job.jobTitleNormalized} role.`];
+    return { questions, talkingPoints, modelUsed: 'mock', tokensUsed: 0 };
   }
 }

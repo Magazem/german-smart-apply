@@ -1,12 +1,16 @@
 import type {
   Application as PrismaApplication,
   ApplicationDraft as PrismaApplicationDraft,
+  FollowUpDraft as PrismaFollowUpDraft,
+  InterviewPrepDraft as PrismaInterviewPrepDraft,
 } from '@german-smart-apply/db';
 import type {
   Application,
   ApplicationDraft,
   ApplicationStatus,
   CvVariantStyle,
+  FollowUpDraft,
+  InterviewPrepDraft,
 } from '@german-smart-apply/shared';
 
 /**
@@ -35,6 +39,30 @@ export function toSharedApplicationDraft(record: PrismaApplicationDraft): Applic
     cvVariantText: record.cvVariantText,
     coverLetterText: record.coverLetterText,
     variantLabel: record.variantLabel as CvVariantStyle,
+    modelUsed: record.modelUsed,
+    tokensUsed: record.tokensUsed,
+    createdAt: record.createdAt.toISOString(),
+  };
+}
+
+export function toSharedFollowUpDraft(record: PrismaFollowUpDraft): FollowUpDraft {
+  return {
+    id: record.id,
+    applicationId: record.applicationId,
+    subject: record.subject,
+    body: record.body,
+    modelUsed: record.modelUsed,
+    tokensUsed: record.tokensUsed,
+    createdAt: record.createdAt.toISOString(),
+  };
+}
+
+export function toSharedInterviewPrepDraft(record: PrismaInterviewPrepDraft): InterviewPrepDraft {
+  return {
+    id: record.id,
+    applicationId: record.applicationId,
+    questions: record.questions,
+    talkingPoints: record.talkingPoints,
     modelUsed: record.modelUsed,
     tokensUsed: record.tokensUsed,
     createdAt: record.createdAt.toISOString(),

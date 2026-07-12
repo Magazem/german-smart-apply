@@ -14,9 +14,20 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { TokenUsageService } from '../token-usage/token-usage.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
 import { toSharedCanonicalJob } from '../jobs/canonical-job.mapper.js';
-import { toSharedApplication, toSharedApplicationDraft } from './application.mapper.js';
+import {
+  toSharedApplication,
+  toSharedApplicationDraft,
+  toSharedFollowUpDraft,
+  toSharedInterviewPrepDraft,
+} from './application.mapper.js';
+import { buildApplicationPdf } from './application-pdf.js';
 import type { CreateApplicationDto } from './dto/create-application.dto.js';
 import type { UpdateStatusDto } from './dto/update-status.dto.js';
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+/** Statuses from which a candidate can plausibly still be waiting on a reply. */
+const FOLLOW_UP_ELIGIBLE_STATUSES: ApplicationStatus[] = ['applied', 'interview'];
 
 @Injectable()
 export class ApplicationsService {
@@ -61,6 +72,64 @@ export class ApplicationsService {
       orderBy: { createdAt: 'desc' },
     });
     return drafts.map(toSharedApplicationDraft);
+  }
+
+  /**
+   * Renders a draft's CV + cover letter + job details as a downloadable PDF.
+   * Defaults to the most recent draft; pass `draftId` to export a specific
+   * variant instead (e.g. the one the user picked in the UI).
+   */
+  async generatePdf(userId: string, applicationId: string, draftId?: string) {
+    const application = await this.getOwnedOrThrow(userId, applicationId);
+
+    const draft = draftId
+      ? await this.prisma.client.applicationDraft.findFirst({
+          where: { id: draftId, applicationId },
+        })
+      : await this.prisma.client.applicationDraft.findFirst({
+          where: { applicationId },
+          orderBy: { createdAt: 'desc' },
+        });
+    if (!draft) {
+      throw new NotFoundException('No draft found for this application');
+    }
+
+    const [user, profile, jobRecord] = await Promise.all([
+      this.prisma.client.user.findUniqueOrThrow({ where: { id: userId } }),
+      this.prisma.client.candidateProfile.findUnique({ where: { userId } }),
+      this.prisma.client.canonicalJob.findFirst({
+        where: { id: application.canonicalJobId },
+        include: { rawJob: true },
+      }),
+    ]);
+    if (!jobRecord) {
+      throw new NotFoundException('Job not found');
+    }
+
+    return buildApplicationPdf(
+      { fullName: profile?.fullName ?? null, email: user.email },
+      {
+        // Raw (as-originally-posted) casing, not the lowercased *Normalized
+        // fields used internally for matching/dedup - this PDF is an
+        // artifact the candidate sends to an employer, so it should read
+        // like a real job title/company name, not a normalization key.
+        jobTitle: jobRecord.rawJob.jobTitleRaw,
+        companyName: jobRecord.rawJob.companyNameRaw,
+        locationNormalized: jobRecord.locationNormalized,
+        remoteType: jobRecord.remoteType,
+        employmentType: jobRecord.employmentType,
+        salaryMin: jobRecord.salaryMin,
+        salaryMax: jobRecord.salaryMax,
+        salaryCurrency: jobRecord.salaryCurrency,
+        applyUrl: jobRecord.rawJob.applyUrl,
+      },
+      {
+        cvVariantText: draft.cvVariantText,
+        coverLetterText: draft.coverLetterText,
+        variantLabel: draft.variantLabel,
+        createdAt: draft.createdAt,
+      },
+    );
   }
 
   async create(userId: string, dto: CreateApplicationDto) {
@@ -220,6 +289,146 @@ export class ApplicationsService {
       },
     );
     return toSharedApplicationDraft(draft);
+  }
+
+  /** Every generated follow-up email for this application, most recent first. */
+  async listFollowUps(userId: string, applicationId: string) {
+    await this.getOwnedOrThrow(userId, applicationId);
+    const followUps = await this.prisma.client.followUpDraft.findMany({
+      where: { applicationId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return followUps.map(toSharedFollowUpDraft);
+  }
+
+  /**
+   * Drafts a follow-up email the candidate can review and send themselves -
+   * this never sends anything on the candidate's behalf, same "explicit
+   * approval, never auto-apply" principle as the rest of the app.
+   */
+  async generateFollowUp(userId: string, applicationId: string, language?: string) {
+    const application = await this.getOwnedOrThrow(userId, applicationId);
+
+    if (!FOLLOW_UP_ELIGIBLE_STATUSES.includes(application.status as ApplicationStatus)) {
+      throw new ConflictException(
+        `Cannot draft a follow-up while application is in status "${application.status}". ` +
+          'A follow-up only makes sense once the application has actually been applied.',
+      );
+    }
+
+    const profile = await this.prisma.client.candidateProfile.findUnique({ where: { userId } });
+    if (!profile) {
+      throw new BadRequestException('Complete your candidate profile before drafting a follow-up');
+    }
+
+    const jobRecord = await this.prisma.client.canonicalJob.findFirst({
+      where: { id: application.canonicalJobId },
+      include: { rawJob: { include: { source: true } } },
+    });
+    if (!jobRecord) {
+      throw new NotFoundException('Job not found');
+    }
+
+    const appliedEvent = await this.prisma.client.applicationEvent.findFirst({
+      where: { applicationId, toStatus: 'applied' },
+      orderBy: { createdAt: 'asc' },
+    });
+    const since = appliedEvent?.createdAt ?? application.createdAt;
+    const daysSinceApplied = Math.max(0, Math.floor((Date.now() - since.getTime()) / MS_PER_DAY));
+
+    const sharedProfile = toSharedCandidateProfile(profile);
+    const sharedJob = toSharedCanonicalJob(jobRecord);
+    const lang = language ?? profile.preferredLanguage;
+
+    let followUp;
+    try {
+      followUp = await this.aiProvider.generateFollowUpEmail(sharedProfile, sharedJob, lang, daysSinceApplied);
+    } catch (err) {
+      this.logger.error(`Follow-up generation failed for application ${applicationId}: ${String(err)}`);
+      if (err instanceof AiProviderError) {
+        throw new ServiceUnavailableException(
+          'Follow-up email generation is temporarily unavailable - please try again shortly.',
+        );
+      }
+      throw err;
+    }
+
+    await this.tokenUsage.record(userId, 'followUpEmail', followUp.modelUsed, followUp.tokensUsed);
+
+    const created = await this.prisma.client.followUpDraft.create({
+      data: {
+        applicationId,
+        subject: followUp.subject,
+        body: followUp.body,
+        modelUsed: followUp.modelUsed,
+        tokensUsed: followUp.tokensUsed,
+      },
+    });
+    return toSharedFollowUpDraft(created);
+  }
+
+  /** Every generated interview-prep draft for this application, most recent first. */
+  async listInterviewPreps(userId: string, applicationId: string) {
+    await this.getOwnedOrThrow(userId, applicationId);
+    const preps = await this.prisma.client.interviewPrepDraft.findMany({
+      where: { applicationId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return preps.map(toSharedInterviewPrepDraft);
+  }
+
+  /**
+   * Generates likely interview questions and talking points for this
+   * application's job. Purely informational research material for the
+   * candidate to review - unlike follow-ups, there's no "sent on your
+   * behalf" concern, so this isn't gated to any particular status: it's
+   * useful research prep from the moment a job is on the candidate's radar.
+   */
+  async generateInterviewPrep(userId: string, applicationId: string, language?: string) {
+    const application = await this.getOwnedOrThrow(userId, applicationId);
+
+    const profile = await this.prisma.client.candidateProfile.findUnique({ where: { userId } });
+    if (!profile) {
+      throw new BadRequestException('Complete your candidate profile before generating interview prep');
+    }
+
+    const jobRecord = await this.prisma.client.canonicalJob.findFirst({
+      where: { id: application.canonicalJobId },
+      include: { rawJob: { include: { source: true } } },
+    });
+    if (!jobRecord) {
+      throw new NotFoundException('Job not found');
+    }
+
+    const sharedProfile = toSharedCandidateProfile(profile);
+    const sharedJob = toSharedCanonicalJob(jobRecord);
+    const lang = language ?? profile.preferredLanguage;
+
+    let prep;
+    try {
+      prep = await this.aiProvider.generateInterviewPrep(sharedProfile, sharedJob, lang);
+    } catch (err) {
+      this.logger.error(`Interview prep generation failed for application ${applicationId}: ${String(err)}`);
+      if (err instanceof AiProviderError) {
+        throw new ServiceUnavailableException(
+          'Interview prep generation is temporarily unavailable - please try again shortly.',
+        );
+      }
+      throw err;
+    }
+
+    await this.tokenUsage.record(userId, 'interviewPrep', prep.modelUsed, prep.tokensUsed);
+
+    const created = await this.prisma.client.interviewPrepDraft.create({
+      data: {
+        applicationId,
+        questions: prep.questions,
+        talkingPoints: prep.talkingPoints,
+        modelUsed: prep.modelUsed,
+        tokensUsed: prep.tokensUsed,
+      },
+    });
+    return toSharedInterviewPrepDraft(created);
   }
 
   private async getOwnedOrThrow(userId: string, applicationId: string) {
