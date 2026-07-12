@@ -369,7 +369,7 @@ Scope:
 - [ ] France market pack
 - [ ] Public API for partner integrations
 - [ ] Referral system
-- [ ] Analytics dashboard for admins
+- [x] Analytics dashboard for admins
 
 ---
 

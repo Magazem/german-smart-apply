@@ -4,7 +4,20 @@ import { useEffect, useState } from 'react';
 import { useRequireAuth } from '@/lib/use-require-auth';
 import { getApiClient } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
-import type { AlertRunSummary, DedupStats, SourceCrawlRun, SourceHealth } from '@/lib/api/types';
+import type { AlertRunSummary, AnalyticsSummary, DedupStats, SourceCrawlRun, SourceHealth } from '@/lib/api/types';
+
+const FUNNEL_LABELS: Record<string, string> = {
+  new: 'New',
+  viewed: 'Viewed',
+  saved: 'Saved',
+  draft_ready: 'Draft ready',
+  awaiting_approval: 'Awaiting approval',
+  applied: 'Applied',
+  interview: 'Interview',
+  offer: 'Offer',
+  rejected: 'Rejected',
+  archived: 'Archived',
+};
 
 function successRateBadge(rate: number | null): { className: string; label: string } {
   if (rate === null) return { className: 'badge badge-neutral', label: 'No runs yet' };
@@ -31,6 +44,7 @@ export default function AdminPage() {
   const { loading: authLoading } = useRequireAuth();
   const [sources, setSources] = useState<SourceHealth[] | null>(null);
   const [dedupStats, setDedupStats] = useState<DedupStats | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
   const [runsBySource, setRunsBySource] = useState<Record<string, SourceCrawlRun[]>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +69,9 @@ export default function AdminPage() {
     }, handleError);
     void api.admin.dedupStats().then((result) => {
       if (!cancelled) setDedupStats(result);
+    }, handleError);
+    void api.admin.analytics().then((result) => {
+      if (!cancelled) setAnalytics(result);
     }, handleError);
     return () => {
       cancelled = true;
@@ -135,6 +152,54 @@ export default function AdminPage() {
               </span>
             </div>
           </div>
+        </div>
+      )}
+
+      {!error && analytics && (
+        <div className="card stack gap-16" style={{ padding: 20 }} data-testid="admin-analytics">
+          <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>Analytics</h2>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16 }}>
+            <div className="stack gap-4">
+              <span className="muted" style={{ fontSize: '0.78rem' }}>Total users</span>
+              <strong style={{ fontSize: '1.3rem' }}>{analytics.userCounts.total.toLocaleString()}</strong>
+              <span className="muted" style={{ fontSize: '0.75rem' }}>
+                {analytics.userCounts.pro} pro · {analytics.userCounts.free} free
+              </span>
+            </div>
+            <div className="stack gap-4">
+              <span className="muted" style={{ fontSize: '0.78rem' }}>Signups, last 30 days</span>
+              <strong style={{ fontSize: '1.3rem' }}>{analytics.signupsLast30Days.toLocaleString()}</strong>
+            </div>
+            <div className="stack gap-4">
+              <span className="muted" style={{ fontSize: '0.78rem' }}>AI tokens used (all-time)</span>
+              <strong style={{ fontSize: '1.3rem' }}>{analytics.tokenUsage.totalTokens.toLocaleString()}</strong>
+            </div>
+          </div>
+
+          <div className="stack gap-8">
+            <span className="muted" style={{ fontSize: '0.78rem' }}>Application funnel</span>
+            <div className="row row-wrap gap-8">
+              {Object.entries(analytics.applicationFunnel).map(([status, count]) => (
+                <span key={status} className="tag" data-testid={`funnel-${status}`}>
+                  {FUNNEL_LABELS[status] ?? status}: {count}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {analytics.tokenUsage.byFeature.length > 0 && (
+            <div className="stack gap-8">
+              <span className="muted" style={{ fontSize: '0.78rem' }}>Token usage by feature</span>
+              <div className="row row-wrap gap-8">
+                {analytics.tokenUsage.byFeature.map((f) => (
+                  <span key={f.feature} className="tag">
+                    {f.feature}: {f.tokensUsed.toLocaleString()} ({f.callCount} calls)
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

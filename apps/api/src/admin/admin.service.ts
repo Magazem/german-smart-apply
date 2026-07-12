@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { APPLICATION_STATUSES, type ApplicationStatus } from '@german-smart-apply/shared';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TokenUsageService } from '../token-usage/token-usage.service.js';
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+const SIGNUP_TREND_WINDOW_DAYS = 30;
 
 // How many of a source's most recent runs to look at for a success-rate
 // snapshot - recent health, not a lifetime average that a long-fixed
@@ -9,7 +14,10 @@ const RUN_HISTORY_LIMIT = 50;
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tokenUsage: TokenUsageService,
+  ) {}
 
   async listSourcesWithHealth() {
     const sources = await this.prisma.client.source.findMany({ orderBy: { displayName: 'asc' } });
@@ -51,6 +59,38 @@ export class AdminService {
       exactDuplicateClusters: totalClusters - nearDuplicateClusters,
       nearDuplicateClusters,
       totalDuplicateClusterMembers: totalClusterMembers,
+    };
+  }
+
+  async analytics() {
+    const [subscriptionCounts, applicationCounts, tokenUsage, signupsRecent] = await Promise.all([
+      this.prisma.client.user.groupBy({ by: ['subscriptionStatus'], _count: { _all: true } }),
+      this.prisma.client.application.groupBy({ by: ['status'], _count: { _all: true } }),
+      this.tokenUsage.summaryAllUsers(),
+      this.prisma.client.user.count({
+        where: { createdAt: { gte: new Date(Date.now() - SIGNUP_TREND_WINDOW_DAYS * MS_PER_DAY) } },
+      }),
+    ]);
+
+    const userCounts = { total: 0, free: 0, pro: 0, canceled: 0, past_due: 0 };
+    for (const row of subscriptionCounts) {
+      userCounts.total += row._count._all;
+      userCounts[row.subscriptionStatus] = row._count._all;
+    }
+
+    // Zero-filled so the UI can render every status, not just the ones with rows.
+    const applicationFunnel = Object.fromEntries(
+      APPLICATION_STATUSES.map((status) => [status, 0]),
+    ) as Record<ApplicationStatus, number>;
+    for (const row of applicationCounts) {
+      applicationFunnel[row.status] = row._count._all;
+    }
+
+    return {
+      userCounts,
+      applicationFunnel,
+      tokenUsage,
+      signupsLast30Days: signupsRecent,
     };
   }
 

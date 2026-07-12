@@ -12,6 +12,7 @@ import type {
 } from '@german-smart-apply/shared';
 import type {
   AlertRunSummary,
+  AnalyticsSummary,
   ApiClient,
   AuthSession,
   AuthUser,
@@ -315,5 +316,6 @@ export class RealApiClient implements ApiClient {
     dedupStats: async (): Promise<DedupStats> => this.request<DedupStats>('/admin/dedup-stats'),
     runAlerts: async (): Promise<AlertRunSummary> =>
       this.request<AlertRunSummary>('/admin/alerts/run', { method: 'POST' }),
+    analytics: async (): Promise<AnalyticsSummary> => this.request<AnalyticsSummary>('/admin/analytics'),
   };
 }

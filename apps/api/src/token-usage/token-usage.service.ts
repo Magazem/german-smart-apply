@@ -40,9 +40,18 @@ export class TokenUsageService {
   }
 
   async summaryForUser(userId: string): Promise<TokenUsageSummary> {
+    return this.summarize({ userId });
+  }
+
+  /** Same shape as summaryForUser, but aggregated across every user - for the admin analytics view. */
+  async summaryAllUsers(): Promise<TokenUsageSummary> {
+    return this.summarize({});
+  }
+
+  private async summarize(where: { userId?: string }): Promise<TokenUsageSummary> {
     const rows = await this.prisma.client.tokenUsageEvent.groupBy({
       by: ['feature'],
-      where: { userId },
+      where,
       _sum: { tokensUsed: true },
       _count: { _all: true },
     });

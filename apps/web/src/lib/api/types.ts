@@ -116,6 +116,13 @@ export interface AlertRunSummary {
   totalJobsMatched: number;
 }
 
+export interface AnalyticsSummary {
+  userCounts: { total: number; free: number; pro: number; canceled: number; past_due: number };
+  applicationFunnel: Record<ApplicationStatus, number>;
+  tokenUsage: TokenUsageSummary;
+  signupsLast30Days: number;
+}
+
 /**
  * The single seam between every page/component and "the backend". Both the
  * mock (in-memory + localStorage, used today) and real (fetch against
@@ -198,5 +205,6 @@ export interface ApiClient {
     dedupStats(): Promise<DedupStats>;
     /** Manually-invokable only — there is no standing scheduler. */
     runAlerts(): Promise<AlertRunSummary>;
+    analytics(): Promise<AnalyticsSummary>;
   };
 }

@@ -1,5 +1,6 @@
 import { MockAiProvider } from '@german-smart-apply/ai/mock';
 import {
+  APPLICATION_STATUSES,
   canTransition,
   type Application,
   type ApplicationDraft,
@@ -18,6 +19,7 @@ import { ensureDemoSeed } from './seed';
 import { delay, loadDb, nowIso, saveDb, uid, weakHash, type MockDb, type MockSavedSearch, type MockUser } from './store';
 import type {
   AlertRunSummary,
+  AnalyticsSummary,
   ApiClient,
   AuthSession,
   AuthUser,
@@ -707,6 +709,39 @@ export class MockApiClient implements ApiClient {
       this.requireAdmin(db);
       const searchesChecked = (db.savedSearches ?? []).filter((s) => s.isActive).length;
       return { searchesChecked, emailsSent: 0, totalJobsMatched: 0 };
+    },
+    // User counts and the application funnel ARE real mock-world state
+    // (db.users / db.applications), unlike source health/dedup-stats above -
+    // genuinely computed, not fixture data. Token usage stays honestly zero,
+    // matching usage.summary() above: MockAiProvider never reports real tokens.
+    analytics: async (): Promise<AnalyticsSummary> => {
+      await delay(120);
+      const db = this.getDb();
+      this.requireAdmin(db);
+
+      const userCounts = { total: db.users.length, free: 0, pro: 0, canceled: 0, past_due: 0 };
+      for (const user of db.users) {
+        userCounts[user.tier === 'pro' ? 'pro' : 'free'] += 1;
+      }
+
+      const applicationFunnel = Object.fromEntries(
+        APPLICATION_STATUSES.map((status) => [status, 0]),
+      ) as Record<ApplicationStatus, number>;
+      for (const app of db.applications) {
+        applicationFunnel[app.status] += 1;
+      }
+
+      const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const signupsLast30Days = db.users.filter(
+        (user) => new Date(user.createdAt).getTime() >= thirtyDaysAgoMs,
+      ).length;
+
+      return {
+        userCounts,
+        applicationFunnel,
+        tokenUsage: { totalTokens: 0, byFeature: [] },
+        signupsLast30Days,
+      };
     },
   };
 
