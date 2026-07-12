@@ -39,8 +39,32 @@ fly secrets set --app german-smart-apply-api \
   WEB_APP_URL="https://german-smart-apply-web.fly.dev" \
   STRIPE_SECRET_KEY="sk_live_..." STRIPE_WEBHOOK_SECRET="whsec_..." STRIPE_PRO_PRICE_ID="price_..."
   # ANTHROPIC_API_KEY="sk-ant-..."  # optional — omit to run with the deterministic MockAiProvider
+  # OPENROUTER_API_KEY="sk-or-..."  # optional — if set, takes priority over ANTHROPIC_API_KEY (see below)
 fly deploy --config apps/api/fly.toml .
 ```
+
+### Testing real AI output cheaply before committing to Anthropic
+
+`createAiProvider()` (packages/ai/src/index.ts) checks `OPENROUTER_API_KEY` before
+`ANTHROPIC_API_KEY`. Setting only `OPENROUTER_API_KEY` routes every AI call
+(CV parsing, cover letters, follow-up emails, interview prep, etc.) through
+[OpenRouter](https://openrouter.ai) instead — an OpenAI-compatible proxy in
+front of 400+ models, several of which are free. This is meant for validating
+that real-model output actually flows through the app end to end (not
+`MockAiProvider`'s deterministic templates) before paying for Anthropic:
+
+```sh
+fly secrets set --app german-smart-apply-api OPENROUTER_API_KEY="sk-or-..."
+```
+
+Defaults to `openai/gpt-oss-120b:free` (supports native tool-calling/structured
+output, unlike many free models on OpenRouter's rotating roster). Override with
+`OPENROUTER_MODEL` if that slug stops being available — check
+[openrouter.ai/models](https://openrouter.ai/models) filtered to `:free`.
+Free-tier rate limits are low (as of writing, ~50 requests/day per key without
+added credit) — fine for a smoke test, not for real traffic. Once satisfied
+with behavior, remove `OPENROUTER_API_KEY` and set `ANTHROPIC_API_KEY` instead
+to switch to the paid, production-grade model.
 
 `JWT_SECRET` and all three `STRIPE_*` vars above are required with `NODE_ENV=production`
 (Fly sets `NODE_ENV=production` by default) — the app fails to start rather

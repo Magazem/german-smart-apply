@@ -1,13 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type {
-  CandidateProfile,
-  CanonicalJob,
-  CvVariantStyle,
-  MarketPack,
-  ParsedCvEducation,
-  ParsedCvExperience,
-  ParsedCvResult,
-} from '@german-smart-apply/shared';
+import type { CandidateProfile, CanonicalJob, CvVariantStyle, MarketPack } from '@german-smart-apply/shared';
 import type {
   AiGenerationResult,
   AiProvider,
@@ -17,6 +9,18 @@ import type {
   ParseCvResult,
 } from './types.js';
 import { CV_VARIANT_STYLE_INSTRUCTIONS, MODEL_ROUTING, TASK_MODEL_TIER } from './types.js';
+import { AiProviderError, type AiProviderErrorCode } from './errors.js';
+import {
+  asStringArray,
+  formatJobForPrompt,
+  formatProfileForPrompt,
+  interpolate,
+  isRecord,
+  parseParsedCvInput,
+} from './prompt-utils.js';
+
+export type { AiProviderErrorCode };
+export { AiProviderError };
 
 /**
  * Minimal structural surface of the Anthropic SDK client this provider
@@ -28,33 +32,6 @@ export interface AnthropicMessagesClient {
   messages: {
     create(params: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message>;
   };
-}
-
-export type AiProviderErrorCode =
-  | 'auth'
-  | 'rate_limit'
-  | 'overloaded'
-  | 'invalid_request'
-  | 'refusal'
-  | 'malformed_response'
-  | 'api_error';
-
-/**
- * Typed error thrown by AnthropicAiProvider instead of silently returning
- * empty data. Callers can branch on `.code` to decide whether to retry
- * (rate_limit/overloaded/api_error), surface a config problem (auth), or
- * treat it as a content outcome (refusal/invalid_request/malformed_response).
- */
-export class AiProviderError extends Error {
-  readonly code: AiProviderErrorCode;
-  override readonly cause?: unknown;
-
-  constructor(message: string, code: AiProviderErrorCode, cause?: unknown) {
-    super(message);
-    this.name = 'AiProviderError';
-    this.code = code;
-    this.cause = cause;
-  }
 }
 
 function toAiProviderError(err: unknown, context: string): AiProviderError {
@@ -91,66 +68,6 @@ function totalTokens(usage: Anthropic.Usage): number {
     (usage.cache_creation_input_tokens ?? 0) +
     (usage.cache_read_input_tokens ?? 0)
   );
-}
-
-function interpolate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, key: string) => vars[key] ?? '');
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function asStringOrNull(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
-}
-
-function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
-}
-
-function toParsedCvExperience(value: unknown): ParsedCvExperience[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(isRecord).map((item) => ({
-    title: typeof item.title === 'string' ? item.title : '',
-    company: typeof item.company === 'string' ? item.company : '',
-    startDate: asStringOrNull(item.startDate),
-    endDate: asStringOrNull(item.endDate),
-    description: typeof item.description === 'string' ? item.description : '',
-  }));
-}
-
-function toParsedCvEducation(value: unknown): ParsedCvEducation[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(isRecord).map((item) => ({
-    degree: typeof item.degree === 'string' ? item.degree : '',
-    institution: typeof item.institution === 'string' ? item.institution : '',
-    startYear: typeof item.startYear === 'number' ? item.startYear : null,
-    endYear: typeof item.endYear === 'number' ? item.endYear : null,
-  }));
-}
-
-function parseParsedCvInput(input: unknown, context: string): ParsedCvResult {
-  if (!isRecord(input)) {
-    throw new AiProviderError(`${context}: tool input was not a JSON object`, 'malformed_response');
-  }
-  if (typeof input.summary !== 'string') {
-    throw new AiProviderError(
-      `${context}: tool input is missing the required "summary" string field`,
-      'malformed_response',
-    );
-  }
-  return {
-    fullName: asStringOrNull(input.fullName),
-    email: asStringOrNull(input.email),
-    phone: asStringOrNull(input.phone),
-    summary: input.summary,
-    skills: asStringArray(input.skills),
-    experience: toParsedCvExperience(input.experience),
-    education: toParsedCvEducation(input.education),
-    languages: asStringArray(input.languages),
-    suggestions: asStringArray(input.suggestions),
-  };
 }
 
 const PARSED_CV_TOOL_NAME = 'record_parsed_cv';
@@ -305,29 +222,6 @@ function extractText(message: Anthropic.Message, context: string): string {
     );
   }
   return text;
-}
-
-function formatProfileForPrompt(profile: CandidateProfile): string {
-  const lines = [
-    `Target role: ${profile.targetRole}`,
-    `Seniority: ${profile.seniority}`,
-    `Location preference: ${profile.locationPreference}`,
-    `Skills: ${profile.skills.join(', ') || 'none listed'}`,
-  ];
-  if (profile.summary) lines.push(`Current summary: ${profile.summary}`);
-  if (profile.fullName) lines.unshift(`Candidate name: ${profile.fullName}`);
-  return lines.join('\n');
-}
-
-function formatJobForPrompt(job: CanonicalJob): string {
-  return [
-    `Job title: ${job.jobTitleNormalized}`,
-    `Company: ${job.companyNameNormalized}`,
-    `Location: ${job.locationNormalized} (${job.remoteType})`,
-    `Seniority: ${job.seniority ?? 'unspecified'}`,
-    `Tech stack: ${job.techStackTags.join(', ') || 'not specified'}`,
-    `Description: ${job.jobDescriptionText}`,
-  ].join('\n');
 }
 
 export interface AnthropicAiProviderOptions {

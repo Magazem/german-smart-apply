@@ -17,7 +17,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
     "@german-smart-apply/market-de": "workspace:*",
-    "@german-smart-apply/shared": "workspace:*"
+    "@german-smart-apply/shared": "workspace:*",
+    "openai": "^6.46.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
