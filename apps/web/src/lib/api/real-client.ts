@@ -5,6 +5,7 @@ import type {
   ApplicationStatus,
   CandidateProfile,
   CvVariantStyle,
+  FollowUpDraft,
   JobFeedbackType,
   JobSearchFilters,
   ParsedCvResult,
@@ -284,6 +285,13 @@ export class RealApiClient implements ApiClient {
       if (!res.ok) throw new Error(`PDF export failed: ${res.status}`);
       return res.blob();
     },
+    generateFollowUp: async (applicationId: string, language?: string): Promise<FollowUpDraft> =>
+      this.request<FollowUpDraft>(`/applications/${applicationId}/follow-up`, {
+        method: 'POST',
+        body: JSON.stringify(language ? { language } : {}),
+      }),
+    listFollowUps: async (applicationId: string): Promise<FollowUpDraft[]> =>
+      this.request<FollowUpDraft[]>(`/applications/${applicationId}/follow-ups`),
   };
 
   usage = {

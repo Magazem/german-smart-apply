@@ -14,10 +14,19 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { TokenUsageService } from '../token-usage/token-usage.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
 import { toSharedCanonicalJob } from '../jobs/canonical-job.mapper.js';
-import { toSharedApplication, toSharedApplicationDraft } from './application.mapper.js';
+import {
+  toSharedApplication,
+  toSharedApplicationDraft,
+  toSharedFollowUpDraft,
+} from './application.mapper.js';
 import { buildApplicationPdf } from './application-pdf.js';
 import type { CreateApplicationDto } from './dto/create-application.dto.js';
 import type { UpdateStatusDto } from './dto/update-status.dto.js';
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+/** Statuses from which a candidate can plausibly still be waiting on a reply. */
+const FOLLOW_UP_ELIGIBLE_STATUSES: ApplicationStatus[] = ['applied', 'interview'];
 
 @Injectable()
 export class ApplicationsService {
@@ -279,6 +288,82 @@ export class ApplicationsService {
       },
     );
     return toSharedApplicationDraft(draft);
+  }
+
+  /** Every generated follow-up email for this application, most recent first. */
+  async listFollowUps(userId: string, applicationId: string) {
+    await this.getOwnedOrThrow(userId, applicationId);
+    const followUps = await this.prisma.client.followUpDraft.findMany({
+      where: { applicationId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return followUps.map(toSharedFollowUpDraft);
+  }
+
+  /**
+   * Drafts a follow-up email the candidate can review and send themselves -
+   * this never sends anything on the candidate's behalf, same "explicit
+   * approval, never auto-apply" principle as the rest of the app.
+   */
+  async generateFollowUp(userId: string, applicationId: string, language?: string) {
+    const application = await this.getOwnedOrThrow(userId, applicationId);
+
+    if (!FOLLOW_UP_ELIGIBLE_STATUSES.includes(application.status as ApplicationStatus)) {
+      throw new ConflictException(
+        `Cannot draft a follow-up while application is in status "${application.status}". ` +
+          'A follow-up only makes sense once the application has actually been applied.',
+      );
+    }
+
+    const profile = await this.prisma.client.candidateProfile.findUnique({ where: { userId } });
+    if (!profile) {
+      throw new BadRequestException('Complete your candidate profile before drafting a follow-up');
+    }
+
+    const jobRecord = await this.prisma.client.canonicalJob.findFirst({
+      where: { id: application.canonicalJobId },
+      include: { rawJob: { include: { source: true } } },
+    });
+    if (!jobRecord) {
+      throw new NotFoundException('Job not found');
+    }
+
+    const appliedEvent = await this.prisma.client.applicationEvent.findFirst({
+      where: { applicationId, toStatus: 'applied' },
+      orderBy: { createdAt: 'asc' },
+    });
+    const since = appliedEvent?.createdAt ?? application.createdAt;
+    const daysSinceApplied = Math.max(0, Math.floor((Date.now() - since.getTime()) / MS_PER_DAY));
+
+    const sharedProfile = toSharedCandidateProfile(profile);
+    const sharedJob = toSharedCanonicalJob(jobRecord);
+    const lang = language ?? profile.preferredLanguage;
+
+    let followUp;
+    try {
+      followUp = await this.aiProvider.generateFollowUpEmail(sharedProfile, sharedJob, lang, daysSinceApplied);
+    } catch (err) {
+      this.logger.error(`Follow-up generation failed for application ${applicationId}: ${String(err)}`);
+      if (err instanceof AiProviderError) {
+        throw new ServiceUnavailableException(
+          'Follow-up email generation is temporarily unavailable - please try again shortly.',
+        );
+      }
+      throw err;
+    }
+
+    await this.tokenUsage.record(userId, 'followUpEmail', followUp.modelUsed, followUp.tokensUsed);
+
+    const created = await this.prisma.client.followUpDraft.create({
+      data: {
+        applicationId,
+        subject: followUp.subject,
+        body: followUp.body,
+        modelUsed: followUp.modelUsed,
+        tokensUsed: followUp.tokensUsed,
+      },
+    });
+    return toSharedFollowUpDraft(created);
   }
 
   private async getOwnedOrThrow(userId: string, applicationId: string) {

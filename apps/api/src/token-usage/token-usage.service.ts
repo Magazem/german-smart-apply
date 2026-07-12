@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 
-// The 4 AI-provider methods actually called from the API today.
+// The AI-provider methods actually called from the API today.
 // generateCvSuggestions exists on the AiProvider interface but has no
 // caller yet (no wired endpoint) - nothing to instrument until it does.
-export type TokenUsageFeature = 'parseCv' | 'cvVariant' | 'coverLetter' | 'matchExplanation';
+export type TokenUsageFeature = 'parseCv' | 'cvVariant' | 'coverLetter' | 'matchExplanation' | 'followUpEmail';
 
 export interface TokenUsageSummary {
   totalTokens: number;

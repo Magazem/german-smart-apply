@@ -17,6 +17,7 @@ import { ApplicationsService } from './applications.service.js';
 import { CreateApplicationDto } from './dto/create-application.dto.js';
 import { UpdateStatusDto } from './dto/update-status.dto.js';
 import { GenerateDraftDto } from './dto/generate-draft.dto.js';
+import { GenerateFollowUpDto } from './dto/generate-follow-up.dto.js';
 
 @Controller('applications')
 @UseGuards(JwtAuthGuard)
@@ -57,6 +58,20 @@ export class ApplicationsController {
     @Body() dto: GenerateDraftDto,
   ) {
     return this.applicationsService.generateDraft(user.id, id, dto.language, dto.variantStyle);
+  }
+
+  @Get(':id/follow-ups')
+  listFollowUps(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.applicationsService.listFollowUps(user.id, id);
+  }
+
+  @Post(':id/follow-up')
+  generateFollowUp(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: GenerateFollowUpDto,
+  ) {
+    return this.applicationsService.generateFollowUp(user.id, id, dto.language);
   }
 
   @Get(':id/pdf')

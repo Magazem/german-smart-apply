@@ -3,6 +3,7 @@ import type {
   AiGenerationResult,
   AiProvider,
   CvSuggestionsResult,
+  FollowUpEmailResult,
   ParseCvResult,
 } from './types.js';
 
@@ -106,5 +107,21 @@ export class MockAiProvider implements AiProvider {
       ? `Strong match: you share ${overlap.length} skill(s) (${overlap.join(', ')}) with this ${job.jobTitleNormalized} role.`
       : `Potential match based on your target role "${profile.targetRole}" and seniority "${profile.seniority}".`;
     return { text, modelUsed: 'mock', tokensUsed: 0 };
+  }
+
+  async generateFollowUpEmail(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+    language: string,
+    daysSinceApplied: number,
+  ): Promise<FollowUpEmailResult> {
+    const greeting = language.startsWith('de') ? 'Sehr geehrte Damen und Herren,' : 'Dear Hiring Team,';
+    const name = profile.fullName ?? '';
+    return {
+      subject: `Following up: ${job.jobTitleNormalized} application`,
+      body: `${greeting}\n\nI applied for the ${job.jobTitleNormalized} role at ${job.companyNameNormalized} ${daysSinceApplied} day(s) ago and wanted to reaffirm my strong interest. Could you share an update on the status of my application?\n\nBest regards,\n${name}`,
+      modelUsed: 'mock',
+      tokensUsed: 0,
+    };
   }
 }

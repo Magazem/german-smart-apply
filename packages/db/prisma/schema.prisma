@@ -333,8 +333,9 @@ model Application {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
-  drafts ApplicationDraft[]
-  events ApplicationEvent[]
+  drafts    ApplicationDraft[]
+  events    ApplicationEvent[]
+  followUps FollowUpDraft[]
 
   @@unique([userId, canonicalJobId])
   @@index([userId, status])
@@ -358,6 +359,20 @@ model ApplicationDraft {
 
   @@index([applicationId])
   @@map("application_drafts")
+}
+
+model FollowUpDraft {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  subject       String
+  body          String
+  modelUsed     String
+  tokensUsed    Int         @default(0)
+  createdAt     DateTime    @default(now())
+
+  @@index([applicationId])
+  @@map("follow_up_drafts")
 }
 
 model ApplicationEvent {

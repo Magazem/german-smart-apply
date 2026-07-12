@@ -1,12 +1,14 @@
 import type {
   Application as PrismaApplication,
   ApplicationDraft as PrismaApplicationDraft,
+  FollowUpDraft as PrismaFollowUpDraft,
 } from '@german-smart-apply/db';
 import type {
   Application,
   ApplicationDraft,
   ApplicationStatus,
   CvVariantStyle,
+  FollowUpDraft,
 } from '@german-smart-apply/shared';
 
 /**
@@ -35,6 +37,18 @@ export function toSharedApplicationDraft(record: PrismaApplicationDraft): Applic
     cvVariantText: record.cvVariantText,
     coverLetterText: record.coverLetterText,
     variantLabel: record.variantLabel as CvVariantStyle,
+    modelUsed: record.modelUsed,
+    tokensUsed: record.tokensUsed,
+    createdAt: record.createdAt.toISOString(),
+  };
+}
+
+export function toSharedFollowUpDraft(record: PrismaFollowUpDraft): FollowUpDraft {
+  return {
+    id: record.id,
+    applicationId: record.applicationId,
+    subject: record.subject,
+    body: record.body,
     modelUsed: record.modelUsed,
     tokensUsed: record.tokensUsed,
     createdAt: record.createdAt.toISOString(),

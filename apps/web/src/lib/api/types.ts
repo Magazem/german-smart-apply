@@ -6,6 +6,7 @@ import type {
   CandidateProfile,
   CanonicalJob,
   CvVariantStyle,
+  FollowUpDraft,
   JobFeedbackType,
   JobMatchScore,
   JobSearchFilters,
@@ -178,6 +179,14 @@ export interface ApiClient {
     history(applicationId: string): Promise<ApplicationEvent[]>;
     /** Renders a draft's CV + cover letter + job details as a PDF. Defaults to the latest draft. */
     downloadPdf(applicationId: string, draftId?: string): Promise<Blob>;
+    /**
+     * Drafts a follow-up email for the candidate to review and send
+     * themselves - only valid once the application is "applied"/"interview".
+     * Never sends anything on the candidate's behalf.
+     */
+    generateFollowUp(applicationId: string, language?: string): Promise<FollowUpDraft>;
+    /** Every generated follow-up email for this application, most recent first. */
+    listFollowUps(applicationId: string): Promise<FollowUpDraft[]>;
   };
   usage: {
     summary(): Promise<TokenUsageSummary>;

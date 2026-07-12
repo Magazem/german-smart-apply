@@ -7,6 +7,7 @@ import {
   type ApplicationStatus,
   type CandidateProfile,
   type CvVariantStyle,
+  type FollowUpDraft,
   type JobFeedbackType,
   type JobSearchFilters,
 } from '@german-smart-apply/shared';
@@ -56,6 +57,13 @@ function draftsFor(db: MockDb, applicationId: string): ApplicationDraft[] {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
 }
+
+/** Guards against a pre-follow-up-feature localStorage payload where db.followUpDrafts doesn't exist yet. */
+function followUpsFor(db: MockDb, applicationId: string): FollowUpDraft[] {
+  return (db.followUpDrafts ?? {})[applicationId] ?? [];
+}
+
+const FOLLOW_UP_ELIGIBLE_STATUSES: ApplicationStatus[] = ['applied', 'interview'];
 
 function toAuthUser(u: MockUser): AuthUser {
   return {
@@ -586,6 +594,61 @@ export class MockApiClient implements ApiClient {
         draft.cvVariantText,
       ].join('\n');
       return new Blob([text], { type: 'text/plain' });
+    },
+
+    generateFollowUp: async (applicationId: string, language?: string): Promise<FollowUpDraft> => {
+      await delay(400);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
+      if (!app) throw new Error('Application not found.');
+      if (!FOLLOW_UP_ELIGIBLE_STATUSES.includes(app.status)) {
+        throw new Error(
+          `Cannot draft a follow-up while application is in status "${app.status}". A follow-up only makes sense once the application has actually been applied.`,
+        );
+      }
+
+      const profile = db.profiles[userId];
+      if (!profile || !profile.targetRole) {
+        throw new Error('Complete your profile before drafting a follow-up.');
+      }
+      const job = JOB_FIXTURES.find((j) => j.jobId === app.jobId);
+      if (!job) throw new Error('Job no longer available.');
+
+      const appliedEvent = db.applicationEvents
+        .filter((e) => e.applicationId === applicationId && e.toStatus === 'applied')
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0];
+      const since = new Date(appliedEvent?.createdAt ?? app.createdAt).getTime();
+      const daysSinceApplied = Math.max(0, Math.floor((Date.now() - since) / (1000 * 60 * 60 * 24)));
+
+      const result = await aiProvider.generateFollowUpEmail(
+        profile,
+        job,
+        language ?? profile.preferredLanguage,
+        daysSinceApplied,
+      );
+      const followUp: FollowUpDraft = {
+        id: uid('followup'),
+        applicationId,
+        subject: result.subject,
+        body: result.body,
+        modelUsed: result.modelUsed,
+        tokensUsed: result.tokensUsed,
+        createdAt: nowIso(),
+      };
+      db.followUpDrafts ??= {};
+      db.followUpDrafts[applicationId] = [followUp, ...followUpsFor(db, applicationId)];
+      saveDb(db);
+      return followUp;
+    },
+
+    listFollowUps: async (applicationId: string): Promise<FollowUpDraft[]> => {
+      await delay(80);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
+      if (!app) return [];
+      return followUpsFor(db, applicationId);
     },
   };
 

@@ -111,4 +111,18 @@ describe('MockAiProvider', () => {
     expect(concise.text).toContain('concise variant');
     expect(leadership.text).toContain('leadership variant');
   });
+
+  it('drafts a follow-up email referencing the job, company, and days since applying', async () => {
+    const result = await provider.generateFollowUpEmail(profile, job, 'en', 14);
+    expect(result.subject).toContain('senior backend engineer');
+    expect(result.body).toContain('acme gmbh');
+    expect(result.body).toContain('14');
+    expect(result.modelUsed).toBe('mock');
+    expect(result.tokensUsed).toBe(0);
+  });
+
+  it('uses German greeting for German-language follow-up emails', async () => {
+    const result = await provider.generateFollowUpEmail(profile, job, 'de', 7);
+    expect(result.body).toContain('Sehr geehrte Damen und Herren');
+  });
 });

@@ -8,7 +8,13 @@ import type {
   ParsedCvExperience,
   ParsedCvResult,
 } from '@german-smart-apply/shared';
-import type { AiGenerationResult, AiProvider, CvSuggestionsResult, ParseCvResult } from './types.js';
+import type {
+  AiGenerationResult,
+  AiProvider,
+  CvSuggestionsResult,
+  FollowUpEmailResult,
+  ParseCvResult,
+} from './types.js';
 import { CV_VARIANT_STYLE_INSTRUCTIONS, MODEL_ROUTING, TASK_MODEL_TIER } from './types.js';
 
 /**
@@ -148,6 +154,7 @@ function parseParsedCvInput(input: unknown, context: string): ParsedCvResult {
 
 const PARSED_CV_TOOL_NAME = 'record_parsed_cv';
 const CV_SUGGESTIONS_TOOL_NAME = 'record_cv_suggestions';
+const FOLLOW_UP_EMAIL_TOOL_NAME = 'record_follow_up_email';
 
 function buildParsedCvTool(): Anthropic.Tool {
   return {
@@ -228,6 +235,21 @@ function buildCvSuggestionsTool(): Anthropic.Tool {
         },
       },
       required: ['suggestions'],
+    },
+  };
+}
+
+function buildFollowUpEmailTool(): Anthropic.Tool {
+  return {
+    name: FOLLOW_UP_EMAIL_TOOL_NAME,
+    description: 'Record the drafted follow-up email. Call this exactly once.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        subject: { type: 'string', description: 'A short, professional email subject line.' },
+        body: { type: 'string', description: 'The full email body, including greeting and sign-off.' },
+      },
+      required: ['subject', 'body'],
     },
   };
 }
@@ -488,6 +510,51 @@ export class AnthropicAiProvider implements AiProvider {
 
     return {
       text: extractText(message, context),
+      modelUsed: message.model,
+      tokensUsed: totalTokens(message.usage),
+    };
+  }
+
+  async generateFollowUpEmail(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+    language: string,
+    daysSinceApplied: number,
+  ): Promise<FollowUpEmailResult> {
+    const context = 'generateFollowUpEmail';
+    const model = MODEL_ROUTING[TASK_MODEL_TIER.followUpEmail];
+    const system = [
+      interpolate(this.marketPack.languagePrompts.followUpEmail, {
+        language,
+        jobTitle: job.jobTitleNormalized,
+        companyName: job.companyNameNormalized,
+        daysSinceApplied: String(daysSinceApplied),
+      }),
+      `Call the ${FOLLOW_UP_EMAIL_TOOL_NAME} tool with the result. Do not include any other commentary.`,
+    ].join('\n\n');
+
+    const user = [formatProfileForPrompt(profile), 'Job details:', formatJobForPrompt(job)].join('\n\n');
+
+    const message = await this.createMessage(
+      {
+        model,
+        max_tokens: 1024,
+        system,
+        messages: [{ role: 'user', content: user }],
+        tools: [buildFollowUpEmailTool()],
+        tool_choice: { type: 'tool', name: FOLLOW_UP_EMAIL_TOOL_NAME },
+      },
+      context,
+    );
+
+    const toolInput = extractToolInput(message, FOLLOW_UP_EMAIL_TOOL_NAME, context);
+    if (!isRecord(toolInput) || typeof toolInput.subject !== 'string' || typeof toolInput.body !== 'string') {
+      throw new AiProviderError(`${context}: tool input missing "subject" or "body" string field`, 'malformed_response');
+    }
+
+    return {
+      subject: toolInput.subject,
+      body: toolInput.body,
       modelUsed: message.model,
       tokensUsed: totalTokens(message.usage),
     };

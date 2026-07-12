@@ -497,4 +497,156 @@ describe('Applications workflow (e2e)', () => {
       });
     });
   });
+
+  describe('Follow-up email drafts', () => {
+    let followUpSourceId: string;
+    let followUpApplicationId: string;
+
+    afterAll(async () => {
+      await deleteJobFixture(prisma, followUpSourceId);
+    });
+
+    beforeAll(async () => {
+      const fixture = await createJobFixture(prisma, { jobTitle: 'Follow-up Test Role' });
+      followUpSourceId = fixture.source.id;
+
+      const created = await request(app.getHttpServer())
+        .post('/applications')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ jobId: fixture.canonicalJob.id })
+        .expect(201);
+      followUpApplicationId = created.body.id;
+
+      await request(app.getHttpServer())
+        .patch(`/applications/${followUpApplicationId}/status`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'viewed' })
+        .expect(200);
+    });
+
+    it('requires auth', async () => {
+      await request(app.getHttpServer())
+        .post(`/applications/${followUpApplicationId}/follow-up`)
+        .send({})
+        .expect(401);
+    });
+
+    it('rejects drafting a follow-up before the application has actually been applied', async () => {
+      // Still "viewed" at this point in the describe block - not applied yet.
+      await request(app.getHttpServer())
+        .post(`/applications/${followUpApplicationId}/follow-up`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(409);
+    });
+
+    it('404s for an unowned application', async () => {
+      const email = uniqueEmail('follow-up-other-user');
+      const authRes = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email, password: 'correct-horse-battery-staple' });
+      const otherToken = authRes.body.accessToken;
+      const otherUserId = authRes.body.user.id;
+
+      await request(app.getHttpServer())
+        .post(`/applications/${followUpApplicationId}/follow-up`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .send({})
+        .expect(404);
+
+      await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
+    });
+
+    it('drafts a follow-up email once the application reaches "applied"', async () => {
+      await request(app.getHttpServer())
+        .post(`/applications/${followUpApplicationId}/draft`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/applications/${followUpApplicationId}/status`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'awaiting_approval' })
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/applications/${followUpApplicationId}/status`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'applied' })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .post(`/applications/${followUpApplicationId}/follow-up`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(201);
+
+      expect(res.body.subject).toEqual(expect.any(String));
+      expect(res.body.subject.length).toBeGreaterThan(0);
+      expect(res.body.body).toContain('follow-up test role');
+      expect(res.body.applicationId).toBe(followUpApplicationId);
+    });
+
+    it('also allows drafting a follow-up from "interview" status', async () => {
+      await request(app.getHttpServer())
+        .patch(`/applications/${followUpApplicationId}/status`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'interview' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/applications/${followUpApplicationId}/follow-up`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(201);
+    });
+
+    it('lists every generated follow-up, most recent first', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/applications/${followUpApplicationId}/follow-ups`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.length).toBe(2);
+      const createdAts = res.body.map((f: { createdAt: string }) => new Date(f.createdAt).getTime());
+      expect(createdAts[0]).toBeGreaterThanOrEqual(createdAts[1]);
+    });
+
+    it('rejects drafting a follow-up for a user with no candidate profile yet', async () => {
+      const email = uniqueEmail('follow-up-no-profile');
+      const authRes = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email, password: 'correct-horse-battery-staple' });
+      const token = authRes.body.accessToken;
+      const otherUserId = authRes.body.user.id;
+
+      const fixture = await createJobFixture(prisma, { jobTitle: 'No Profile Follow-up Role' });
+      const created = await request(app.getHttpServer())
+        .post('/applications')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ jobId: fixture.canonicalJob.id })
+        .expect(201);
+
+      // Drive status straight to "applied" via PATCH /status (which only
+      // checks canTransition, not profile completeness) rather than through
+      // POST /draft, so this user genuinely never needs a candidate profile
+      // to get here - isolating generateFollowUp's own profile check.
+      for (const status of ['viewed', 'draft_ready', 'awaiting_approval', 'applied']) {
+        await request(app.getHttpServer())
+          .patch(`/applications/${created.body.id}/status`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ status })
+          .expect(200);
+      }
+
+      const res = await request(app.getHttpServer())
+        .post(`/applications/${created.body.id}/follow-up`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(400);
+      expect(res.body.message).toContain('candidate profile');
+
+      await deleteJobFixture(prisma, fixture.source.id);
+      await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
+    });
+  });
 });
