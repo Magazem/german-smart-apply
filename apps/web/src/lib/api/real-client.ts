@@ -6,6 +6,7 @@ import type {
   CandidateProfile,
   CvVariantStyle,
   FollowUpDraft,
+  InterviewPrepDraft,
   JobFeedbackType,
   JobSearchFilters,
   ParsedCvResult,
@@ -293,6 +294,13 @@ export class RealApiClient implements ApiClient {
       }),
     listFollowUps: async (applicationId: string): Promise<FollowUpDraft[]> =>
       this.request<FollowUpDraft[]>(`/applications/${applicationId}/follow-ups`),
+    generateInterviewPrep: async (applicationId: string, language?: string): Promise<InterviewPrepDraft> =>
+      this.request<InterviewPrepDraft>(`/applications/${applicationId}/interview-prep`, {
+        method: 'POST',
+        body: JSON.stringify(language ? { language } : {}),
+      }),
+    listInterviewPreps: async (applicationId: string): Promise<InterviewPrepDraft[]> =>
+      this.request<InterviewPrepDraft[]>(`/applications/${applicationId}/interview-preps`),
   };
 
   usage = {

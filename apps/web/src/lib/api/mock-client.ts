@@ -9,6 +9,7 @@ import {
   type CandidateProfile,
   type CvVariantStyle,
   type FollowUpDraft,
+  type InterviewPrepDraft,
   type JobFeedbackType,
   type JobSearchFilters,
 } from '@german-smart-apply/shared';
@@ -63,6 +64,11 @@ function draftsFor(db: MockDb, applicationId: string): ApplicationDraft[] {
 /** Guards against a pre-follow-up-feature localStorage payload where db.followUpDrafts doesn't exist yet. */
 function followUpsFor(db: MockDb, applicationId: string): FollowUpDraft[] {
   return (db.followUpDrafts ?? {})[applicationId] ?? [];
+}
+
+/** Guards against a pre-interview-prep-feature localStorage payload where db.interviewPrepDrafts doesn't exist yet. */
+function interviewPrepsFor(db: MockDb, applicationId: string): InterviewPrepDraft[] {
+  return (db.interviewPrepDrafts ?? {})[applicationId] ?? [];
 }
 
 const FOLLOW_UP_ELIGIBLE_STATUSES: ApplicationStatus[] = ['applied', 'interview'];
@@ -651,6 +657,45 @@ export class MockApiClient implements ApiClient {
       const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
       if (!app) return [];
       return followUpsFor(db, applicationId);
+    },
+
+    generateInterviewPrep: async (applicationId: string, language?: string): Promise<InterviewPrepDraft> => {
+      await delay(400);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
+      if (!app) throw new Error('Application not found.');
+
+      const profile = db.profiles[userId];
+      if (!profile || !profile.targetRole) {
+        throw new Error('Complete your profile before generating interview prep.');
+      }
+      const job = JOB_FIXTURES.find((j) => j.jobId === app.jobId);
+      if (!job) throw new Error('Job no longer available.');
+
+      const result = await aiProvider.generateInterviewPrep(profile, job, language ?? profile.preferredLanguage);
+      const prep: InterviewPrepDraft = {
+        id: uid('interviewprep'),
+        applicationId,
+        questions: result.questions,
+        talkingPoints: result.talkingPoints,
+        modelUsed: result.modelUsed,
+        tokensUsed: result.tokensUsed,
+        createdAt: nowIso(),
+      };
+      db.interviewPrepDrafts ??= {};
+      db.interviewPrepDrafts[applicationId] = [prep, ...interviewPrepsFor(db, applicationId)];
+      saveDb(db);
+      return prep;
+    },
+
+    listInterviewPreps: async (applicationId: string): Promise<InterviewPrepDraft[]> => {
+      await delay(80);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
+      if (!app) return [];
+      return interviewPrepsFor(db, applicationId);
     },
   };
 

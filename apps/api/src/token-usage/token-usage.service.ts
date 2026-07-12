@@ -4,7 +4,13 @@ import { PrismaService } from '../prisma/prisma.service.js';
 // The AI-provider methods actually called from the API today.
 // generateCvSuggestions exists on the AiProvider interface but has no
 // caller yet (no wired endpoint) - nothing to instrument until it does.
-export type TokenUsageFeature = 'parseCv' | 'cvVariant' | 'coverLetter' | 'matchExplanation' | 'followUpEmail';
+export type TokenUsageFeature =
+  | 'parseCv'
+  | 'cvVariant'
+  | 'coverLetter'
+  | 'matchExplanation'
+  | 'followUpEmail'
+  | 'interviewPrep';
 
 export interface TokenUsageSummary {
   totalTokens: number;

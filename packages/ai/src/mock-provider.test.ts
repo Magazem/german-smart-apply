@@ -125,4 +125,20 @@ describe('MockAiProvider', () => {
     const result = await provider.generateFollowUpEmail(profile, job, 'de', 7);
     expect(result.body).toContain('Sehr geehrte Damen und Herren');
   });
+
+  it('generates interview prep questions and talking points referencing overlapping skills', async () => {
+    const result = await provider.generateInterviewPrep(profile, job, 'en');
+    expect(result.questions.length).toBeGreaterThan(0);
+    expect(result.talkingPoints.length).toBeGreaterThan(0);
+    expect(result.questions.some((q) => q.includes('senior backend engineer'))).toBe(true);
+    expect(result.talkingPoints.some((t) => t.includes('TypeScript') || t.includes('PostgreSQL'))).toBe(true);
+    expect(result.modelUsed).toBe('mock');
+    expect(result.tokensUsed).toBe(0);
+  });
+
+  it('falls back to target role when there is no skill overlap', async () => {
+    const noOverlapJob: CanonicalJob = { ...job, techStackTags: ['Rust', 'Go'] };
+    const result = await provider.generateInterviewPrep(profile, noOverlapJob, 'en');
+    expect(result.talkingPoints[0]).toContain('Backend Engineer');
+  });
 });

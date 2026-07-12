@@ -18,6 +18,7 @@ import { CreateApplicationDto } from './dto/create-application.dto.js';
 import { UpdateStatusDto } from './dto/update-status.dto.js';
 import { GenerateDraftDto } from './dto/generate-draft.dto.js';
 import { GenerateFollowUpDto } from './dto/generate-follow-up.dto.js';
+import { GenerateInterviewPrepDto } from './dto/generate-interview-prep.dto.js';
 
 @Controller('applications')
 @UseGuards(JwtAuthGuard)
@@ -72,6 +73,20 @@ export class ApplicationsController {
     @Body() dto: GenerateFollowUpDto,
   ) {
     return this.applicationsService.generateFollowUp(user.id, id, dto.language);
+  }
+
+  @Get(':id/interview-preps')
+  listInterviewPreps(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.applicationsService.listInterviewPreps(user.id, id);
+  }
+
+  @Post(':id/interview-prep')
+  generateInterviewPrep(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: GenerateInterviewPrepDto,
+  ) {
+    return this.applicationsService.generateInterviewPrep(user.id, id, dto.language);
   }
 
   @Get(':id/pdf')

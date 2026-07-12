@@ -47,6 +47,8 @@ export const marketDe: MarketPack = {
       'Explain in {{language}} why this candidate is a good fit for {{jobTitle}}, in 2-3 short sentences, referencing concrete overlap between the candidate skills and the job requirements.',
     followUpEmail:
       'Write a brief, polite follow-up email in {{language}} from the candidate to the hiring team for {{jobTitle}} at {{companyName}}, referencing that it has been {{daysSinceApplied}} days since they applied. Reaffirm interest and ask for a status update. Follow German business-email conventions (formal register, Sehr geehrte/r for German text). Keep it short - a few sentences, not a full letter.',
+    interviewPrep:
+      'Prepare the candidate in {{language}} for an interview for {{jobTitle}} at {{companyName}}. Generate 5-8 likely interview questions tailored to this role and company (mix of behavioral and role-specific/technical questions), plus 3-5 short talking points the candidate can use, each grounded in a concrete overlap between their profile and the job requirements. Keep questions and talking points concise and specific, not generic.',
   },
   cvFormattingNorms: {
     preferredLengthPages: 2,

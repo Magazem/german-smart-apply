@@ -13,6 +13,7 @@ import type {
   AiProvider,
   CvSuggestionsResult,
   FollowUpEmailResult,
+  InterviewPrepResult,
   ParseCvResult,
 } from './types.js';
 import { CV_VARIANT_STYLE_INSTRUCTIONS, MODEL_ROUTING, TASK_MODEL_TIER } from './types.js';
@@ -155,6 +156,7 @@ function parseParsedCvInput(input: unknown, context: string): ParsedCvResult {
 const PARSED_CV_TOOL_NAME = 'record_parsed_cv';
 const CV_SUGGESTIONS_TOOL_NAME = 'record_cv_suggestions';
 const FOLLOW_UP_EMAIL_TOOL_NAME = 'record_follow_up_email';
+const INTERVIEW_PREP_TOOL_NAME = 'record_interview_prep';
 
 function buildParsedCvTool(): Anthropic.Tool {
   return {
@@ -250,6 +252,29 @@ function buildFollowUpEmailTool(): Anthropic.Tool {
         body: { type: 'string', description: 'The full email body, including greeting and sign-off.' },
       },
       required: ['subject', 'body'],
+    },
+  };
+}
+
+function buildInterviewPrepTool(): Anthropic.Tool {
+  return {
+    name: INTERVIEW_PREP_TOOL_NAME,
+    description: 'Record the interview preparation content. Call this exactly once.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        questions: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '5-8 likely interview questions tailored to this role and company.',
+        },
+        talkingPoints: {
+          type: 'array',
+          items: { type: 'string' },
+          description: "3-5 short talking points grounded in the candidate's specific background.",
+        },
+      },
+      required: ['questions', 'talkingPoints'],
     },
   };
 }
@@ -555,6 +580,51 @@ export class AnthropicAiProvider implements AiProvider {
     return {
       subject: toolInput.subject,
       body: toolInput.body,
+      modelUsed: message.model,
+      tokensUsed: totalTokens(message.usage),
+    };
+  }
+
+  async generateInterviewPrep(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+    language: string,
+  ): Promise<InterviewPrepResult> {
+    const context = 'generateInterviewPrep';
+    const model = MODEL_ROUTING[TASK_MODEL_TIER.interviewPrep];
+    const system = [
+      interpolate(this.marketPack.languagePrompts.interviewPrep, {
+        language,
+        jobTitle: job.jobTitleNormalized,
+        companyName: job.companyNameNormalized,
+      }),
+      `Call the ${INTERVIEW_PREP_TOOL_NAME} tool with the result. Do not include any other commentary.`,
+    ].join('\n\n');
+
+    const user = [formatProfileForPrompt(profile), 'Job details:', formatJobForPrompt(job)].join('\n\n');
+
+    const message = await this.createMessage(
+      {
+        model,
+        max_tokens: 1536,
+        system,
+        messages: [{ role: 'user', content: user }],
+        tools: [buildInterviewPrepTool()],
+        tool_choice: { type: 'tool', name: INTERVIEW_PREP_TOOL_NAME },
+      },
+      context,
+    );
+
+    const toolInput = extractToolInput(message, INTERVIEW_PREP_TOOL_NAME, context);
+    const questions = isRecord(toolInput) ? asStringArray(toolInput.questions) : [];
+    const talkingPoints = isRecord(toolInput) ? asStringArray(toolInput.talkingPoints) : [];
+    if (questions.length === 0 || talkingPoints.length === 0) {
+      throw new AiProviderError(`${context}: tool input missing "questions" or "talkingPoints"`, 'malformed_response');
+    }
+
+    return {
+      questions,
+      talkingPoints,
       modelUsed: message.model,
       tokensUsed: totalTokens(message.usage),
     };

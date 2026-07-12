@@ -14,6 +14,7 @@ export const marketFr: MarketPack = {
     coverLetter: '',
     matchExplanation: '',
     followUpEmail: '',
+    interviewPrep: '',
   },
   cvFormattingNorms: {
     preferredLengthPages: 1,

@@ -17,6 +17,7 @@ export interface MarketPack {
     coverLetter: string;
     matchExplanation: string;
     followUpEmail: string;
+    interviewPrep: string;
   };
   cvFormattingNorms: {
     preferredLengthPages: number;

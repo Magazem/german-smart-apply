@@ -4,6 +4,7 @@ import type {
   AiProvider,
   CvSuggestionsResult,
   FollowUpEmailResult,
+  InterviewPrepResult,
   ParseCvResult,
 } from './types.js';
 
@@ -123,5 +124,28 @@ export class MockAiProvider implements AiProvider {
       modelUsed: 'mock',
       tokensUsed: 0,
     };
+  }
+
+  async generateInterviewPrep(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+    _language: string,
+  ): Promise<InterviewPrepResult> {
+    const overlap = profile.skills.filter((s) =>
+      job.techStackTags.some((t) => t.toLowerCase() === s.toLowerCase()),
+    );
+    const questions = [
+      `Why are you interested in the ${job.jobTitleNormalized} role at ${job.companyNameNormalized}?`,
+      `Walk me through a time you used ${overlap[0] ?? profile.skills[0] ?? 'a relevant skill'} to solve a difficult problem.`,
+      `How would you approach your first 90 days as a ${job.jobTitleNormalized}?`,
+      `Tell me about a time you disagreed with a teammate or manager. How did you handle it?`,
+      `What do you know about ${job.companyNameNormalized} and why do you want to work here?`,
+    ];
+    const talkingPoints = overlap.length
+      ? overlap
+          .slice(0, 3)
+          .map((skill) => `Highlight your hands-on experience with ${skill}, since it directly matches this role's requirements.`)
+      : [`Connect your experience toward "${profile.targetRole}" to the responsibilities of this ${job.jobTitleNormalized} role.`];
+    return { questions, talkingPoints, modelUsed: 'mock', tokensUsed: 0 };
   }
 }

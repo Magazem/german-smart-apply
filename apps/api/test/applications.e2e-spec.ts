@@ -649,4 +649,107 @@ describe('Applications workflow (e2e)', () => {
       await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
     });
   });
+
+  describe('Interview prep drafts', () => {
+    let interviewPrepSourceId: string;
+    let interviewPrepApplicationId: string;
+
+    afterAll(async () => {
+      await deleteJobFixture(prisma, interviewPrepSourceId);
+    });
+
+    beforeAll(async () => {
+      const fixture = await createJobFixture(prisma, { jobTitle: 'Interview Prep Test Role' });
+      interviewPrepSourceId = fixture.source.id;
+
+      const created = await request(app.getHttpServer())
+        .post('/applications')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ jobId: fixture.canonicalJob.id })
+        .expect(201);
+      interviewPrepApplicationId = created.body.id;
+    });
+
+    it('requires auth', async () => {
+      await request(app.getHttpServer())
+        .post(`/applications/${interviewPrepApplicationId}/interview-prep`)
+        .send({})
+        .expect(401);
+    });
+
+    it('404s for an unowned application', async () => {
+      const email = uniqueEmail('interview-prep-other-user');
+      const authRes = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email, password: 'correct-horse-battery-staple' });
+      const otherToken = authRes.body.accessToken;
+      const otherUserId = authRes.body.user.id;
+
+      await request(app.getHttpServer())
+        .post(`/applications/${interviewPrepApplicationId}/interview-prep`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .send({})
+        .expect(404);
+
+      await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
+    });
+
+    it('generates interview prep even while the application is still "new" - no status gate, unlike follow-ups', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/applications/${interviewPrepApplicationId}/interview-prep`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(201);
+
+      expect(Array.isArray(res.body.questions)).toBe(true);
+      expect(res.body.questions.length).toBeGreaterThan(0);
+      expect(res.body.questions.some((q: string) => q.includes('interview prep test role'))).toBe(true);
+      expect(Array.isArray(res.body.talkingPoints)).toBe(true);
+      expect(res.body.talkingPoints.length).toBeGreaterThan(0);
+      expect(res.body.applicationId).toBe(interviewPrepApplicationId);
+    });
+
+    it('lists every generated interview prep draft, most recent first', async () => {
+      await request(app.getHttpServer())
+        .post(`/applications/${interviewPrepApplicationId}/interview-prep`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get(`/applications/${interviewPrepApplicationId}/interview-preps`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.length).toBe(2);
+      const createdAts = res.body.map((p: { createdAt: string }) => new Date(p.createdAt).getTime());
+      expect(createdAts[0]).toBeGreaterThanOrEqual(createdAts[1]);
+    });
+
+    it('rejects generating interview prep for a user with no candidate profile yet', async () => {
+      const email = uniqueEmail('interview-prep-no-profile');
+      const authRes = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email, password: 'correct-horse-battery-staple' });
+      const token = authRes.body.accessToken;
+      const otherUserId = authRes.body.user.id;
+
+      const fixture = await createJobFixture(prisma, { jobTitle: 'No Profile Interview Prep Role' });
+      const created = await request(app.getHttpServer())
+        .post('/applications')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ jobId: fixture.canonicalJob.id })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post(`/applications/${created.body.id}/interview-prep`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(400);
+      expect(res.body.message).toContain('candidate profile');
+
+      await deleteJobFixture(prisma, fixture.source.id);
+      await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
+    });
+  });
 });

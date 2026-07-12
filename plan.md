@@ -363,7 +363,7 @@ Scope:
 
 Scope:
 - [ ] pgvector semantic matching layer
-- [ ] Interview prep module
+- [x] Interview prep module
 - [x] Follow-up email drafts
 - [x] PDF export for application packets
 - [ ] France market pack

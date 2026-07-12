@@ -7,6 +7,7 @@ import type {
   CanonicalJob,
   CvVariantStyle,
   FollowUpDraft,
+  InterviewPrepDraft,
   JobFeedbackType,
   JobMatchScore,
   JobSearchFilters,
@@ -194,6 +195,14 @@ export interface ApiClient {
     generateFollowUp(applicationId: string, language?: string): Promise<FollowUpDraft>;
     /** Every generated follow-up email for this application, most recent first. */
     listFollowUps(applicationId: string): Promise<FollowUpDraft[]>;
+    /**
+     * Generates likely interview questions and talking points for this
+     * application's job. Purely informational - no status gate, unlike
+     * follow-ups, since there's no "sent on your behalf" concern.
+     */
+    generateInterviewPrep(applicationId: string, language?: string): Promise<InterviewPrepDraft>;
+    /** Every generated interview prep draft for this application, most recent first. */
+    listInterviewPreps(applicationId: string): Promise<InterviewPrepDraft[]>;
   };
   usage: {
     summary(): Promise<TokenUsageSummary>;

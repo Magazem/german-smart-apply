@@ -18,6 +18,7 @@ import {
   toSharedApplication,
   toSharedApplicationDraft,
   toSharedFollowUpDraft,
+  toSharedInterviewPrepDraft,
 } from './application.mapper.js';
 import { buildApplicationPdf } from './application-pdf.js';
 import type { CreateApplicationDto } from './dto/create-application.dto.js';
@@ -364,6 +365,70 @@ export class ApplicationsService {
       },
     });
     return toSharedFollowUpDraft(created);
+  }
+
+  /** Every generated interview-prep draft for this application, most recent first. */
+  async listInterviewPreps(userId: string, applicationId: string) {
+    await this.getOwnedOrThrow(userId, applicationId);
+    const preps = await this.prisma.client.interviewPrepDraft.findMany({
+      where: { applicationId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return preps.map(toSharedInterviewPrepDraft);
+  }
+
+  /**
+   * Generates likely interview questions and talking points for this
+   * application's job. Purely informational research material for the
+   * candidate to review - unlike follow-ups, there's no "sent on your
+   * behalf" concern, so this isn't gated to any particular status: it's
+   * useful research prep from the moment a job is on the candidate's radar.
+   */
+  async generateInterviewPrep(userId: string, applicationId: string, language?: string) {
+    const application = await this.getOwnedOrThrow(userId, applicationId);
+
+    const profile = await this.prisma.client.candidateProfile.findUnique({ where: { userId } });
+    if (!profile) {
+      throw new BadRequestException('Complete your candidate profile before generating interview prep');
+    }
+
+    const jobRecord = await this.prisma.client.canonicalJob.findFirst({
+      where: { id: application.canonicalJobId },
+      include: { rawJob: { include: { source: true } } },
+    });
+    if (!jobRecord) {
+      throw new NotFoundException('Job not found');
+    }
+
+    const sharedProfile = toSharedCandidateProfile(profile);
+    const sharedJob = toSharedCanonicalJob(jobRecord);
+    const lang = language ?? profile.preferredLanguage;
+
+    let prep;
+    try {
+      prep = await this.aiProvider.generateInterviewPrep(sharedProfile, sharedJob, lang);
+    } catch (err) {
+      this.logger.error(`Interview prep generation failed for application ${applicationId}: ${String(err)}`);
+      if (err instanceof AiProviderError) {
+        throw new ServiceUnavailableException(
+          'Interview prep generation is temporarily unavailable - please try again shortly.',
+        );
+      }
+      throw err;
+    }
+
+    await this.tokenUsage.record(userId, 'interviewPrep', prep.modelUsed, prep.tokensUsed);
+
+    const created = await this.prisma.client.interviewPrepDraft.create({
+      data: {
+        applicationId,
+        questions: prep.questions,
+        talkingPoints: prep.talkingPoints,
+        modelUsed: prep.modelUsed,
+        tokensUsed: prep.tokensUsed,
+      },
+    });
+    return toSharedInterviewPrepDraft(created);
   }
 
   private async getOwnedOrThrow(userId: string, applicationId: string) {
