@@ -48,6 +48,7 @@ export default function JobDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [drafting, setDrafting] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [myFeedback, setMyFeedback] = useState<JobFeedbackType | null>(null);
   const [feedbackPending, setFeedbackPending] = useState(false);
@@ -148,6 +149,28 @@ export default function JobDetailPage() {
   };
 
   const selectedDraft = allDrafts.find((d) => d.id === selectedDraftId) ?? draft;
+
+  const handleDownloadPdf = async () => {
+    if (!application || !selectedDraft) return;
+    setDownloadingPdf(true);
+    setActionError(null);
+    try {
+      const blob = await getApiClient().applications.downloadPdf(application.id, selectedDraft.id);
+      // The mock client returns a text/plain stand-in (see mock-client.ts) -
+      // name the download by its actual type so it opens cleanly either way.
+      const extension = blob.type === 'application/pdf' ? 'pdf' : 'txt';
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `application-${job?.companyNameNormalized ?? 'packet'}.${extension}`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not download the application packet.');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   const handleFeedback = async (feedback: JobFeedbackType) => {
     if (!job || feedbackPending) return;
@@ -412,7 +435,18 @@ export default function JobDetailPage() {
 
         {selectedDraft && (
           <div className="card stack gap-12" style={{ padding: 20, background: 'var(--color-surface-alt)' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Tailored draft preview</h3>
+            <div className="row spread" style={{ alignItems: 'center' }}>
+              <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Tailored draft preview</h3>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleDownloadPdf}
+                disabled={downloadingPdf}
+                data-testid="download-pdf-button"
+              >
+                {downloadingPdf ? 'Preparing…' : 'Download PDF'}
+              </button>
+            </div>
             <p className="muted" style={{ fontSize: '0.82rem' }}>
               Review carefully — you'll need to explicitly approve this in the application queue before anything is
               considered "applied".

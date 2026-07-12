@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
+import pdfParse from 'pdf-parse';
 import type { INestApplication } from '@nestjs/common';
 import { createTestApp, type TestApp } from './test-app.js';
 import { createJobFixture, deleteJobFixture, uniqueEmail } from './fixtures.js';
@@ -347,6 +348,153 @@ describe('Applications workflow (e2e)', () => {
         .expect(200);
       expect(listRes.body.length).toBe(3);
       expect(listRes.body[0].variantLabel).toBe('concise');
+    });
+  });
+
+  describe('PDF export', () => {
+    it('requires auth', async () => {
+      await request(app.getHttpServer()).get(`/applications/${applicationId}/pdf`).expect(401);
+    });
+
+    it('404s for an application with no draft yet', async () => {
+      const fixture = await createJobFixture(prisma, { jobTitle: 'PDF No Draft Role' });
+      const created = await request(app.getHttpServer())
+        .post('/applications')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ jobId: fixture.canonicalJob.id })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .get(`/applications/${created.body.id}/pdf`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+
+      await deleteJobFixture(prisma, fixture.source.id);
+    });
+
+    it("404s exporting another user's application", async () => {
+      const email = uniqueEmail('pdf-other-reader');
+      const authRes = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email, password: 'correct-horse-battery-staple' });
+      const otherToken = authRes.body.accessToken;
+      const otherUserId = authRes.body.user.id;
+
+      await request(app.getHttpServer())
+        .get(`/applications/${applicationId}/pdf`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .expect(404);
+
+      await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
+    });
+
+    it('renders the latest draft as a real PDF containing the job and cover letter text', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/applications/${applicationId}/pdf`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200)
+        .buffer(true)
+        .parse((response, callback) => {
+          const chunks: Buffer[] = [];
+          response.on('data', (chunk: Buffer) => chunks.push(chunk));
+          response.on('end', () => callback(null, Buffer.concat(chunks)));
+        });
+
+      expect(res.headers['content-type']).toBe('application/pdf');
+      const body = res.body as Buffer;
+      expect(body.subarray(0, 4).toString('ascii')).toBe('%PDF');
+
+      const draftRes = await request(app.getHttpServer())
+        .get(`/applications/${applicationId}/draft`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      const parsed = await pdfParse(body);
+      expect(parsed.text).toContain('Platform Engineer');
+      // Whitespace-normalized comparison: pdf-parse doesn't reliably preserve
+      // blank-line spacing from pdfkit's rendered output, only line content.
+      const normalizedPdfText = parsed.text.replace(/\s+/g, ' ');
+      const normalizedCoverLetterStart = draftRes.body.coverLetterText
+        .replace(/\s+/g, ' ')
+        .slice(0, 40);
+      expect(normalizedPdfText).toContain(normalizedCoverLetterStart);
+    });
+
+    describe('draftId selection', () => {
+      let pdfSourceId: string;
+      let pdfApplicationId: string;
+
+      afterAll(async () => {
+        await deleteJobFixture(prisma, pdfSourceId);
+      });
+
+      beforeAll(async () => {
+        // accessToken's user became Pro earlier in this file (the "allows a
+        // Pro-tier user to generate a concise-style variant" test), so both
+        // variant styles are available here without another billing webhook.
+        const fixture = await createJobFixture(prisma, { jobTitle: 'PDF Variant Role' });
+        pdfSourceId = fixture.source.id;
+
+        const created = await request(app.getHttpServer())
+          .post('/applications')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({ jobId: fixture.canonicalJob.id })
+          .expect(201);
+        pdfApplicationId = created.body.id;
+
+        await request(app.getHttpServer())
+          .patch(`/applications/${pdfApplicationId}/status`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({ status: 'viewed' })
+          .expect(200);
+
+        await request(app.getHttpServer())
+          .post(`/applications/${pdfApplicationId}/draft`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({})
+          .expect(201);
+        await request(app.getHttpServer())
+          .post(`/applications/${pdfApplicationId}/draft`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({ variantStyle: 'concise' })
+          .expect(201);
+      });
+
+      it('exports a specific draft variant by draftId, not just the latest', async () => {
+        const draftsRes = await request(app.getHttpServer())
+          .get(`/applications/${pdfApplicationId}/drafts`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(200);
+
+        const conciseDraft = draftsRes.body.find(
+          (d: { variantLabel: string }) => d.variantLabel === 'concise',
+        );
+        const standardDraft = draftsRes.body.find(
+          (d: { variantLabel: string }) => d.variantLabel === 'standard',
+        );
+        expect(conciseDraft).toBeDefined();
+        expect(standardDraft).toBeDefined();
+
+        const fetchPdfText = async (draftId: string) => {
+          const res = await request(app.getHttpServer())
+            .get(`/applications/${pdfApplicationId}/pdf`)
+            .query({ draftId })
+            .set('Authorization', `Bearer ${accessToken}`)
+            .expect(200)
+            .buffer(true)
+            .parse((response, callback) => {
+              const chunks: Buffer[] = [];
+              response.on('data', (chunk: Buffer) => chunks.push(chunk));
+              response.on('end', () => callback(null, Buffer.concat(chunks)));
+            });
+          return pdfParse(res.body as Buffer).then((p) => p.text);
+        };
+
+        const conciseText = await fetchPdfText(conciseDraft.id);
+        const standardText = await fetchPdfText(standardDraft.id);
+        expect(conciseText).toContain('Tailored CV (concise)');
+        expect(standardText).toContain('Tailored CV (standard)');
+      });
     });
   });
 });

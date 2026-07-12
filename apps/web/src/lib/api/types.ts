@@ -176,6 +176,8 @@ export interface ApiClient {
      * apps/api defines the real one.
      */
     history(applicationId: string): Promise<ApplicationEvent[]>;
+    /** Renders a draft's CV + cover letter + job details as a PDF. Defaults to the latest draft. */
+    downloadPdf(applicationId: string, draftId?: string): Promise<Blob>;
   };
   usage: {
     summary(): Promise<TokenUsageSummary>;

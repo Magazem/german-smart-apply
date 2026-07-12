@@ -275,6 +275,15 @@ export class RealApiClient implements ApiClient {
         return [];
       }
     },
+    downloadPdf: async (applicationId: string, draftId?: string): Promise<Blob> => {
+      const token = getToken();
+      const query = draftId ? `?draftId=${encodeURIComponent(draftId)}` : '';
+      const res = await fetch(`${this.baseUrl}/applications/${applicationId}/pdf${query}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error(`PDF export failed: ${res.status}`);
+      return res.blob();
+    },
   };
 
   usage = {

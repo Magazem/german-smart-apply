@@ -15,6 +15,7 @@ import { TokenUsageService } from '../token-usage/token-usage.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
 import { toSharedCanonicalJob } from '../jobs/canonical-job.mapper.js';
 import { toSharedApplication, toSharedApplicationDraft } from './application.mapper.js';
+import { buildApplicationPdf } from './application-pdf.js';
 import type { CreateApplicationDto } from './dto/create-application.dto.js';
 import type { UpdateStatusDto } from './dto/update-status.dto.js';
 
@@ -61,6 +62,64 @@ export class ApplicationsService {
       orderBy: { createdAt: 'desc' },
     });
     return drafts.map(toSharedApplicationDraft);
+  }
+
+  /**
+   * Renders a draft's CV + cover letter + job details as a downloadable PDF.
+   * Defaults to the most recent draft; pass `draftId` to export a specific
+   * variant instead (e.g. the one the user picked in the UI).
+   */
+  async generatePdf(userId: string, applicationId: string, draftId?: string) {
+    const application = await this.getOwnedOrThrow(userId, applicationId);
+
+    const draft = draftId
+      ? await this.prisma.client.applicationDraft.findFirst({
+          where: { id: draftId, applicationId },
+        })
+      : await this.prisma.client.applicationDraft.findFirst({
+          where: { applicationId },
+          orderBy: { createdAt: 'desc' },
+        });
+    if (!draft) {
+      throw new NotFoundException('No draft found for this application');
+    }
+
+    const [user, profile, jobRecord] = await Promise.all([
+      this.prisma.client.user.findUniqueOrThrow({ where: { id: userId } }),
+      this.prisma.client.candidateProfile.findUnique({ where: { userId } }),
+      this.prisma.client.canonicalJob.findFirst({
+        where: { id: application.canonicalJobId },
+        include: { rawJob: true },
+      }),
+    ]);
+    if (!jobRecord) {
+      throw new NotFoundException('Job not found');
+    }
+
+    return buildApplicationPdf(
+      { fullName: profile?.fullName ?? null, email: user.email },
+      {
+        // Raw (as-originally-posted) casing, not the lowercased *Normalized
+        // fields used internally for matching/dedup - this PDF is an
+        // artifact the candidate sends to an employer, so it should read
+        // like a real job title/company name, not a normalization key.
+        jobTitle: jobRecord.rawJob.jobTitleRaw,
+        companyName: jobRecord.rawJob.companyNameRaw,
+        locationNormalized: jobRecord.locationNormalized,
+        remoteType: jobRecord.remoteType,
+        employmentType: jobRecord.employmentType,
+        salaryMin: jobRecord.salaryMin,
+        salaryMax: jobRecord.salaryMax,
+        salaryCurrency: jobRecord.salaryCurrency,
+        applyUrl: jobRecord.rawJob.applyUrl,
+      },
+      {
+        cvVariantText: draft.cvVariantText,
+        coverLetterText: draft.coverLetterText,
+        variantLabel: draft.variantLabel,
+        createdAt: draft.createdAt,
+      },
+    );
   }
 
   async create(userId: string, dto: CreateApplicationDto) {

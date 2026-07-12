@@ -555,6 +555,38 @@ export class MockApiClient implements ApiClient {
         .filter((e) => e.applicationId === applicationId)
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     },
+
+    // Real client renders an actual PDF server-side (verified against a real
+    // pdf-parse round-trip); a plain-text stand-in here is enough for
+    // interface parity in the mock demo - genuinely built from mock DB state,
+    // just not PDF bytes. The caller must save it as .txt, not .pdf.
+    downloadPdf: async (applicationId: string, draftId?: string): Promise<Blob> => {
+      await delay(150);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
+      if (!app) throw new Error('Application not found.');
+      const drafts = draftsFor(db, applicationId);
+      const draft = draftId ? drafts.find((d) => d.id === draftId) : drafts[0];
+      if (!draft) throw new Error('No draft found for this application.');
+      const job = JOB_FIXTURES.find((j) => j.jobId === app.jobId);
+      const user = db.users.find((u) => u.id === userId);
+      const profile = db.profiles[userId];
+
+      const text = [
+        profile?.fullName ?? user?.email ?? '',
+        user?.email ?? '',
+        '',
+        job ? `${job.jobTitleRaw} at ${job.companyNameRaw}` : '',
+        '',
+        'Cover Letter',
+        draft.coverLetterText,
+        '',
+        `Tailored CV (${draft.variantLabel})`,
+        draft.cvVariantText,
+      ].join('\n');
+      return new Blob([text], { type: 'text/plain' });
+    },
   };
 
   usage = {
