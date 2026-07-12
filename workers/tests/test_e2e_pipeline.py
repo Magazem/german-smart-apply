@@ -9,7 +9,7 @@ from __future__ import annotations
 import psycopg2.extras
 
 from crawler import greenhouse, lever, runner
-from deduplicator import dedup
+from deduplicator import dedup, near_duplicates
 from normalizer import pipeline
 from tests.conftest import load_fixture
 from tests.fakes import FakeClient, FakeResponse
@@ -154,3 +154,17 @@ def test_full_pipeline_snapshot_to_normalize_to_dedup_collapses_duplicate(seeded
     solo_members = dict_cur.fetchall()
     assert len(solo_members) == 1
     assert solo_members[0]["isCanonicalPick"] is True
+
+    # --- Step 4: near-duplicate clustering ---
+    # The two remaining canonical_jobs (Senior Backend Engineer/Berlin and
+    # Werkstudent Marketing/Remote) are genuinely different roles in
+    # different locations - the real crawler/normalizer fixtures exercised
+    # above give a second, independent confirmation (beyond
+    # test_near_duplicates.py's hand-built rows) that this stage is a no-op
+    # here rather than wrongly merging them.
+    near_dup_result = near_duplicates.run_near_duplicate_clustering(conn)
+    assert near_dup_result["nearDuplicateClustersCreated"] == 0
+    assert near_dup_result["jobsHidden"] == 0
+
+    dict_cur.execute('SELECT COUNT(*) AS cnt FROM "canonical_jobs" WHERE "isVisible" = true')
+    assert dict_cur.fetchone()["cnt"] == 2

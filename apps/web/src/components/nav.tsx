@@ -8,6 +8,7 @@ import { initials } from '@/lib/format';
 const LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/jobs', label: 'Job search' },
+  { href: '/saved-searches', label: 'Saved searches' },
   { href: '/applications', label: 'Applications' },
   { href: '/cv', label: 'CV workspace' },
   { href: '/billing', label: 'Billing' },
@@ -56,7 +57,7 @@ export function Nav() {
 
         {!loading && user && (
           <nav className="row gap-16" style={{ flex: 1, justifyContent: 'center' }} aria-label="Primary">
-            {LINKS.map((link) => {
+            {(user.role === 'admin' ? [...LINKS, { href: '/admin', label: 'Admin' }] : LINKS).map((link) => {
               const active = pathname === link.href || pathname?.startsWith(`${link.href}/`);
               return (
                 <Link

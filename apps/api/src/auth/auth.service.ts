@@ -63,6 +63,7 @@ export class AuthService {
         id: true,
         email: true,
         subscriptionStatus: true,
+        role: true,
         createdAt: true,
         candidateProfile: true,
       },

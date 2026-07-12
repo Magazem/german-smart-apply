@@ -7,10 +7,13 @@ import { JobsModule } from './jobs/jobs.module.js';
 import { ApplicationsModule } from './applications/applications.module.js';
 import { SavedSearchesModule } from './saved-searches/saved-searches.module.js';
 import { BillingModule } from './billing/billing.module.js';
+import { TokenUsageModule } from './token-usage/token-usage.module.js';
+import { AdminModule } from './admin/admin.module.js';
 
 @Module({
   imports: [
     PrismaModule,
+    TokenUsageModule,
     AuthModule,
     ProfileModule,
     CvModule,
@@ -18,6 +21,7 @@ import { BillingModule } from './billing/billing.module.js';
     ApplicationsModule,
     SavedSearchesModule,
     BillingModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

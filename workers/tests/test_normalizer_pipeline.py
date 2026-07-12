@@ -4,6 +4,11 @@ One test per source type, using the same fixtures the crawler adapter tests use.
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from normalizer.extractors import extract_common_fields
 from normalizer.pipeline import _parse_datetime, build_raw_job_fields
 from tests.conftest import load_fixture
 
@@ -40,6 +45,27 @@ def test_parse_datetime_always_returns_naive_utc_regardless_of_source_offset():
     plus_two_offset = _parse_datetime("2026-07-01T10:00:00+02:00")
     assert plus_two_offset.tzinfo is None
     assert (plus_two_offset.hour, plus_two_offset.minute) == (8, 0)
+
+
+def test_parse_datetime_missing_value_returns_none():
+    # A source that simply doesn't provide a posting date (common.get(
+    # "posted_at") comes back None/empty) must not error -- postedAt just
+    # stays nullable in raw_jobs.
+    assert _parse_datetime(None) is None
+    assert _parse_datetime("") is None
+
+
+def test_parse_datetime_accepts_an_already_parsed_datetime_object():
+    aware = datetime(2026, 7, 1, 10, 0, tzinfo=timezone(timedelta(hours=2)))
+    result = _parse_datetime(aware)
+    assert result.tzinfo is None
+    assert (result.hour, result.minute) == (8, 0)  # converted to UTC wall-clock, not just stripped
+
+
+def test_parse_datetime_malformed_string_returns_none_instead_of_raising():
+    # A flaky/malformed source value shouldn't crash the normalizer run --
+    # postedAt just comes back None, same as a missing value.
+    assert _parse_datetime("not a real date, sorry") is None
 
 
 def test_build_raw_job_fields_greenhouse():
@@ -125,3 +151,11 @@ def test_build_raw_job_fields_scam_listing_shape_still_normalizes():
     assert result["originalJobId"] == "9999"
     assert result["companyNameNormalized"] == "quick cash ventures"
     assert result["applyUrl"] == "https://totally-legit-jobs.tk/apply/9999"
+
+
+def test_extract_common_fields_raises_for_an_unregistered_source_type():
+    # Mirrors crawler.runner.fetch_source's own unregistered-adapter guard --
+    # a config/data error should surface as a clear, immediate ValueError,
+    # not a confusing KeyError from whichever extractor happened to run.
+    with pytest.raises(ValueError, match="unknown-board"):
+        extract_common_fields("unknown-board", {})

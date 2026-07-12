@@ -7,13 +7,12 @@ raw_jobs/canonical_jobs/duplicate_clusters/duplicate_cluster_members.
 """
 from __future__ import annotations
 
-import uuid
-
 import psycopg2.extras
 
 from deduplicator import dedup, trust
 from deduplicator.seed import seed_company_aliases
 from normalizer.fields import normalize_company_name
+from tests.helpers import insert_raw_job
 
 
 # ---------------------------------------------------------------------------
@@ -103,10 +102,15 @@ def test_scam_risk_score_mailto_to_a_non_suspicious_domain_is_not_flagged():
 def test_seed_company_aliases_inserts_only_genuinely_different_normalized_variants(pg_conn):
     inserted = seed_company_aliases(pg_conn)
     # "SAP"/"SAP AG" normalize to the same key as canonical "SAP SE" ("sap") and
-    # are skipped as self-mapping no-ops; only "SAP Deutschland" differs.
-    # Zalando's aliases all collapse to "zalando" too (0 inserted).
-    # Deutsche Telekom contributes "t-systems" and "telekom".
-    assert inserted == 3
+    # are skipped as self-mapping no-ops; only "SAP Deutschland" differs (1).
+    # Zalando's aliases all collapse to "zalando" too (0).
+    # Deutsche Telekom contributes "t-systems" and "telekom" (2).
+    # ERGO contributes "ergo group" (1).
+    # Ferchau's bare "GmbH" form is a no-op; its three branch-office variants
+    # each differ from canonical "ferchau" (3).
+    # Siemens/Bosch/Allianz/Continental each contribute exactly one genuine
+    # variant beyond their self-mapping bare form (4).
+    assert inserted == 1 + 0 + 2 + 1 + 3 + 4
 
 
 def test_resolve_company_key_via_alias(seeded_db):
@@ -116,6 +120,17 @@ def test_resolve_company_key_via_alias(seeded_db):
     assert dedup.resolve_company_key(cur, normalize_company_name("SAP Deutschland")) == "sap"
     assert dedup.resolve_company_key(cur, normalize_company_name("T-Systems")) == "deutsche telekom"
     assert dedup.resolve_company_key(cur, normalize_company_name("Telekom")) == "deutsche telekom"
+    assert dedup.resolve_company_key(cur, normalize_company_name("ERGO Group")) == "ergo"
+    assert (
+        dedup.resolve_company_key(cur, normalize_company_name("Ferchau GmbH Niederlassung Lübeck"))
+        == "ferchau"
+    )
+    assert (
+        dedup.resolve_company_key(cur, normalize_company_name("Ferchau GmbH Niederlassung Rosenheim"))
+        == "ferchau"
+    )
+    assert dedup.resolve_company_key(cur, normalize_company_name("Bosch")) == "robert bosch"
+    assert dedup.resolve_company_key(cur, normalize_company_name("Conti")) == "continental"
 
 
 def test_resolve_company_key_passthrough_for_unknown_company(seeded_db):
@@ -142,57 +157,12 @@ def test_compute_cluster_key_is_deterministic_and_order_sensitive():
 # run_dedup: exact-duplicate collapse vs. near-miss (must NOT collapse)
 # ---------------------------------------------------------------------------
 
-def _insert_raw_job(cur, source_id: str, **overrides) -> str:
-    row_id = str(uuid.uuid4())
-    defaults = {
-        "originalJobId": str(uuid.uuid4()),
-        "sourceUrl": "https://example.com/job",
-        "companyNameRaw": "Acme GmbH",
-        "companyNameNormalized": "acme",
-        "jobTitleRaw": "Senior Backend Engineer",
-        "jobTitleNormalized": "senior backend engineer",
-        "jobDescriptionHtml": None,
-        "jobDescriptionText": "We are looking for a Senior Backend Engineer.",
-        "language": "en",
-        "locationRaw": "Berlin",
-        "locationNormalized": "Berlin",
-        "countryCode": "DE",
-        "remoteType": "onsite",
-        "employmentType": "full_time",
-        "seniority": "senior",
-        "salaryMin": None,
-        "salaryMax": None,
-        "salaryCurrency": None,
-        "techStackTags": [],
-        "applyUrl": "https://example.com/job",
-        "postedAt": None,
-    }
-    defaults.update(overrides)
-    cur.execute(
-        """
-        INSERT INTO "raw_jobs" (
-            "id", "sourceId", "originalJobId", "sourceUrl", "companyNameRaw", "companyNameNormalized",
-            "jobTitleRaw", "jobTitleNormalized", "jobDescriptionHtml", "jobDescriptionText", "language",
-            "locationRaw", "locationNormalized", "countryCode", "remoteType", "employmentType", "seniority",
-            "salaryMin", "salaryMax", "salaryCurrency", "techStackTags", "applyUrl", "postedAt"
-        ) VALUES (
-            %(id)s, %(sourceId)s, %(originalJobId)s, %(sourceUrl)s, %(companyNameRaw)s, %(companyNameNormalized)s,
-            %(jobTitleRaw)s, %(jobTitleNormalized)s, %(jobDescriptionHtml)s, %(jobDescriptionText)s, %(language)s,
-            %(locationRaw)s, %(locationNormalized)s, %(countryCode)s, %(remoteType)s, %(employmentType)s, %(seniority)s,
-            %(salaryMin)s, %(salaryMax)s, %(salaryCurrency)s, %(techStackTags)s, %(applyUrl)s, %(postedAt)s
-        )
-        """,
-        {"id": row_id, "sourceId": source_id, **defaults},
-    )
-    return row_id
-
-
 def test_run_dedup_collapses_exact_duplicates_across_sources(seeded_db):
     conn, source_ids = seeded_db
     cur = conn.cursor()
 
-    gh_job_id = _insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-1")
-    lever_job_id = _insert_raw_job(
+    gh_job_id = insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-1")
+    lever_job_id = insert_raw_job(
         cur, source_ids["lever-de"], originalJobId="lv-1", sourceUrl="https://jobs.lever.co/acme/abc-123"
     )
 
@@ -228,8 +198,8 @@ def test_run_dedup_does_not_collapse_near_miss_different_location(seeded_db):
     conn, source_ids = seeded_db
     cur = conn.cursor()
 
-    _insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-berlin", locationNormalized="Berlin")
-    _insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-munich", locationNormalized="Munich")
+    insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-berlin", locationNormalized="Berlin")
+    insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-munich", locationNormalized="Munich")
 
     result = dedup.run_dedup(conn)
 
@@ -247,15 +217,80 @@ def test_run_dedup_does_not_collapse_near_miss_different_location(seeded_db):
     assert len(dict_cur.fetchall()) == 2
 
 
+def test_run_dedup_collapses_aliased_company_spelling_at_the_same_location(seeded_db):
+    """End-to-end: two sources spell the same real employer differently
+    (canonical "ergo" vs. the observed "ERGO Group" variant) but post the
+    identical role in the identical city - resolve_company_key must unify
+    them into one canonical_jobs row, same as an already-identical spelling
+    would.
+    """
+    conn, source_ids = seeded_db
+    cur = conn.cursor()
+
+    insert_raw_job(
+        cur, source_ids["greenhouse-de"], originalJobId="ergo-1",
+        companyNameRaw="ERGO", companyNameNormalized="ergo",
+    )
+    insert_raw_job(
+        cur, source_ids["lever-de"], originalJobId="ergo-2",
+        sourceUrl="https://jobs.lever.co/ergo/xyz-1",
+        companyNameRaw="ERGO Group", companyNameNormalized="ergo group",
+    )
+
+    result = dedup.run_dedup(conn)
+
+    assert result["groups"] == 1
+    assert result["canonicalJobsCreated"] == 1
+
+    dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    dict_cur.execute('SELECT * FROM "canonical_jobs"')
+    assert len(dict_cur.fetchall()) == 1
+
+
+def test_run_dedup_does_not_collapse_aliased_branch_offices_in_different_cities(seeded_db):
+    """The asymmetric-risk case: Ferchau's Lübeck and Rosenheim branches both
+    alias to the canonical "ferchau" key, but they are genuinely different
+    job openings in different cities - a wrong company-identity merge must
+    not also merge the postings themselves. compute_cluster_key includes
+    location, so these must remain two separate canonical_jobs rows.
+    """
+    conn, source_ids = seeded_db
+    cur = conn.cursor()
+
+    insert_raw_job(
+        cur, source_ids["greenhouse-de"], originalJobId="ferchau-luebeck",
+        companyNameRaw="Ferchau GmbH Niederlassung Lübeck",
+        companyNameNormalized="ferchau gmbh niederlassung lübeck",
+        locationNormalized="Lübeck",
+    )
+    insert_raw_job(
+        cur, source_ids["greenhouse-de"], originalJobId="ferchau-rosenheim",
+        companyNameRaw="Ferchau GmbH Niederlassung Rosenheim",
+        companyNameNormalized="ferchau gmbh niederlassung rosenheim",
+        locationNormalized="Rosenheim",
+    )
+
+    result = dedup.run_dedup(conn)
+
+    assert result["groups"] == 2
+    assert result["canonicalJobsCreated"] == 2
+
+    dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    dict_cur.execute('SELECT * FROM "canonical_jobs"')
+    canonical_rows = dict_cur.fetchall()
+    assert len(canonical_rows) == 2
+    assert {r["locationNormalized"] for r in canonical_rows} == {"Lübeck", "Rosenheim"}
+
+
 def test_run_dedup_does_not_collapse_near_miss_different_title(seeded_db):
     conn, source_ids = seeded_db
     cur = conn.cursor()
 
-    _insert_raw_job(
+    insert_raw_job(
         cur, source_ids["greenhouse-de"], originalJobId="gh-backend",
         jobTitleNormalized="senior backend engineer",
     )
-    _insert_raw_job(
+    insert_raw_job(
         cur, source_ids["greenhouse-de"], originalJobId="gh-frontend",
         jobTitleNormalized="senior frontend engineer",
     )
@@ -275,8 +310,8 @@ def test_run_dedup_picks_higher_trust_source_as_canonical(seeded_db):
     # this deterministic by downgrading lever-de's trust tier for this test.
     cur.execute('UPDATE "sources" SET "trustTier" = %s WHERE "id" = %s', ("low", source_ids["lever-de"]))
 
-    gh_job_id = _insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-1")
-    _insert_raw_job(cur, source_ids["lever-de"], originalJobId="lv-1")
+    gh_job_id = insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-1")
+    insert_raw_job(cur, source_ids["lever-de"], originalJobId="lv-1")
 
     dedup.run_dedup(conn)
 
@@ -296,7 +331,7 @@ def test_run_dedup_collapses_cross_run_duplicates(seeded_db):
     conn, source_ids = seeded_db
     cur = conn.cursor()
 
-    gh_job_id = _insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-1")
+    gh_job_id = insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-1")
     first_result = dedup.run_dedup(conn)
     assert first_result["canonicalJobsCreated"] == 1
     assert first_result["duplicateClustersCreated"] == 1
@@ -308,7 +343,7 @@ def test_run_dedup_collapses_cross_run_duplicates(seeded_db):
     first_canonical_id = canonical_after_first_run[0]["id"]
 
     # A second source posts an exact duplicate, discovered in a *later* run.
-    lever_job_id = _insert_raw_job(
+    lever_job_id = insert_raw_job(
         cur, source_ids["lever-de"], originalJobId="lv-1", sourceUrl="https://jobs.lever.co/acme/abc-123"
     )
     second_result = dedup.run_dedup(conn)
@@ -346,7 +381,7 @@ def test_run_dedup_promotes_higher_trust_job_arriving_in_a_later_run(seeded_db):
 
     cur.execute('UPDATE "sources" SET "trustTier" = %s WHERE "id" = %s', ("low", source_ids["lever-de"]))
 
-    lever_job_id = _insert_raw_job(cur, source_ids["lever-de"], originalJobId="lv-first")
+    lever_job_id = insert_raw_job(cur, source_ids["lever-de"], originalJobId="lv-first")
     dedup.run_dedup(conn)
 
     dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -355,7 +390,7 @@ def test_run_dedup_promotes_higher_trust_job_arriving_in_a_later_run(seeded_db):
     assert initial_canonical["rawJobId"] == lever_job_id
 
     # A higher-trust source posts the same role, discovered in a later run.
-    gh_job_id = _insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-later")
+    gh_job_id = insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-later")
     dedup.run_dedup(conn)
 
     dict_cur.execute('SELECT * FROM "canonical_jobs"')

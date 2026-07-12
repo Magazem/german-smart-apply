@@ -50,8 +50,13 @@ auth tokens or flip any user's subscription tier. `ANTHROPIC_API_KEY` is the
 only one that's genuinely optional; omitting it runs with the deterministic
 `MockAiProvider` (no security implication either way, just fake AI output).
 
-Run migrations once against the target database before first deploy (or as
-a release step): `DATABASE_URL=... pnpm --filter @german-smart-apply/db migrate:deploy`.
+Migrations run automatically as part of every deploy — `apps/api/fly.toml`
+sets `[deploy] release_command` to `pnpm --filter @german-smart-apply/db
+migrate:deploy`, which Fly runs in a one-off machine against `DATABASE_URL`
+before the new version takes traffic. A failed migration aborts the deploy
+and leaves the previous version running, so there's no manual step here —
+just make sure `DATABASE_URL` is set via `fly secrets` (below) before the
+first deploy.
 
 ## Deploy the frontend
 
@@ -111,3 +116,16 @@ Once the API is deployed, register the webhook endpoint in the Stripe
 dashboard (or via `stripe listen --forward-to` for local testing) pointing at
 `https://<api-domain>/billing/webhook`, and set `STRIPE_WEBHOOK_SECRET` to the
 signing secret Stripe gives you for that endpoint.
+
+## Promoting an admin user
+
+There is no self-serve path to the `/admin` source-health panel — same
+reasoning as there being no self-serve path to Pro without going through
+Stripe. Promote a user by setting their `role` column directly:
+
+```sql
+UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
+```
+
+Takes effect on that user's next request (role isn't cached in the JWT -
+`AdminGuard` looks it up fresh every time, same pattern as `ProTierGuard`).

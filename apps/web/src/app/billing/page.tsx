@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRequireAuth } from '@/lib/use-require-auth';
 import { useAuth } from '@/lib/auth-context';
+import { getApiClient } from '@/lib/api-client';
+import type { TokenUsageSummary } from '@/lib/api/types';
 
 const FREE_FEATURES = [
   'CV parsing + starter profile',
@@ -21,10 +23,32 @@ const PRO_FEATURES = [
   'Deeper application tracking & alerts',
 ];
 
+const FEATURE_LABELS: Record<string, string> = {
+  parseCv: 'CV parsing',
+  cvVariant: 'Tailored CV generation',
+  coverLetter: 'Cover letter generation',
+  matchExplanation: 'Match explanations',
+};
+
 export default function BillingPage() {
   const { loading } = useRequireAuth();
   const { user } = useAuth();
   const [message, setMessage] = useState<string | null>(null);
+  const [usage, setUsage] = useState<TokenUsageSummary | null>(null);
+
+  useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
+    void getApiClient()
+      .usage.summary()
+      .then((result) => {
+        if (!cancelled) setUsage(result);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [loading]);
 
   if (loading) {
     return (
@@ -98,6 +122,34 @@ export default function BillingPage() {
       {message && (
         <div className="card" style={{ padding: 16, background: 'var(--color-info-bg)', border: 'none' }}>
           <p style={{ fontSize: '0.88rem' }}>{message}</p>
+        </div>
+      )}
+
+      {usage && (
+        <div className="card stack gap-12" style={{ padding: 24 }}>
+          <div className="stack gap-4">
+            <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>Your AI usage</h2>
+            <p className="muted" style={{ fontSize: '0.82rem' }}>
+              Tokens spent on CV parsing, tailored drafts, and match explanations, all-time.
+            </p>
+          </div>
+          {usage.totalTokens === 0 ? (
+            <p className="muted" style={{ fontSize: '0.88rem' }}>No AI usage recorded yet.</p>
+          ) : (
+            <>
+              <p style={{ fontWeight: 700, fontSize: '1.1rem' }}>{usage.totalTokens.toLocaleString()} tokens</p>
+              <div className="stack gap-8">
+                {usage.byFeature.map((f) => (
+                  <div key={f.feature} className="row spread" style={{ fontSize: '0.85rem' }}>
+                    <span>
+                      {FEATURE_LABELS[f.feature] ?? f.feature} <span className="muted">({f.callCount} calls)</span>
+                    </span>
+                    <span className="muted">{f.tokensUsed.toLocaleString()} tokens</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 

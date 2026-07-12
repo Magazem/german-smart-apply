@@ -4,18 +4,26 @@ import type {
   ApplicationEvent,
   ApplicationStatus,
   CandidateProfile,
+  CvVariantStyle,
+  JobFeedbackType,
   JobSearchFilters,
   ParsedCvResult,
 } from '@german-smart-apply/shared';
 import type {
+  AlertRunSummary,
   ApiClient,
   AuthSession,
   AuthUser,
   CvUploadInput,
+  DedupStats,
   JobDetailResult,
   JobSearchResult,
   LoginInput,
   RegisterInput,
+  SavedSearch,
+  SourceHealth,
+  SourceCrawlRun,
+  TokenUsageSummary,
 } from './types';
 
 const TOKEN_STORAGE_KEY = 'gsa_auth_token';
@@ -40,6 +48,7 @@ interface RawMeResult {
   id: string;
   email: string;
   subscriptionStatus: 'free' | 'pro' | 'canceled' | 'past_due';
+  role: 'user' | 'admin';
   createdAt: string;
   candidateProfile: { fullName: string | null } | null;
 }
@@ -50,6 +59,7 @@ function toAuthUser(raw: RawMeResult): AuthUser {
     email: raw.email,
     fullName: raw.candidateProfile?.fullName ?? null,
     tier: raw.subscriptionStatus === 'pro' ? 'pro' : 'free',
+    role: raw.role,
     createdAt: raw.createdAt,
   };
 }
@@ -90,6 +100,7 @@ export class RealApiClient implements ApiClient {
         email: result.user.email,
         fullName: null,
         tier: 'free' as const,
+        role: 'user' as const,
         createdAt: new Date().toISOString(),
       };
       return { user, token: result.accessToken };
@@ -105,6 +116,7 @@ export class RealApiClient implements ApiClient {
         email: result.user.email,
         fullName: null,
         tier: 'free' as const,
+        role: 'user' as const,
         createdAt: new Date().toISOString(),
       };
       return { user, token: result.accessToken };
@@ -182,13 +194,43 @@ export class RealApiClient implements ApiClient {
     },
     get: async (id: string): Promise<JobDetailResult | null> => {
       try {
-        const raw = await this.request<{ job: JobDetailResult['job']; score: JobDetailResult['match'] }>(
-          `/jobs/${id}`,
-        );
-        return { job: raw.job, match: raw.score };
+        const raw = await this.request<{
+          job: JobDetailResult['job'];
+          score: JobDetailResult['match'];
+          myFeedback?: JobFeedbackType | null;
+        }>(`/jobs/${id}`);
+        return { job: raw.job, match: raw.score, myFeedback: raw.myFeedback ?? null };
       } catch {
         return null;
       }
+    },
+    recordFeedback: async (
+      id: string,
+      feedback: JobFeedbackType,
+    ): Promise<{ feedback: JobFeedbackType | null }> =>
+      this.request<{ feedback: JobFeedbackType | null }>(`/jobs/${id}/feedback`, {
+        method: 'POST',
+        body: JSON.stringify({ feedback }),
+      }),
+  };
+
+  savedSearches = {
+    list: async (): Promise<SavedSearch[]> => this.request<SavedSearch[]>('/saved-searches'),
+    create: async (name: string, filters: JobSearchFilters): Promise<SavedSearch> =>
+      this.request<SavedSearch>('/saved-searches', {
+        method: 'POST',
+        body: JSON.stringify({ name, filters }),
+      }),
+    update: async (
+      id: string,
+      patch: Partial<Pick<SavedSearch, 'name' | 'filters' | 'isActive'>>,
+    ): Promise<SavedSearch> =>
+      this.request<SavedSearch>(`/saved-searches/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+    remove: async (id: string): Promise<void> => {
+      await this.request(`/saved-searches/${id}`, { method: 'DELETE' });
     },
   };
 
@@ -208,10 +250,15 @@ export class RealApiClient implements ApiClient {
         return null;
       }
     },
+    listDrafts: async (id: string): Promise<ApplicationDraft[]> =>
+      this.request<ApplicationDraft[]>(`/applications/${id}/drafts`),
     create: async (jobId: string): Promise<Application> =>
       this.request<Application>('/applications', { method: 'POST', body: JSON.stringify({ jobId }) }),
-    draft: async (applicationId: string): Promise<ApplicationDraft> =>
-      this.request<ApplicationDraft>(`/applications/${applicationId}/draft`, { method: 'POST' }),
+    draft: async (applicationId: string, variantStyle?: CvVariantStyle): Promise<ApplicationDraft> =>
+      this.request<ApplicationDraft>(`/applications/${applicationId}/draft`, {
+        method: 'POST',
+        body: JSON.stringify(variantStyle ? { variantStyle } : {}),
+      }),
     updateStatus: async (
       applicationId: string,
       status: ApplicationStatus,
@@ -228,5 +275,28 @@ export class RealApiClient implements ApiClient {
         return [];
       }
     },
+  };
+
+  usage = {
+    summary: async (): Promise<TokenUsageSummary> => this.request<TokenUsageSummary>('/usage'),
+  };
+
+  admin = {
+    listSources: async (): Promise<SourceHealth[]> =>
+      this.request<SourceHealth[]>('/admin/sources'),
+    sourceRuns: async (
+      sourceId: string,
+    ): Promise<{ source: SourceHealth; runs: SourceCrawlRun[] } | null> => {
+      try {
+        return await this.request<{ source: SourceHealth; runs: SourceCrawlRun[] }>(
+          `/admin/sources/${sourceId}/runs`,
+        );
+      } catch {
+        return null;
+      }
+    },
+    dedupStats: async (): Promise<DedupStats> => this.request<DedupStats>('/admin/dedup-stats'),
+    runAlerts: async (): Promise<AlertRunSummary> =>
+      this.request<AlertRunSummary>('/admin/alerts/run', { method: 'POST' }),
   };
 }

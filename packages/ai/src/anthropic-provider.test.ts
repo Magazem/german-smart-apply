@@ -191,7 +191,9 @@ describe('AnthropicAiProvider', () => {
       expect(params.tools?.[0]?.name).toBe('record_parsed_cv');
       expect(params.system).toContain('en');
 
-      expect(result).toEqual(parsedInput);
+      expect(result.parsed).toEqual(parsedInput);
+      expect(result.modelUsed).toBe('claude-haiku-4-5');
+      expect(result.tokensUsed).toBe(150);
     });
 
     it('throws a malformed_response error when the model does not call the tool', async () => {
@@ -300,6 +302,37 @@ describe('AnthropicAiProvider', () => {
       await expect(provider.generateCvVariant(profile, job, 'en')).rejects.toMatchObject({
         code: 'malformed_response',
       });
+    });
+
+    it('omits any variant-style instruction from the system prompt by default (standard)', async () => {
+      const { client, create } = fakeClient(() => textMessage('CV text'));
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      await provider.generateCvVariant(profile, job, 'en');
+
+      const params = create.mock.calls[0][0] as Anthropic.MessageCreateParamsNonStreaming;
+      expect(params.system).not.toContain('concise');
+      expect(params.system).not.toContain('leadership');
+    });
+
+    it('injects the concise-style instruction into the system prompt when requested', async () => {
+      const { client, create } = fakeClient(() => textMessage('CV text'));
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      await provider.generateCvVariant(profile, job, 'en', 'concise');
+
+      const params = create.mock.calls[0][0] as Anthropic.MessageCreateParamsNonStreaming;
+      expect(params.system).toContain('shorter and punchier');
+    });
+
+    it('injects the leadership-style instruction into the system prompt when requested', async () => {
+      const { client, create } = fakeClient(() => textMessage('CV text'));
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      await provider.generateCvVariant(profile, job, 'en', 'leadership');
+
+      const params = create.mock.calls[0][0] as Anthropic.MessageCreateParamsNonStreaming;
+      expect(params.system).toContain('leadership, ownership');
     });
   });
 

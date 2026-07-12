@@ -78,3 +78,28 @@ describe('RankingService.score - salaryFit', () => {
     expect(result.salaryFit).toBe(0.1);
   });
 });
+
+describe('RankingService.score - interactionBias', () => {
+  const service = new RankingService();
+
+  it('boosts totalScore for a job the user liked, relative to the same job with no feedback', () => {
+    const job = buildJob();
+    const neutral = service.score(job, { profile: buildProfile() });
+    const liked = service.score(job, { profile: buildProfile(), interactionBias: 1 });
+    expect(liked.totalScore).toBeGreaterThan(neutral.totalScore);
+  });
+
+  it('lowers totalScore for a job the user skipped, relative to the same job with no feedback', () => {
+    const job = buildJob();
+    const neutral = service.score(job, { profile: buildProfile() });
+    const skipped = service.score(job, { profile: buildProfile(), interactionBias: -1 });
+    expect(skipped.totalScore).toBeLessThan(neutral.totalScore);
+  });
+
+  it('leaves totalScore unchanged when interactionBias is undefined (no feedback recorded)', () => {
+    const job = buildJob();
+    const withUndefined = service.score(job, { profile: buildProfile(), interactionBias: undefined });
+    const withoutField = service.score(job, { profile: buildProfile() });
+    expect(withUndefined.totalScore).toBe(withoutField.totalScore);
+  });
+});

@@ -325,39 +325,39 @@ german-smart-apply/
 Goal: a working product with real data, real users, and real subscriptions.
 
 Scope:
-- [ ] Monorepo setup with TypeScript, ESLint, Prettier
-- [ ] PostgreSQL schema for all seven domains with migrations
-- [ ] 3–5 trusted German source adapters (Greenhouse, Lever, Arbeitsagentur API, Stepstone structured feed)
-- [ ] Normalization pipeline for all adapters
-- [ ] Exact deduplication
-- [ ] Basic scam-risk heuristics
-- [ ] REST API with auth (Clerk or NextAuth)
-- [ ] Job search endpoint with filters
-- [ ] CV upload and parsing
-- [ ] Candidate profile creation
-- [ ] Top-5 job matching
-- [ ] One tailored cover-letter generation
-- [ ] Freemium onboarding flow
-- [ ] Stripe subscriptions (Free + Pro tiers)
-- [ ] Landing page
-- [ ] Basic dashboard
-- [ ] End-to-end tests for all critical paths
-- [ ] Docker Compose setup
-- [ ] Deployment to Railway or Fly.io
+- [x] Monorepo setup with TypeScript, ESLint, Prettier
+- [x] PostgreSQL schema for all seven domains with migrations
+- [x] 3–5 trusted German source adapters (Greenhouse, Lever, Arbeitsagentur API, Stepstone structured feed)
+- [x] Normalization pipeline for all adapters
+- [x] Exact deduplication
+- [x] Basic scam-risk heuristics
+- [x] REST API with auth (Clerk or NextAuth)
+- [x] Job search endpoint with filters
+- [x] CV upload and parsing
+- [x] Candidate profile creation
+- [x] Top-5 job matching
+- [x] One tailored cover-letter generation
+- [x] Freemium onboarding flow
+- [x] Stripe subscriptions (Free + Pro tiers)
+- [x] Landing page
+- [x] Basic dashboard
+- [x] End-to-end tests for all critical paths
+- [x] Docker Compose setup
+- [ ] Deployment to Railway or Fly.io (config and CI/CD ready via Fly.io `fly.toml` + `release_command` + GitHub Actions; no live deploy confirmed from this environment — merge to `main` to trigger it)
 
 ### Phase 2 — Quality and Depth
 
 Scope:
-- [ ] Near-duplicate clustering (embedding similarity)
-- [ ] Company alias dictionary (Germany)
-- [ ] Richer CV tailoring with multiple variants
-- [ ] Full application tracker
-- [ ] Approval-first application queue with status machine
-- [ ] Email alerts and saved searches
-- [ ] Admin panel with source health monitoring
-- [ ] User feedback loop (thumbs up/down per job)
-- [ ] Token usage tracking per user and feature
-- [ ] Full test coverage for all workers
+- [x] Near-duplicate clustering (embedding similarity)
+- [x] Company alias dictionary (Germany)
+- [x] Richer CV tailoring with multiple variants
+- [x] Full application tracker
+- [x] Approval-first application queue with status machine
+- [x] Email alerts and saved searches
+- [x] Admin panel with source health monitoring
+- [x] User feedback loop (thumbs up/down per job)
+- [x] Token usage tracking per user and feature
+- [x] Full test coverage for all workers
 
 ### Phase 3 — Growth
 

@@ -61,9 +61,11 @@ describe('MockAiProvider', () => {
       'Jane Doe\njane@example.com\nSkills: TypeScript, PostgreSQL',
       'en',
     );
-    expect(result.fullName).toBe('Jane Doe');
-    expect(result.email).toBe('jane@example.com');
-    expect(result.skills).toEqual(['TypeScript', 'PostgreSQL']);
+    expect(result.parsed.fullName).toBe('Jane Doe');
+    expect(result.parsed.email).toBe('jane@example.com');
+    expect(result.parsed.skills).toEqual(['TypeScript', 'PostgreSQL']);
+    expect(result.modelUsed).toBe('mock');
+    expect(result.tokensUsed).toBe(0);
   });
 
   it('generates a cover letter referencing the job and company', async () => {
@@ -87,5 +89,26 @@ describe('MockAiProvider', () => {
     const result = await provider.generateCvVariant(profile, job, 'en');
     expect(result.text).toContain('senior backend engineer');
     expect(result.text).toContain('acme gmbh');
+  });
+
+  it('defaults to the standard CV variant when no style is given', async () => {
+    const result = await provider.generateCvVariant(profile, job, 'en');
+    expect(result.text).not.toContain('concise variant');
+    expect(result.text).not.toContain('leadership variant');
+  });
+
+  it('produces a visibly different CV variant per style', async () => {
+    const concise = await provider.generateCvVariant(profile, job, 'en', 'concise');
+    const leadership = await provider.generateCvVariant(profile, job, 'en', 'leadership');
+    expect(concise.text).toContain('concise variant');
+    expect(leadership.text).toContain('leadership variant');
+    expect(concise.text).not.toBe(leadership.text);
+  });
+
+  it('produces a visibly different cover letter per style', async () => {
+    const concise = await provider.generateCoverLetter(profile, job, 'en', 'concise');
+    const leadership = await provider.generateCoverLetter(profile, job, 'en', 'leadership');
+    expect(concise.text).toContain('concise variant');
+    expect(leadership.text).toContain('leadership variant');
   });
 });

@@ -243,4 +243,110 @@ describe('Applications workflow (e2e)', () => {
 
     await prisma.client.user.delete({ where: { id: otherUserId } }).catch(() => undefined);
   });
+
+  describe('multi-variant CV drafting', () => {
+    let variantSourceId: string;
+    let variantJobId: string;
+    let variantApplicationId: string;
+
+    afterAll(async () => {
+      await deleteJobFixture(prisma, variantSourceId);
+    });
+
+    beforeAll(async () => {
+      const fixture = await createJobFixture(prisma, { jobTitle: 'Staff Engineer' });
+      variantSourceId = fixture.source.id;
+      variantJobId = fixture.canonicalJob.id;
+
+      const created = await request(app.getHttpServer())
+        .post('/applications')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ jobId: variantJobId })
+        .expect(201);
+      variantApplicationId = created.body.id;
+
+      await request(app.getHttpServer())
+        .patch(`/applications/${variantApplicationId}/status`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'viewed' })
+        .expect(200);
+    });
+
+    it('generates a standard-style draft for a free-tier user', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/applications/${variantApplicationId}/draft`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(201);
+      expect(res.body.variantLabel).toBe('standard');
+    });
+
+    it('allows regenerating a draft while already draft_ready, instead of 409ing', async () => {
+      await request(app.getHttpServer())
+        .post(`/applications/${variantApplicationId}/draft`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(201);
+
+      const application = await prisma.client.application.findUniqueOrThrow({
+        where: { id: variantApplicationId },
+      });
+      expect(application.status).toBe('draft_ready');
+    });
+
+    it('rejects a non-standard variant style for a free-tier user', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/applications/${variantApplicationId}/draft`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ variantStyle: 'concise' })
+        .expect(403);
+      expect(res.body.message).toContain('Pro subscription');
+    });
+
+    it('rejects an unknown variant style value outright', async () => {
+      await request(app.getHttpServer())
+        .post(`/applications/${variantApplicationId}/draft`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ variantStyle: 'extremely-fancy' })
+        .expect(400);
+    });
+
+    it('lists every generated draft for the application, most recent first', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/applications/${variantApplicationId}/drafts`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      expect(res.body.length).toBe(2);
+      expect(res.body.every((d: { variantLabel: string }) => d.variantLabel === 'standard')).toBe(true);
+      const createdAts = res.body.map((d: { createdAt: string }) => new Date(d.createdAt).getTime());
+      expect(createdAts[0]).toBeGreaterThanOrEqual(createdAts[1]);
+    });
+
+    it('allows a Pro-tier user to generate a concise-style variant', async () => {
+      await request(app.getHttpServer())
+        .post('/billing/webhook')
+        .set('stripe-signature', 'test-signature')
+        .send({
+          type: 'checkout_completed',
+          userId,
+          stripeCustomerId: 'cus_variant_test',
+          stripeSubscriptionId: 'sub_variant_test',
+        })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post(`/applications/${variantApplicationId}/draft`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ variantStyle: 'concise' })
+        .expect(201);
+      expect(res.body.variantLabel).toBe('concise');
+
+      const listRes = await request(app.getHttpServer())
+        .get(`/applications/${variantApplicationId}/drafts`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      expect(listRes.body.length).toBe(3);
+      expect(listRes.body[0].variantLabel).toBe('concise');
+    });
+  });
 });

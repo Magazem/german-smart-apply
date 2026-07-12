@@ -25,6 +25,15 @@ primary_region = 'fra'
   # (see auth.module.ts / billing.service.ts) - only ANTHROPIC_API_KEY is
   # truly optional (omitting it runs with the deterministic MockAiProvider).
 
+[deploy]
+  # Runs once, in a throwaway release machine using the just-built image,
+  # before Fly promotes it to serve traffic — if this fails the deploy is
+  # aborted and the previous version keeps running. `migrate deploy` (unlike
+  # `migrate dev`) never generates or prompts for new migrations; it only
+  # applies whatever's already committed under prisma/migrations, so this is
+  # safe to run unattended against the real Neon database on every deploy.
+  release_command = 'pnpm --filter @german-smart-apply/db migrate:deploy'
+
 [http_service]
   internal_port = 3001
   force_https = true

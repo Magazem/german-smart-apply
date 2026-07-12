@@ -43,6 +43,23 @@ class FakeClient:
         raise AssertionError(f"FakeClient received an unexpected URL: {url}")
 
 
+class RaisingClient:
+    """Raises a plain exception from every .get() call -- simulates a
+    network-level failure (DNS, connection refused, timeout) as opposed to
+    FakeResponse's HTTP-level error statuses. Used to prove adapters wrap
+    *any* client exception into TransientFetchError, not just bad status
+    codes, so the shared retry policy actually applies to it.
+    """
+
+    def __init__(self, exc: BaseException | None = None):
+        self.exc = exc or ConnectionError("connection refused")
+        self.calls: list[str] = []
+
+    def get(self, url: str, params=None, headers=None, timeout: float = 10.0):
+        self.calls.append(url)
+        raise self.exc
+
+
 class FlakyThenOkClient:
     """Fails with a 500 the first N times a given URL is requested, then
     returns the canned success response -- used to test retry/backoff.

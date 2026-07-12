@@ -1,8 +1,9 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { createAiProvider } from '@german-smart-apply/ai';
 import type { Prisma } from '@german-smart-apply/db';
-import type { CanonicalJob, JobMatchScore } from '@german-smart-apply/shared';
+import type { CanonicalJob, JobFeedbackType, JobMatchScore } from '@german-smart-apply/shared';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TokenUsageService } from '../token-usage/token-usage.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
 import { toSharedCanonicalJob } from './canonical-job.mapper.js';
 import type { SearchJobsDto } from './dto/search-jobs.dto.js';
@@ -11,6 +12,7 @@ import { RankingService, type RankingProfileInput } from './ranking.service.js';
 export interface RankedJobResult {
   job: CanonicalJob;
   score: JobMatchScore;
+  myFeedback?: JobFeedbackType | null;
 }
 
 // Hard-filtered candidate pool size before in-app scoring/sorting. Fine at
@@ -19,6 +21,7 @@ export interface RankedJobResult {
 // good matches outside the top `CANDIDATE_POOL_SIZE` most recent postings.
 const CANDIDATE_POOL_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 20;
+const ALERT_MATCH_LIMIT = 20;
 
 @Injectable()
 export class JobsService {
@@ -28,6 +31,7 @@ export class JobsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ranking: RankingService,
+    private readonly tokenUsage: TokenUsageService,
   ) {}
 
   async search(filters: SearchJobsDto, userId?: string) {
@@ -69,11 +73,40 @@ export class JobsService {
     };
   }
 
+  /**
+   * Jobs matching `filters` that entered canonical_jobs after `since` -
+   * used by the alerting worker to find what's new for a saved search since
+   * its last delivery, rather than re-notifying on the same matches every
+   * run. Unranked (no ranking profile involved - a saved search has its own
+   * explicit filters, not a candidate profile to score against) and ordered
+   * by newest first, capped at ALERT_MATCH_LIMIT so one saved search can't
+   * generate an unbounded email.
+   */
+  async findNewMatches(filters: SearchJobsDto, since: Date): Promise<CanonicalJob[]> {
+    const where = this.buildWhere(filters);
+    const records = await this.prisma.client.canonicalJob.findMany({
+      where: { ...where, createdAt: { gt: since } },
+      include: { rawJob: { include: { source: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: ALERT_MATCH_LIMIT,
+    });
+    return records.map(toSharedCanonicalJob);
+  }
+
   async getById(id: string, userId?: string): Promise<RankedJobResult> {
-    const record = await this.prisma.client.canonicalJob.findFirst({
+    let record = await this.prisma.client.canonicalJob.findFirst({
       where: { id, isVisible: true },
       include: { rawJob: { include: { source: true } } },
     });
+
+    if (!record) {
+      // Not found outright, or hidden because near-duplicate clustering
+      // (workers/deduplicator/near_duplicates.py) merged it into a
+      // still-visible winner. An existing Application/SavedJob can point
+      // at this now-hidden id, so resolve through the cluster rather than
+      // 404ing on what the user's tracker still shows as "their" job.
+      record = await this.resolveThroughNearDupCluster(id);
+    }
     if (!record) {
       throw new NotFoundException('Job not found');
     }
@@ -83,10 +116,18 @@ export class JobsService {
       ? await this.prisma.client.candidateProfile.findUnique({ where: { userId } })
       : null;
 
+    let myFeedback: JobFeedbackType | null = null;
     if (userId) {
       await this.prisma.client.jobInteraction
-        .create({ data: { userId, canonicalJobId: id, interactionType: 'view' } })
+        .create({ data: { userId, canonicalJobId: record.id, interactionType: 'view' } })
         .catch(() => undefined);
+
+      const feedbackRow = await this.prisma.client.jobInteraction.findFirst({
+        where: { userId, canonicalJobId: record.id, interactionType: { in: ['like', 'skip'] } },
+      });
+      if (feedbackRow) {
+        myFeedback = feedbackRow.interactionType as JobFeedbackType;
+      }
     }
 
     const rankingProfile: RankingProfileInput | null = profile
@@ -115,12 +156,82 @@ export class JobsService {
           profile.preferredLanguage,
         );
         score.explanation = explanationResult.text;
+        await this.tokenUsage.record(
+          profile.userId,
+          'matchExplanation',
+          explanationResult.modelUsed,
+          explanationResult.tokensUsed,
+        );
       } catch (err) {
         this.logger.warn(`Match explanation generation failed for job ${id}: ${String(err)}`);
       }
     }
 
-    return { job, score };
+    return { job, score, myFeedback };
+  }
+
+  /**
+   * `id` exists (or existed) but isVisible=false. That only happens via
+   * near-duplicate clustering hiding a loser in favor of a winner (exact
+   * dedup never creates a canonical_jobs row that later gets hidden) - walk
+   * rawJobId -> duplicate_cluster_members -> duplicate_clusters.canonicalJobId
+   * to find that winner, still isVisible=true.
+   */
+  private async resolveThroughNearDupCluster(id: string) {
+    const hidden = await this.prisma.client.canonicalJob.findUnique({ where: { id } });
+    if (!hidden) return null;
+
+    // Every near-dup candidate was already its OWN exact-dedup winner, so
+    // its rawJobId also has a pre-existing self-referencing membership row
+    // from run_dedup - the clusterKey prefix disambiguates that from the
+    // real near-dup membership pointing at the *other* job's winner.
+    const member = await this.prisma.client.duplicateClusterMember.findFirst({
+      where: { rawJobId: hidden.rawJobId, duplicateCluster: { clusterKey: { startsWith: 'near-dup:' } } },
+      include: { duplicateCluster: true },
+    });
+    if (!member) return null;
+
+    return this.prisma.client.canonicalJob.findFirst({
+      where: { id: member.duplicateCluster.canonicalJobId, isVisible: true },
+      include: { rawJob: { include: { source: true } } },
+    });
+  }
+
+  /**
+   * Thumbs up/down are mutually exclusive per (user, job) — unlike 'view',
+   * which is an append-only log, at most one like/skip row may exist at a
+   * time so RankingService's interactionBias lookup is unambiguous.
+   * Re-sending the currently-active feedback toggles it off (undo).
+   */
+  async recordFeedback(
+    userId: string,
+    canonicalJobId: string,
+    feedback: JobFeedbackType,
+  ): Promise<{ feedback: JobFeedbackType | null }> {
+    const job = await this.prisma.client.canonicalJob.findFirst({
+      where: { id: canonicalJobId, isVisible: true },
+    });
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    return this.prisma.client.$transaction(async (tx: Prisma.TransactionClient) => {
+      const existing = await tx.jobInteraction.findFirst({
+        where: { userId, canonicalJobId, interactionType: { in: ['like', 'skip'] } },
+      });
+
+      if (existing) {
+        await tx.jobInteraction.delete({ where: { id: existing.id } });
+        if (existing.interactionType === feedback) {
+          return { feedback: null };
+        }
+      }
+
+      await tx.jobInteraction.create({
+        data: { userId, canonicalJobId, interactionType: feedback },
+      });
+      return { feedback };
+    });
   }
 
   private buildWhere(filters: SearchJobsDto): Prisma.CanonicalJobWhereInput {

@@ -3,6 +3,7 @@ import type {
   ApplicationDraft,
   ApplicationEvent,
   CandidateProfile,
+  JobFeedbackType,
   ParsedCvResult,
 } from '@german-smart-apply/shared';
 
@@ -14,7 +15,20 @@ export interface MockUser {
   passwordHash: string;
   fullName: string | null;
   tier: 'free' | 'pro';
+  // Absent on users created before this field existed (older localStorage
+  // payloads) - always read via `user.role ?? 'user'`, never bare.
+  role?: 'user' | 'admin';
   createdAt: string;
+}
+
+export interface MockSavedSearch {
+  id: string;
+  userId: string;
+  name: string;
+  filters: Record<string, unknown>;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface MockDb {
@@ -22,8 +36,12 @@ export interface MockDb {
   profiles: Record<string, CandidateProfile>;
   parsedCv: Record<string, ParsedCvResult>;
   applications: Application[];
-  applicationDrafts: Record<string, ApplicationDraft>;
+  /** applicationId -> every generated variant, most recent first. */
+  applicationDrafts: Record<string, ApplicationDraft[]>;
   applicationEvents: ApplicationEvent[];
+  /** userId -> jobId -> feedback. Absent/undefined means no feedback recorded. */
+  jobFeedback: Record<string, Record<string, JobFeedbackType>>;
+  savedSearches: MockSavedSearch[];
   sessionUserId: string | null;
 }
 
@@ -57,6 +75,8 @@ function emptyDb(): MockDb {
     applications: [],
     applicationDrafts: {},
     applicationEvents: [],
+    jobFeedback: {},
+    savedSearches: [],
     sessionUserId: null,
   };
 }

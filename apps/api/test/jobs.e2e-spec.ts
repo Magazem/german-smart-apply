@@ -154,4 +154,146 @@ describe('Jobs search & detail (e2e)', () => {
       .get('/jobs/00000000-0000-0000-0000-000000000000')
       .expect(404);
   });
+
+  describe('feedback (like/skip)', () => {
+    it('rejects an unauthenticated feedback attempt', async () => {
+      await request(app.getHttpServer())
+        .post(`/jobs/${matchingJobId}/feedback`)
+        .send({ feedback: 'like' })
+        .expect(401);
+    });
+
+    it('rejects a feedback value outside like/skip', async () => {
+      await request(app.getHttpServer())
+        .post(`/jobs/${matchingJobId}/feedback`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ feedback: 'love-it' })
+        .expect(400);
+    });
+
+    it('records a like, reflects it on job detail, and toggling the same value again clears it', async () => {
+      const likeRes = await request(app.getHttpServer())
+        .post(`/jobs/${matchingJobId}/feedback`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ feedback: 'like' })
+        .expect(201);
+      expect(likeRes.body.feedback).toBe('like');
+
+      const detailRes = await request(app.getHttpServer())
+        .get(`/jobs/${matchingJobId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      expect(detailRes.body.myFeedback).toBe('like');
+
+      const undoRes = await request(app.getHttpServer())
+        .post(`/jobs/${matchingJobId}/feedback`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ feedback: 'like' })
+        .expect(201);
+      expect(undoRes.body.feedback).toBeNull();
+
+      const clearedDetailRes = await request(app.getHttpServer())
+        .get(`/jobs/${matchingJobId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      expect(clearedDetailRes.body.myFeedback).toBeNull();
+    });
+
+    it('switching from like to skip replaces the prior feedback rather than stacking it', async () => {
+      await request(app.getHttpServer())
+        .post(`/jobs/${matchingJobId}/feedback`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ feedback: 'like' })
+        .expect(201);
+
+      const skipRes = await request(app.getHttpServer())
+        .post(`/jobs/${matchingJobId}/feedback`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ feedback: 'skip' })
+        .expect(201);
+      expect(skipRes.body.feedback).toBe('skip');
+
+      const detailRes = await request(app.getHttpServer())
+        .get(`/jobs/${matchingJobId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      expect(detailRes.body.myFeedback).toBe('skip');
+
+      // Clean up so this doesn't leak bias into other tests in this file.
+      await request(app.getHttpServer())
+        .post(`/jobs/${matchingJobId}/feedback`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ feedback: 'skip' })
+        .expect(201);
+    });
+
+    it('404s when recording feedback for an unknown job id', async () => {
+      await request(app.getHttpServer())
+        .post('/jobs/00000000-0000-0000-0000-000000000000/feedback')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ feedback: 'like' })
+        .expect(404);
+    });
+  });
+
+  describe('resolving a job hidden by near-duplicate clustering', () => {
+    let winnerSourceId: string;
+    let loserSourceId: string;
+
+    afterAll(async () => {
+      await deleteJobFixture(prisma, winnerSourceId);
+      await deleteJobFixture(prisma, loserSourceId);
+    });
+
+    it('redirects an application/saved-job pointing at a now-hidden loser to the still-visible winner instead of 404ing', async () => {
+      const winner = await createJobFixture(prisma, { jobTitle: 'Platform Engineer' });
+      const loser = await createJobFixture(prisma, { jobTitle: 'Platform Engineer II' });
+      winnerSourceId = winner.source.id;
+      loserSourceId = loser.source.id;
+
+      // Simulate exactly what workers/deduplicator/near_duplicates.py does
+      // on a real merge: a "near-dup:"-prefixed cluster, membership rows for
+      // both sides, and the loser flipped to isVisible=false.
+      const cluster = await prisma.client.duplicateCluster.create({
+        data: {
+          canonicalJobId: winner.canonicalJob.id,
+          clusterKey: `near-dup:${winner.canonicalJob.id}:${loser.canonicalJob.id}`,
+        },
+      });
+      await prisma.client.duplicateClusterMember.create({
+        data: {
+          duplicateClusterId: cluster.id,
+          rawJobId: winner.rawJob.id,
+          similarityScore: 1.0,
+          isCanonicalPick: true,
+        },
+      });
+      await prisma.client.duplicateClusterMember.create({
+        data: {
+          duplicateClusterId: cluster.id,
+          rawJobId: loser.rawJob.id,
+          similarityScore: 0.87,
+          isCanonicalPick: false,
+        },
+      });
+      await prisma.client.canonicalJob.update({
+        where: { id: loser.canonicalJob.id },
+        data: { isVisible: false },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/jobs/${loser.canonicalJob.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.job.jobId).toBe(winner.canonicalJob.id);
+      expect(res.body.job.jobTitleNormalized).toBe('platform engineer');
+    });
+
+    it('still 404s for a job id that never existed at all', async () => {
+      await request(app.getHttpServer())
+        .get('/jobs/00000000-0000-0000-0000-000000000001')
+        .expect(404);
+    });
+  });
 });

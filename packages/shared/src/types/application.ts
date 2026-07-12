@@ -13,11 +13,17 @@ export const APPLICATION_STATUSES = [
 
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 
+// 'standard' is free-tier; 'concise'/'leadership' require Pro (enforced in
+// apps/api's ApplicationsService.generateDraft, not just the frontend).
+export const CV_VARIANT_STYLES = ['standard', 'concise', 'leadership'] as const;
+export type CvVariantStyle = (typeof CV_VARIANT_STYLES)[number];
+
 export interface ApplicationDraft {
   id: string;
   applicationId: string;
   cvVariantText: string;
   coverLetterText: string;
+  variantLabel: CvVariantStyle;
   modelUsed: string;
   tokensUsed: number;
   createdAt: string;
@@ -45,7 +51,12 @@ const ALLOWED_TRANSITIONS: Record<ApplicationStatus, ApplicationStatus[]> = {
   new: ['viewed', 'saved', 'archived'],
   viewed: ['saved', 'draft_ready', 'archived'],
   saved: ['draft_ready', 'archived'],
-  draft_ready: ['awaiting_approval', 'archived'],
+  // Includes itself: regenerating a draft (a different variant style, a
+  // retry, etc.) while already draft_ready must not 409 - the frontend's
+  // job-detail page keeps the "Request tailored CV & cover letter" button
+  // active in this exact status for that reason. Was a latent gap this
+  // never being called with `to === from` until multi-variant drafting.
+  draft_ready: ['draft_ready', 'awaiting_approval', 'archived'],
   awaiting_approval: ['applied', 'draft_ready', 'archived'],
   applied: ['interview', 'rejected', 'archived'],
   interview: ['offer', 'rejected', 'archived'],

@@ -1,8 +1,9 @@
-import type { CandidateProfile, CanonicalJob, ParsedCvResult } from '@german-smart-apply/shared';
+import type { CandidateProfile, CanonicalJob, CvVariantStyle } from '@german-smart-apply/shared';
 import type {
   AiGenerationResult,
   AiProvider,
   CvSuggestionsResult,
+  ParseCvResult,
 } from './types.js';
 
 /**
@@ -11,7 +12,7 @@ import type {
  * *shape* rather than model quality. No network calls.
  */
 export class MockAiProvider implements AiProvider {
-  async parseCv(rawText: string, language: string): Promise<ParsedCvResult> {
+  async parseCv(rawText: string, language: string): Promise<ParseCvResult> {
     const lines = rawText
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -27,18 +28,22 @@ export class MockAiProvider implements AiProvider {
       : [];
 
     return {
-      fullName: lines[0] ?? null,
-      email: emailMatch ? emailMatch[0] : null,
-      phone: null,
-      summary: lines.slice(0, 3).join(' '),
-      skills,
-      experience: [],
-      education: [],
-      languages: [language],
-      suggestions: [
-        'Quantify achievements with concrete metrics (%, revenue, users).',
-        'Move the most relevant skills to the top third of the document.',
-      ],
+      parsed: {
+        fullName: lines[0] ?? null,
+        email: emailMatch ? emailMatch[0] : null,
+        phone: null,
+        summary: lines.slice(0, 3).join(' '),
+        skills,
+        experience: [],
+        education: [],
+        languages: [language],
+        suggestions: [
+          'Quantify achievements with concrete metrics (%, revenue, users).',
+          'Move the most relevant skills to the top third of the document.',
+        ],
+      },
+      modelUsed: 'mock',
+      tokensUsed: 0,
     };
   }
 
@@ -60,25 +65,33 @@ export class MockAiProvider implements AiProvider {
     profile: CandidateProfile,
     job: CanonicalJob,
     _language: string,
+    variantStyle: CvVariantStyle = 'standard',
   ): Promise<AiGenerationResult> {
-    return {
-      text: `${profile.fullName ?? 'Candidate'} - CV tailored for ${job.jobTitleNormalized} at ${job.companyNameNormalized}.\n\nSkills: ${profile.skills.join(', ')}`,
-      modelUsed: 'mock',
-      tokensUsed: 0,
-    };
+    const base = `${profile.fullName ?? 'Candidate'} - CV tailored for ${job.jobTitleNormalized} at ${job.companyNameNormalized}.\n\nSkills: ${profile.skills.join(', ')}`;
+    const styled =
+      variantStyle === 'concise'
+        ? `${base}\n\n(concise variant: trimmed to essentials)`
+        : variantStyle === 'leadership'
+          ? `${base}\n\n(leadership variant: emphasizing ownership and cross-team impact)`
+          : base;
+    return { text: styled, modelUsed: 'mock', tokensUsed: 0 };
   }
 
   async generateCoverLetter(
     profile: CandidateProfile,
     job: CanonicalJob,
     language: string,
+    variantStyle: CvVariantStyle = 'standard',
   ): Promise<AiGenerationResult> {
     const greeting = language.startsWith('de') ? 'Sehr geehrte Damen und Herren,' : 'Dear Hiring Team,';
-    return {
-      text: `${greeting}\n\nI am writing to apply for the ${job.jobTitleNormalized} role at ${job.companyNameNormalized}. My background in ${profile.skills.slice(0, 3).join(', ') || profile.targetRole} aligns closely with this position.\n\nBest regards,\n${profile.fullName ?? ''}`,
-      modelUsed: 'mock',
-      tokensUsed: 0,
-    };
+    const base = `${greeting}\n\nI am writing to apply for the ${job.jobTitleNormalized} role at ${job.companyNameNormalized}. My background in ${profile.skills.slice(0, 3).join(', ') || profile.targetRole} aligns closely with this position.\n\nBest regards,\n${profile.fullName ?? ''}`;
+    const styled =
+      variantStyle === 'concise'
+        ? `${base}\n\n(concise variant: trimmed to essentials)`
+        : variantStyle === 'leadership'
+          ? `${base}\n\n(leadership variant: emphasizing ownership and cross-team impact)`
+          : base;
+    return { text: styled, modelUsed: 'mock', tokensUsed: 0 };
   }
 
   async generateMatchExplanation(

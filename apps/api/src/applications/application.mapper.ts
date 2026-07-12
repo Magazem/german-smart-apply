@@ -6,6 +6,7 @@ import type {
   Application,
   ApplicationDraft,
   ApplicationStatus,
+  CvVariantStyle,
 } from '@german-smart-apply/shared';
 
 /**
@@ -33,6 +34,7 @@ export function toSharedApplicationDraft(record: PrismaApplicationDraft): Applic
     applicationId: record.applicationId,
     cvVariantText: record.cvVariantText,
     coverLetterText: record.coverLetterText,
+    variantLabel: record.variantLabel as CvVariantStyle,
     modelUsed: record.modelUsed,
     tokensUsed: record.tokensUsed,
     createdAt: record.createdAt.toISOString(),

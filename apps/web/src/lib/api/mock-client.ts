@@ -6,27 +6,66 @@ import {
   type ApplicationEvent,
   type ApplicationStatus,
   type CandidateProfile,
+  type CvVariantStyle,
+  type JobFeedbackType,
   type JobSearchFilters,
 } from '@german-smart-apply/shared';
+import { DEDUP_STATS_FIXTURE, SOURCE_HEALTH_FIXTURES } from './admin-fixtures';
 import { JOB_FIXTURES } from './fixtures';
 import { computeMatchScore } from './scoring';
 import { ensureDemoSeed } from './seed';
-import { delay, loadDb, nowIso, saveDb, uid, weakHash, type MockDb, type MockUser } from './store';
+import { delay, loadDb, nowIso, saveDb, uid, weakHash, type MockDb, type MockSavedSearch, type MockUser } from './store';
 import type {
+  AlertRunSummary,
   ApiClient,
   AuthSession,
   AuthUser,
   CvUploadInput,
+  DedupStats,
   JobDetailResult,
   JobSearchResult,
   LoginInput,
   RegisterInput,
+  SavedSearch,
+  SourceCrawlRun,
+  SourceHealth,
+  TokenUsageSummary,
 } from './types';
+
+function toSavedSearch(s: MockSavedSearch): SavedSearch {
+  return {
+    id: s.id,
+    name: s.name,
+    filters: s.filters as JobSearchFilters,
+    isActive: s.isActive,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  };
+}
 
 const aiProvider = new MockAiProvider();
 
+/**
+ * Normalizes db.applicationDrafts[id] into the current array shape. Guards
+ * against a pre-multi-variant localStorage payload (a single ApplicationDraft
+ * object per applicationId, from before this array shape existed) rather
+ * than crashing on `.length`/spread for a returning dev session.
+ */
+function draftsFor(db: MockDb, applicationId: string): ApplicationDraft[] {
+  const value = db.applicationDrafts[applicationId] as ApplicationDraft[] | ApplicationDraft | undefined;
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
 function toAuthUser(u: MockUser): AuthUser {
-  return { id: u.id, email: u.email, fullName: u.fullName, tier: u.tier, createdAt: u.createdAt };
+  return {
+    id: u.id,
+    email: u.email,
+    fullName: u.fullName,
+    tier: u.tier,
+    role: u.role ?? 'user',
+    createdAt: u.createdAt,
+  };
 }
 
 function createDefaultProfile(userId: string): CandidateProfile {
@@ -179,10 +218,10 @@ export class MockApiClient implements ApiClient {
       }
       await delay(350);
       const profile = db.profiles[userId];
-      const result = await aiProvider.parseCv(text, profile?.preferredLanguage || 'en');
-      db.parsedCv[userId] = result;
+      const { parsed } = await aiProvider.parseCv(text, profile?.preferredLanguage || 'en');
+      db.parsedCv[userId] = parsed;
       saveDb(db);
-      return result;
+      return parsed;
     },
 
     getLastParsed: async () => {
@@ -281,7 +320,86 @@ export class MockApiClient implements ApiClient {
         const explanation = await aiProvider.generateMatchExplanation(profile, job, profile.preferredLanguage);
         match = { ...match, explanation: explanation.text };
       }
-      return { job, match };
+      const myFeedback = userId ? ((db.jobFeedback ?? {})[userId]?.[id] ?? null) : null;
+      return { job, match, myFeedback };
+    },
+    recordFeedback: async (
+      id: string,
+      feedback: JobFeedbackType,
+    ): Promise<{ feedback: JobFeedbackType | null }> => {
+      await delay(80);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      if (!JOB_FIXTURES.some((j) => j.jobId === id)) {
+        throw new Error('Job not found');
+      }
+      db.jobFeedback ??= {};
+      const forUser = (db.jobFeedback[userId] ??= {});
+      const result: JobFeedbackType | null = forUser[id] === feedback ? null : feedback;
+      if (result === null) {
+        delete forUser[id];
+      } else {
+        forUser[id] = result;
+      }
+      saveDb(db);
+      return { feedback: result };
+    },
+  };
+
+  savedSearches = {
+    list: async (): Promise<SavedSearch[]> => {
+      await delay(120);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      return (db.savedSearches ?? [])
+        .filter((s) => s.userId === userId)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .map(toSavedSearch);
+    },
+    create: async (name: string, filters: JobSearchFilters): Promise<SavedSearch> => {
+      await delay(150);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const now = nowIso();
+      const search: MockSavedSearch = {
+        id: uid('search'),
+        userId,
+        name,
+        filters: filters as Record<string, unknown>,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      db.savedSearches ??= [];
+      db.savedSearches.push(search);
+      saveDb(db);
+      return toSavedSearch(search);
+    },
+    update: async (
+      id: string,
+      patch: Partial<Pick<SavedSearch, 'name' | 'filters' | 'isActive'>>,
+    ): Promise<SavedSearch> => {
+      await delay(120);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const search = (db.savedSearches ?? []).find((s) => s.id === id && s.userId === userId);
+      if (!search) throw new Error('Saved search not found');
+      if (patch.name !== undefined) search.name = patch.name;
+      if (patch.filters !== undefined) search.filters = patch.filters as Record<string, unknown>;
+      if (patch.isActive !== undefined) search.isActive = patch.isActive;
+      search.updatedAt = nowIso();
+      saveDb(db);
+      return toSavedSearch(search);
+    },
+    remove: async (id: string): Promise<void> => {
+      await delay(100);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const before = db.savedSearches ?? [];
+      const existed = before.some((s) => s.id === id && s.userId === userId);
+      if (!existed) throw new Error('Saved search not found');
+      db.savedSearches = before.filter((s) => !(s.id === id && s.userId === userId));
+      saveDb(db);
     },
   };
 
@@ -308,7 +426,16 @@ export class MockApiClient implements ApiClient {
       const userId = this.requireUserId(db);
       const app = db.applications.find((a) => a.id === id && a.userId === userId);
       if (!app) return null;
-      return db.applicationDrafts[id] ?? null;
+      return draftsFor(db, id)[0] ?? null;
+    },
+
+    listDrafts: async (id: string): Promise<ApplicationDraft[]> => {
+      await delay(80);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const app = db.applications.find((a) => a.id === id && a.userId === userId);
+      if (!app) return [];
+      return draftsFor(db, id);
     },
 
     create: async (jobId: string): Promise<Application> => {
@@ -332,12 +459,19 @@ export class MockApiClient implements ApiClient {
       return app;
     },
 
-    draft: async (applicationId: string): Promise<ApplicationDraft> => {
+    draft: async (applicationId: string, variantStyle: CvVariantStyle = 'standard'): Promise<ApplicationDraft> => {
       await delay(500);
       const db = this.getDb();
       const userId = this.requireUserId(db);
       const app = db.applications.find((a) => a.id === applicationId && a.userId === userId);
       if (!app) throw new Error('Application not found.');
+
+      if (variantStyle !== 'standard') {
+        const user = db.users.find((u) => u.id === userId);
+        if (user?.tier !== 'pro') {
+          throw new Error(`The "${variantStyle}" variant style requires a Pro subscription - the standard style is free.`);
+        }
+      }
 
       if (canTransition(app.status, 'draft_ready')) {
         this.recordTransition(db, app, 'draft_ready', 'Tailored CV variant + cover letter generated.');
@@ -357,8 +491,8 @@ export class MockApiClient implements ApiClient {
       }
 
       const [variant, coverLetter] = await Promise.all([
-        aiProvider.generateCvVariant(profile, job, profile.preferredLanguage),
-        aiProvider.generateCoverLetter(profile, job, profile.preferredLanguage),
+        aiProvider.generateCvVariant(profile, job, profile.preferredLanguage, variantStyle),
+        aiProvider.generateCoverLetter(profile, job, profile.preferredLanguage, variantStyle),
       ]);
 
       const draft: ApplicationDraft = {
@@ -366,11 +500,12 @@ export class MockApiClient implements ApiClient {
         applicationId,
         cvVariantText: variant.text,
         coverLetterText: coverLetter.text,
+        variantLabel: variantStyle,
         modelUsed: variant.modelUsed,
         tokensUsed: variant.tokensUsed + coverLetter.tokensUsed,
         createdAt: nowIso(),
       };
-      db.applicationDrafts[applicationId] = draft;
+      db.applicationDrafts[applicationId] = [draft, ...draftsFor(db, applicationId)];
       app.updatedAt = nowIso();
       saveDb(db);
       return draft;
@@ -419,6 +554,64 @@ export class MockApiClient implements ApiClient {
       return db.applicationEvents
         .filter((e) => e.applicationId === applicationId)
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    },
+  };
+
+  usage = {
+    // The mock world's AI provider (MockAiProvider) never reports real
+    // tokens, matching what the real backend also reports for a user whose
+    // requests all hit the mock provider - genuinely zero usage, not a
+    // shortcut.
+    summary: async (): Promise<TokenUsageSummary> => {
+      await delay(80);
+      this.requireUserId(this.getDb());
+      return { totalTokens: 0, byFeature: [] };
+    },
+  };
+
+  private requireAdmin(db: MockDb): MockUser {
+    const userId = this.requireUserId(db);
+    const user = db.users.find((u) => u.id === userId);
+    // Defense in depth, matching AdminGuard server-side: enforced here too,
+    // not just by hiding the admin nav link in the UI.
+    if (!user || user.role !== 'admin') {
+      throw new Error('This area requires an admin account');
+    }
+    return user;
+  }
+
+  admin = {
+    // Demo-only fixture data (see admin-fixtures.ts) - the mock world has no
+    // concept of a real crawler fleet, so this can't be derived from db
+    // state the way every other mock endpoint is.
+    listSources: async (): Promise<SourceHealth[]> => {
+      await delay(150);
+      this.requireAdmin(this.getDb());
+      return SOURCE_HEALTH_FIXTURES.map((s) => s.health);
+    },
+    sourceRuns: async (
+      sourceId: string,
+    ): Promise<{ source: SourceHealth; runs: SourceCrawlRun[] } | null> => {
+      await delay(120);
+      this.requireAdmin(this.getDb());
+      const entry = SOURCE_HEALTH_FIXTURES.find((s) => s.health.id === sourceId);
+      return entry ? { source: entry.health, runs: entry.runs } : null;
+    },
+    dedupStats: async (): Promise<DedupStats> => {
+      await delay(100);
+      this.requireAdmin(this.getDb());
+      return DEDUP_STATS_FIXTURE;
+    },
+    // JOB_FIXTURES is a static demo dataset - nothing in it is ever "new"
+    // relative to a saved search's last check, so honestly reporting 0
+    // sent/matched (rather than inventing plausible-looking numbers) is the
+    // correct mock behavior here, unlike the fixture data above.
+    runAlerts: async (): Promise<AlertRunSummary> => {
+      await delay(300);
+      const db = this.getDb();
+      this.requireAdmin(db);
+      const searchesChecked = (db.savedSearches ?? []).filter((s) => s.isActive).length;
+      return { searchesChecked, emailsSent: 0, totalJobsMatched: 0 };
     },
   };
 
