@@ -92,10 +92,24 @@ push after enabling this:
    "Deploy the API" above (`DATABASE_URL`, `JWT_SECRET`, the three `STRIPE_*`
    vars, optionally `ANTHROPIC_API_KEY`). GitHub Actions never sees these -
    they live on Fly, set once via the CLI.
-3. Generate a deploy token: `fly tokens create deploy -x 999999h --app german-smart-apply-api`
-   (repeat for `-web`, or use one token scoped to your org if you prefer).
-4. Add it as a GitHub Actions secret named `FLY_API_TOKEN`: repo Settings ->
-   Secrets and variables -> Actions -> New repository secret.
+3. Generate a deploy token for each app - a token from `fly tokens create deploy
+   --app <name>` is scoped to that one app only, so api and web each need their
+   own:
+   ```
+   fly tokens create deploy -x 999999h --app german-smart-apply-api
+   fly tokens create deploy -x 999999h --app german-smart-apply-web
+   ```
+4. Add each as its own GitHub Actions secret (repo Settings -> Secrets and
+   variables -> Actions -> New repository secret) - **do not save both under
+   the same secret name**, or whichever you save second silently overwrites
+   the first and the other app's deploy job stops authorizing:
+   - `FLY_API_TOKEN_API` - the api-scoped token
+   - `FLY_API_TOKEN_WEB` - the web-scoped token
+
+   (Alternative: `fly tokens create org -x 999999h` makes one token that can
+   deploy any app in your org - simpler, but broader access than the
+   per-app tokens above. If you use this, both jobs can share a single
+   `FLY_API_TOKEN` secret instead.)
 
 After that, every push to `main` runs `flyctl deploy` for both apps using the
 `fly.toml`/Dockerfile config already in the repo - including the `NEXT_PUBLIC_*`
