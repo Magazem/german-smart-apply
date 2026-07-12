@@ -63,6 +63,11 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_PRO_PRICE_ID: ${STRIPE_PRO_PRICE_ID:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # createAiProvider() prefers OpenRouter over Anthropic when both are set
+      # (see packages/ai/src/index.ts) - a cheap way to test real-model
+      # behavior on a free-tier model before paying for Anthropic.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
     ports:
       - "3001:3001"
     volumes:
