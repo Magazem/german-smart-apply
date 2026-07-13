@@ -170,7 +170,13 @@ def test_arbeitsagentur_fetch_returns_raw_payloads():
     fixture = load_fixture("arbeitsagentur_jobs.json")
     base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
     url = arbeitsagentur._search_url(base_url, was="DevOps Engineer", wo="Deutschland", size=50, page=1)
-    client = FakeClient({url: FakeResponse(fixture)})
+    detail_url = arbeitsagentur._detail_url(base_url, "10000-1234567890-S")
+    client = FakeClient(
+        {
+            url: FakeResponse(fixture),
+            detail_url: FakeResponse({"stellenbeschreibung": "Wir suchen einen DevOps Engineer."}),
+        }
+    )
 
     payloads = arbeitsagentur.fetch(
         client,
@@ -182,6 +188,7 @@ def test_arbeitsagentur_fetch_returns_raw_payloads():
     assert len(payloads) == 1
     assert payloads[0].original_job_id == "10000-1234567890-S"
     assert payloads[0].payload["arbeitgeber"] == "Deutsche Telekom AG"
+    assert payloads[0].payload["stellenbeschreibung"] == "Wir suchen einen DevOps Engineer."
 
 
 def test_arbeitsagentur_fetch_rejects_disallowed_host():
@@ -231,13 +238,14 @@ def test_arbeitsagentur_skips_listings_without_a_reference_number():
     """
     base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
     url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=50, page=1)
+    detail_url = arbeitsagentur._detail_url(base_url, "10000-1")
     fixture = {
         "stellenangebote": [
             {"refnr": "10000-1", "titel": "DevOps Engineer", "arbeitgeber": "Acme GmbH"},
             {"titel": "Missing refnr listing", "arbeitgeber": "Acme GmbH"},
         ]
     }
-    client = FakeClient({url: FakeResponse(fixture)})
+    client = FakeClient({url: FakeResponse(fixture), detail_url: FakeResponse({"stellenbeschreibung": "..."})})
 
     payloads = arbeitsagentur.fetch(
         client, {"baseUrl": base_url}, ARBEITSAGENTUR_ALLOWLIST, search_terms=["DevOps"]
@@ -245,6 +253,51 @@ def test_arbeitsagentur_skips_listings_without_a_reference_number():
 
     assert len(payloads) == 1
     assert payloads[0].original_job_id == "10000-1"
+
+
+def test_arbeitsagentur_detail_fetch_failure_degrades_to_empty_description_not_a_crash():
+    """The search endpoint alone still produces a usable listing (company,
+    title, location, apply URL) - losing the description to a transient
+    detail-call failure shouldn't drop the listing or abort the whole batch.
+    """
+    base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+    url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=50, page=1)
+    detail_url = arbeitsagentur._detail_url(base_url, "10000-1")
+    fixture = {"stellenangebote": [{"refnr": "10000-1", "titel": "DevOps Engineer", "arbeitgeber": "Acme GmbH"}]}
+    client = FakeClient(
+        {url: FakeResponse(fixture), detail_url: FakeResponse({"error": "not found"}, status_code=404)}
+    )
+
+    payloads = arbeitsagentur.fetch(client, {"baseUrl": base_url}, ARBEITSAGENTUR_ALLOWLIST, search_terms=["DevOps"])
+
+    assert len(payloads) == 1
+    assert payloads[0].payload["stellenbeschreibung"] == ""
+
+
+def test_arbeitsagentur_detail_fetch_fetches_a_separate_url_per_listing():
+    base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+    url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=50, page=1)
+    detail_url_1 = arbeitsagentur._detail_url(base_url, "10000-1")
+    detail_url_2 = arbeitsagentur._detail_url(base_url, "10000-2")
+    fixture = {
+        "stellenangebote": [
+            {"refnr": "10000-1", "titel": "DevOps Engineer", "arbeitgeber": "Acme GmbH"},
+            {"refnr": "10000-2", "titel": "SRE", "arbeitgeber": "Beispiel GmbH"},
+        ]
+    }
+    client = FakeClient(
+        {
+            url: FakeResponse(fixture),
+            detail_url_1: FakeResponse({"stellenbeschreibung": "First listing."}),
+            detail_url_2: FakeResponse({"stellenbeschreibung": "Second listing."}),
+        }
+    )
+
+    payloads = arbeitsagentur.fetch(client, {"baseUrl": base_url}, ARBEITSAGENTUR_ALLOWLIST, search_terms=["DevOps"])
+
+    assert len(payloads) == 2
+    assert payloads[0].payload["stellenbeschreibung"] == "First listing."
+    assert payloads[1].payload["stellenbeschreibung"] == "Second listing."
 
 
 # ---------------------------------------------------------------------------
