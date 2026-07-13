@@ -31,24 +31,28 @@ Response shape (subset we care about):
 
 Notably, the search response above never includes a description - full
 listing text only comes from a separate per-job detail call:
-  GET {base}/pc/v4/jobdetails/{refnr}
-  { ..., "stellenbeschreibung": "Wir suchen..." }
-(same `refnr` the public jobdetail web page at arbeitsagentur.de/jobsuche/
-jobdetail/{refnr} uses). `fetch()` below makes one such call per listing to
-populate `stellenbeschreibung` before handing the payload off to the
-normalizer - extract_arbeitsagentur() already reads that field, it was just
-never being populated. This roughly doubles the request count for this
-source; a failed detail call degrades to an empty description for that one
-listing rather than dropping it or aborting the whole batch.
+  GET {base}/pc/v4/jobdetails/{base64(refnr)}
+  { ..., "stellenangebotsBeschreibung": "### Stellenbeschreibung\n\n..." }
+The path segment is NOT the raw refnr - it's the refnr, base64-encoded
+(confirmed live: rest.arbeitsagentur.de/.../pc/v4/jobdetails/10001-... 404s;
+base64-encoding the refnr first returns 200 with a real
+stellenangebotsBeschreibung field). Community-documented shape, verified
+against the live API on 2026-07-13:
+https://github.com/bundesAPI/jobsuche-api - see openapi.yaml and issue #47.
+`fetch()` below makes one such call per listing to populate
+stellenangebotsBeschreibung before handing the payload off to the
+normalizer - extract_arbeitsagentur() reads that field. This roughly
+doubles the request count for this source; a failed detail call degrades to
+an empty description for that one listing rather than dropping it or
+aborting the whole batch.
 
-TODO: the exact response schema and rate limits (for both the search and
-detail endpoints) are not covered by an official public OpenAPI spec at the
-time of writing; this adapter is built against the widely-observed shape
-used by community tooling. Before production use, verify field names
-against a live response and add pagination beyond a single page if
-`maxErgebnisse` exceeds the page size.
+TODO: rate limits for both endpoints are still not covered by an official
+public OpenAPI spec at the time of writing. Add pagination beyond a single
+page if `maxErgebnisse` exceeds the page size.
 """
 from __future__ import annotations
+
+import base64
 
 from crawler.base import HttpClient, RawPayload, TransientFetchError, enforce_domain_allowlist, retryable
 
@@ -63,7 +67,8 @@ def _search_url(base_url: str, was: str, wo: str, size: int, page: int) -> str:
 
 def _detail_url(base_url: str, refnr: str) -> str:
     base = base_url.rstrip("/")
-    return f"{base}/pc/v4/jobdetails/{refnr}"
+    encoded = base64.b64encode(refnr.encode("utf-8")).decode("ascii")
+    return f"{base}/pc/v4/jobdetails/{encoded}"
 
 
 @retryable()
@@ -95,7 +100,7 @@ def _fetch_description(client: HttpClient, base_url: str, refnr: str, domain_all
         detail = _get(client, url)
     except (TransientFetchError, RuntimeError):
         return ""
-    return detail.get("stellenbeschreibung", "") or ""
+    return detail.get("stellenangebotsBeschreibung", "") or ""
 
 
 def fetch(
@@ -124,7 +129,7 @@ def fetch(
             if not refnr:
                 continue
             enriched = dict(job)
-            enriched["stellenbeschreibung"] = _fetch_description(client, base_url, str(refnr), domain_allowlist)
+            enriched["stellenangebotsBeschreibung"] = _fetch_description(client, base_url, str(refnr), domain_allowlist)
             payloads.append(
                 RawPayload(
                     original_job_id=str(refnr),

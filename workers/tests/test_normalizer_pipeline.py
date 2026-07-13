@@ -125,6 +125,12 @@ def test_build_raw_job_fields_arbeitsagentur():
     assert result["locationNormalized"] == "Bonn"  # not in market-de's location dict -> title-cased fallback
     assert result["language"] == "de"
     assert "kubernetes" in result["techStackTags"]
+    # Real field name is stellenangebotsBeschreibung (confirmed against the
+    # live detail endpoint) - not stellenbeschreibung, which doesn't exist in
+    # a real response and was silently reading as empty before this was caught.
+    assert result["jobDescriptionText"] == (
+        "Wir suchen einen erfahrenen DevOps Lead mit Kubernetes und Terraform Kenntnissen."
+    )
     # "Apply on Arbeitsagentur" (applyUrl) must open the BA detail page;
     # "View original listing" (sourceUrl) must open the employer's own posting.
     assert result["applyUrl"] == "https://www.arbeitsagentur.de/jobsuche/jobdetail/10000-1234567890-S"
