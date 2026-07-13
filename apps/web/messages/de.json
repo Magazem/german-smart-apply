@@ -516,7 +516,7 @@
   },
   "Billing": {
     "loading": "Wird geladen…",
-    "checkoutPlaceholder": "Stripe-Checkout ist noch nicht angebunden — dieser Button ist ein Platzhalter für das Abrechnungs-Workstream.",
+    "checkoutError": "Checkout konnte nicht gestartet werden — bitte versuchen Sie es erneut.",
     "pageTitle": "Abrechnung",
     "pageSubtitle": "Free beweist den Nutzen schnell. Pro schaltet tiefere Profilkontrolle und umfangreichere Anpassung frei. Bewerbungen bleiben in jedem Tarif freigabepflichtig.",
     "freeTitle": "Free",
@@ -546,7 +546,7 @@
     "featureCvVariant": "Erstellung maßgeschneiderter Lebensläufe",
     "featureCoverLetter": "Erstellung von Anschreiben",
     "featureMatchExplanation": "Übereinstimmungserklärungen",
-    "stripePlaceholderNote": "Die Abrechnung läuft über Stripe (Abonnements + Nutzungsmessung), sobald diese angebunden ist — diese Seite ist bis dahin ein funktionaler Platzhalter."
+    "upgradingButton": "Weiterleitung zum Checkout…"
   },
   "Admin": {
     "loading": "Wird geladen…",

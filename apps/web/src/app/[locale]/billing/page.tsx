@@ -37,6 +37,7 @@ export default function BillingPage() {
   const { user } = useAuth();
   const [message, setMessage] = useState<string | null>(null);
   const [usage, setUsage] = useState<TokenUsageSummary | null>(null);
+  const [upgrading, setUpgrading] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -60,10 +61,16 @@ export default function BillingPage() {
     );
   }
 
-  const handleUpgrade = () => {
-    // TODO(billing workstream): wire real Stripe Checkout session creation
-    // here once apps/api exposes a /billing/checkout-session endpoint.
-    setMessage(t('checkoutPlaceholder'));
+  const handleUpgrade = async () => {
+    setMessage(null);
+    setUpgrading(true);
+    try {
+      const { url } = await getApiClient().billing.createCheckoutSession();
+      window.location.href = url;
+    } catch {
+      setMessage(t('checkoutError'));
+      setUpgrading(false);
+    }
   };
 
   return (
@@ -111,8 +118,14 @@ export default function BillingPage() {
             ))}
           </ul>
           {user?.tier !== 'pro' && (
-            <button type="button" className="btn btn-primary" onClick={handleUpgrade} data-testid="upgrade-cta">
-              {t('upgradeButton')}
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleUpgrade}
+              disabled={upgrading}
+              data-testid="upgrade-cta"
+            >
+              {upgrading ? t('upgradingButton') : t('upgradeButton')}
             </button>
           )}
         </div>
@@ -152,10 +165,6 @@ export default function BillingPage() {
           )}
         </div>
       )}
-
-      <p className="muted" style={{ fontSize: '0.8rem' }}>
-        {t('stripePlaceholderNote')}
-      </p>
     </div>
   );
 }

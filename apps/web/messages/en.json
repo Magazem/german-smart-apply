@@ -516,7 +516,7 @@
   },
   "Billing": {
     "loading": "Loading…",
-    "checkoutPlaceholder": "Stripe checkout isn't wired up yet — this button is a placeholder for the billing workstream.",
+    "checkoutError": "Couldn't start checkout — please try again.",
     "pageTitle": "Billing",
     "pageSubtitle": "Free proves value fast. Pro unlocks deeper profile control and richer tailoring. Applications stay approval-first on every tier.",
     "freeTitle": "Free",
@@ -546,7 +546,7 @@
     "featureCvVariant": "Tailored CV generation",
     "featureCoverLetter": "Cover letter generation",
     "featureMatchExplanation": "Match explanations",
-    "stripePlaceholderNote": "Billing is powered by Stripe (subscriptions + usage metering) once wired up — this page is a functional placeholder ahead of that integration."
+    "upgradingButton": "Redirecting to checkout…"
   },
   "Admin": {
     "loading": "Loading…",
