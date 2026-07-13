@@ -1,0 +1,31 @@
+# fly.toml app configuration for the crawl -> normalize -> dedup pipeline.
+#
+# Unlike apps/api/fly.toml and apps/web/fly.toml, this app has no
+# [http_service] - it's a one-shot batch job (workers/Dockerfile's CMD runs
+# scripts/run_pipeline.py to completion and exits), not a standing server.
+# See .github/workflows/crawl-pipeline.yml for how it's actually triggered
+# on a schedule.
+
+app = 'german-smart-apply-workers'
+primary_region = 'fra'
+
+[build]
+  # Relative to this file's own directory (workers/), NOT the repo root -
+  # same "pass '.' explicitly as the build context" reasoning as
+  # apps/api/fly.toml - the Dockerfile's own COPY paths are workers-root-
+  # relative (see workers/Dockerfile), so no repo-root context is needed
+  # here, but flyctl still wants an explicit context argument on deploy.
+  dockerfile = 'Dockerfile'
+
+[env]
+  # DATABASE_URL is a secret, not a plain env var - set it with:
+  #   fly secrets set DATABASE_URL=... --app german-smart-apply-workers
+  # (same production Postgres apps/api/fly.toml's release_command migrates -
+  # the pipeline writes into the same sources/raw_jobs/canonical_jobs tables
+  # apps/api reads from, no separate database).
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '512mb'
+  cpus = 1
+  memory_mb = 512

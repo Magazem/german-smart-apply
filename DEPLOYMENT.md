@@ -141,12 +141,55 @@ After that, every push to `main` runs `flyctl deploy` for both apps using the
 
 ## Workers (crawler/normalizer/deduplicator)
 
-Phase 1 scope is a one-shot pipeline run (`workers/scripts/run_pipeline.py`,
-containerized via `workers/Dockerfile`), not a standing scheduler. Trigger it
-per source's `crawlFrequencyMinutes` via Fly's scheduled machines, a Fly
-Machine run on a cron trigger from an external scheduler, or a Kubernetes
-CronJob if deploying elsewhere — building an in-repo scheduler is Phase 2+
-work per plan.md's Source Ingestion Layer.
+`workers/scripts/run_pipeline.py` (containerized via `workers/Dockerfile`,
+configured via `workers/fly.toml`) runs the full seed -> crawl -> normalize ->
+dedup pipeline once per invocation and exits — it's a batch job, not a
+standing server, so `workers/fly.toml` has no `[http_service]` the way
+`apps/api`/`apps/web` do.
+
+`.github/workflows/crawl-pipeline.yml` triggers it every 4 hours via a GitHub
+Actions cron schedule (plus manual "Run workflow" dispatch) by running
+`flyctl deploy --config workers/fly.toml .` — for an app with no
+`[http_service]`, this builds the image and (re)starts the one configured
+machine, which runs the pipeline to completion and exits. Every 4 hours
+matches the finest `crawlFrequencyMinutes` among configured sources (see
+`workers/common/market_de.py`); coarser sources just get crawled a bit more
+often than their nominal cadence, which is harmless since every step
+(crawl/normalize/dedup) is idempotent.
+
+One-time setup before the first scheduled run:
+
+1. Create the Fly app (registers the name, doesn't deploy anything yet):
+   ```
+   fly launch --config workers/fly.toml --no-deploy
+   ```
+2. Set the `DATABASE_URL` secret — same production Postgres the API uses,
+   since the pipeline writes into the same `sources`/`raw_jobs`/
+   `canonical_jobs` tables `apps/api` reads from:
+   ```
+   fly secrets set --app german-smart-apply-workers DATABASE_URL="postgresql://..."
+   ```
+3. Generate an app-scoped deploy token and add it as a GitHub Actions secret
+   (repo Settings -> Secrets and variables -> Actions -> New repository
+   secret), same narrowest-scope reasoning as the api/web tokens above:
+   ```
+   fly tokens create deploy -x 999999h --app german-smart-apply-workers
+   ```
+   Save it as `FLY_API_TOKEN_WORKERS`.
+4. Do one manual run to confirm it actually works end to end before trusting
+   the schedule — either trigger the workflow manually (Actions tab ->
+   "Run crawl pipeline" -> Run workflow), or run
+   `flyctl deploy --config workers/fly.toml .` locally once. Then check
+   `fly logs --app german-smart-apply-workers` and the `source_crawl_runs`
+   table for a real, successful run before walking away from it.
+
+Since this is the first time this exact deploy-a-batch-job-via-`fly deploy`
+pattern has been run for real (unlike the api/web services, which have
+deployed successfully before), watch the first couple of scheduled runs for
+correctness — in particular whether a machine that already exited cleanly
+gets replaced/restarted correctly by the next scheduled `flyctl deploy`, or
+whether `workers/fly.toml` needs an explicit restart/auto-destroy policy
+added. Adjust `workers/fly.toml` if not.
 
 ## Stripe webhook
 
