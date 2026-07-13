@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@german-smart-apply/ai": "workspace:*",
+    "@german-smart-apply/market-de": "workspace:*",
     "@german-smart-apply/shared": "workspace:*",
     "next": "14.2.35",
     "next-intl": "^4.13.2",
