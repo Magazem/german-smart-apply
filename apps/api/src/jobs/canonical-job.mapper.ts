@@ -61,5 +61,6 @@ export function toSharedCanonicalJob(record: CanonicalJobWithRaw): CanonicalJob 
 
     sourceTrustScore: record.sourceTrustScore,
     scamRiskScore: record.scamRiskScore,
+    duplicateConfidence: record.duplicateConfidence,
   };
 }

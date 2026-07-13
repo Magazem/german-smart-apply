@@ -71,6 +71,8 @@ export interface CanonicalJob {
 
   sourceTrustScore: number;
   scamRiskScore: number;
+  /** 1.0 = canonical/no duplicates merged; lower when near_duplicates.py merged near-dup postings into this one. */
+  duplicateConfidence: number;
 }
 
 export interface RawJobPayload {

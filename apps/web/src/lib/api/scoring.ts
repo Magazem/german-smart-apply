@@ -23,7 +23,7 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
 
   const sourceTrust = job.sourceTrustScore;
 
-  const duplicateConfidence = 1; // no duplicate clusters in the mock layer — always "canonical".
+  const duplicateConfidence = job.duplicateConfidence;
 
   const riskPenalty = job.scamRiskScore;
 

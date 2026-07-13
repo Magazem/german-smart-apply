@@ -1,8 +1,8 @@
-import type { CanonicalJob } from '@german-smart-apply/shared';
+﻿import type { CanonicalJob } from '@german-smart-apply/shared';
 
 /**
  * Seed data for the mock API layer. Modeled on plan.md's "small trusted
- * German source set" — a mix of high-trust ATS-sourced roles plus one
+ * German source set" â€” a mix of high-trust ATS-sourced roles plus one
  * deliberately suspicious listing so the scam-risk / trust-signal UI has
  * something real to surface (never hide risk from the user).
  */
@@ -36,6 +36,7 @@ export const JOB_FIXTURES: CanonicalJob[] = [
     crawledAt: '2026-07-03T04:00:00.000Z',
     sourceTrustScore: 0.95,
     scamRiskScore: 0.03,
+    duplicateConfidence: 1,
   },
   {
     jobId: 'job-02',
@@ -66,6 +67,7 @@ export const JOB_FIXTURES: CanonicalJob[] = [
     crawledAt: '2026-07-05T10:00:00.000Z',
     sourceTrustScore: 0.91,
     scamRiskScore: 0.05,
+    duplicateConfidence: 1,
   },
   {
     jobId: 'job-03',
@@ -96,6 +98,7 @@ export const JOB_FIXTURES: CanonicalJob[] = [
     crawledAt: '2026-06-29T06:00:00.000Z',
     sourceTrustScore: 0.93,
     scamRiskScore: 0.04,
+    duplicateConfidence: 1,
   },
   {
     jobId: 'job-04',
@@ -126,6 +129,7 @@ export const JOB_FIXTURES: CanonicalJob[] = [
     crawledAt: '2026-07-06T12:00:00.000Z',
     sourceTrustScore: 0.85,
     scamRiskScore: 0.12,
+    duplicateConfidence: 1,
   },
   {
     jobId: 'job-05',
@@ -156,6 +160,7 @@ export const JOB_FIXTURES: CanonicalJob[] = [
     crawledAt: '2026-07-01T11:00:00.000Z',
     sourceTrustScore: 0.88,
     scamRiskScore: 0.07,
+    duplicateConfidence: 1,
   },
   {
     jobId: 'job-06',
@@ -186,6 +191,7 @@ export const JOB_FIXTURES: CanonicalJob[] = [
     crawledAt: '2026-06-26T08:00:00.000Z',
     sourceTrustScore: 0.82,
     scamRiskScore: 0.15,
+    duplicateConfidence: 1,
   },
   {
     jobId: 'job-07',
@@ -216,6 +222,7 @@ export const JOB_FIXTURES: CanonicalJob[] = [
     crawledAt: '2026-07-04T15:00:00.000Z',
     sourceTrustScore: 0.87,
     scamRiskScore: 0.1,
+    duplicateConfidence: 1,
   },
   {
     jobId: 'job-08',
@@ -246,6 +253,7 @@ export const JOB_FIXTURES: CanonicalJob[] = [
     crawledAt: '2026-06-30T13:00:00.000Z',
     sourceTrustScore: 0.93,
     scamRiskScore: 0.05,
+    duplicateConfidence: 1,
   },
   {
     jobId: 'job-09',
@@ -276,6 +284,7 @@ export const JOB_FIXTURES: CanonicalJob[] = [
     crawledAt: '2026-07-07T10:30:00.000Z',
     sourceTrustScore: 0.86,
     scamRiskScore: 0.09,
+    duplicateConfidence: 1,
   },
   {
     jobId: 'job-10',
@@ -306,6 +315,7 @@ export const JOB_FIXTURES: CanonicalJob[] = [
     crawledAt: '2026-07-08T09:15:00.000Z',
     sourceTrustScore: 0.28,
     scamRiskScore: 0.86,
+    duplicateConfidence: 1,
   },
   {
     jobId: 'job-11',
@@ -336,6 +346,7 @@ export const JOB_FIXTURES: CanonicalJob[] = [
     crawledAt: '2026-07-03T14:00:00.000Z',
     sourceTrustScore: 0.9,
     scamRiskScore: 0.06,
+    duplicateConfidence: 1,
   },
   {
     jobId: 'job-12',
@@ -366,5 +377,6 @@ export const JOB_FIXTURES: CanonicalJob[] = [
     crawledAt: '2026-06-27T16:00:00.000Z',
     sourceTrustScore: 0.89,
     scamRiskScore: 0.06,
+    duplicateConfidence: 1,
   },
 ];

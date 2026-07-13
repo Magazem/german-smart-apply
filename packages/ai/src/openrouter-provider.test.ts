@@ -1,4 +1,4 @@
-import type OpenAI from 'openai';
+﻿import type OpenAI from 'openai';
 import { describe, expect, it, vi } from 'vitest';
 import type { CandidateProfile, CanonicalJob, MarketPack } from '@german-smart-apply/shared';
 import { AiProviderError } from './errors.js';
@@ -66,6 +66,7 @@ const job: CanonicalJob = {
   crawledAt: new Date().toISOString(),
   sourceTrustScore: 0.9,
   scamRiskScore: 0.02,
+  duplicateConfidence: 1,
 };
 
 const testMarketPack: MarketPack = {
