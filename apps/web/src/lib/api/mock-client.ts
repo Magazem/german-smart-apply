@@ -732,6 +732,21 @@ export class MockApiClient implements ApiClient {
     },
   };
 
+  billing = {
+    // No real Stripe in the mock world - simulate the same end state a real
+    // checkout's webhook produces (instant tier upgrade) so the demo
+    // experience actually demonstrates the upgrade instead of dead-ending.
+    createCheckoutSession: async (): Promise<{ url: string }> => {
+      await delay(300);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const user = db.users.find((u) => u.id === userId);
+      if (user) user.tier = 'pro';
+      saveDb(db);
+      return { url: '/billing?checkout=success' };
+    },
+  };
+
   roleGapAnalysis = {
     list: async (): Promise<RoleGapAnalysis[]> => {
       await delay(80);

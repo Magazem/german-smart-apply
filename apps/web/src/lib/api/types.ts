@@ -209,6 +209,10 @@ export interface ApiClient {
   usage: {
     summary(): Promise<TokenUsageSummary>;
   };
+  billing: {
+    /** Creates a Stripe Checkout session for the Pro upgrade; the caller redirects the browser to the returned url. */
+    createCheckoutSession(): Promise<{ url: string }>;
+  };
   roleGapAnalysis: {
     /** Past analyses for the current user, most recent first. */
     list(): Promise<RoleGapAnalysis[]>;

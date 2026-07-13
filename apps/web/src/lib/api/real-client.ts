@@ -323,6 +323,11 @@ export class RealApiClient implements ApiClient {
     summary: async (): Promise<TokenUsageSummary> => this.request<TokenUsageSummary>('/usage'),
   };
 
+  billing = {
+    createCheckoutSession: async (): Promise<{ url: string }> =>
+      this.request<{ url: string }>('/billing/checkout-session', { method: 'POST' }),
+  };
+
   roleGapAnalysis = {
     list: async (): Promise<RoleGapAnalysis[]> =>
       this.request<RoleGapAnalysis[]>('/role-gap-analysis'),
