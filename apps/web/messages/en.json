@@ -30,6 +30,10 @@
     "terminal": "Terminal",
     "title": "Cycle theme (System / Light / Dark / Terminal)"
   },
+  "ThemeHint": {
+    "message": "You're viewing the terminal theme by default — use the toggle at top right to switch to light, dark, or your system setting.",
+    "dismiss": "Dismiss"
+  },
   "Landing": {
     "badge": "🇩🇪 Germany-first · France next",
     "heroHeading": "The AI job-search copilot that optimizes for trust, not volume.",

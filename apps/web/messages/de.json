@@ -30,6 +30,10 @@
     "terminal": "Terminal",
     "title": "Design wechseln (System / Hell / Dunkel / Terminal)"
   },
+  "ThemeHint": {
+    "message": "Sie sehen standardmäßig das Terminal-Design — verwenden Sie den Schalter oben rechts, um zu Hell, Dunkel oder Ihrer Systemeinstellung zu wechseln.",
+    "dismiss": "Schließen"
+  },
   "Landing": {
     "badge": "🇩🇪 Zuerst Deutschland · Frankreich folgt",
     "heroHeading": "Der KI-Jobsuche-Copilot, der auf Vertrauen statt Masse setzt.",
