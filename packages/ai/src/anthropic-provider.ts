@@ -409,6 +409,7 @@ export class AnthropicAiProvider implements AiProvider {
       "Use standard, ATS-parsable section headers exactly as commonly recognized: 'Work Experience', 'Education', 'Skills' (or the equivalent standard header in the target language) — do not invent creative or nonstandard section names.",
       "Open with a contact header (name, email, phone) using whatever contact fields are present in the candidate profile below - omit any that are missing, never invent one.",
       "Build the Work Experience and Education sections from the candidate's actual listed positions and degrees below (title, company, dates, description / degree, institution, years) - reorder, re-emphasize, and rephrase for relevance to the target job, but every employer, title, and institution named must come from that list, never invented.",
+      "If no work experience or education entries are listed below, do not invent any to fill the gap - omit that section entirely rather than fabricating a placeholder position, employer, or degree. An incomplete but honest CV is always correct; a complete but fabricated one is never acceptable, no matter how well it would otherwise match the job.",
       "Where the candidate genuinely has matching experience, front-load role-relevant keywords and phrasing drawn from the job description into the corresponding bullet points — but only where it reflects real, truthful overlap with the candidate's background.",
       'Quantify achievements with concrete numbers wherever the candidate profile provides them (%, €, team size, time saved); do not fabricate numbers where none exist.',
       "Write in third person / resume-style phrasing (avoid 'I', 'my') throughout, consistent with standard CV conventions.",
@@ -443,6 +444,7 @@ export class AnthropicAiProvider implements AiProvider {
     const { preferredLengthWords } = this.marketPack.coverLetterFormattingNorms;
     const system = [
       'Do not invent, exaggerate, or infer facts, employers, titles, dates, or metrics that are not present in the candidate profile provided. Rephrasing and reordering are fine; fabrication is not.',
+      'Only reference specific past employers, projects, or achievements that appear in the candidate\'s work experience listed below. If no work experience is listed, write generally about the candidate\'s stated skills, target role, and summary instead - never invent a specific project, employer, or story to make the letter sound more concrete.',
       interpolate(this.marketPack.languagePrompts.coverLetter, {
         language,
         jobTitle: job.jobTitleNormalized,

@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Application, ApplicationDraft, CandidateProfile, CanonicalJob, ParsedCvResult } from '@german-smart-apply/shared';
 import { getApiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
@@ -32,6 +32,11 @@ export default function CvWorkspacePage() {
   const [selectedAppId, setSelectedAppId] = useState<string>('');
   const [generating, setGenerating] = useState(false);
   const [generatedDraft, setGeneratedDraft] = useState<ApplicationDraft | null>(null);
+
+  const reuploadInputRef = useRef<HTMLInputElement>(null);
+  const [reparsing, setReparsing] = useState(false);
+  const [reparseMessage, setReparseMessage] = useState<string | null>(null);
+  const [reparseError, setReparseError] = useState<string | null>(null);
 
   const isPro = user?.tier === 'pro';
 
@@ -115,6 +120,43 @@ export default function CvWorkspacePage() {
     }
   };
 
+  /**
+   * The only re-entry point for refreshing contact info/experience/education/
+   * languages after onboarding - CV parsing only happens once during
+   * onboarding otherwise, so without this, a stale profile (e.g. one saved
+   * before these fields existed, or just an outdated CV) has no way to catch
+   * up short of a backend script.
+   */
+  const handleReupload = async () => {
+    const file = reuploadInputRef.current?.files?.[0];
+    if (!file) return;
+    setReparsing(true);
+    setReparseError(null);
+    setReparseMessage(null);
+    try {
+      const api = getApiClient();
+      const result = await api.cv.upload({ kind: 'file', file });
+      const updated = await api.profile.update({
+        ...(result.fullName ? { fullName: result.fullName } : {}),
+        ...(result.email ? { email: result.email } : {}),
+        ...(result.phone ? { phone: result.phone } : {}),
+        skills: result.skills,
+        summary: result.summary,
+        experience: result.experience,
+        education: result.education,
+        languages: result.languages,
+      });
+      setParsedCv(result);
+      setProfile(updated);
+      setReparseMessage(t('reuploadCvSuccess'));
+    } catch (err) {
+      setReparseError(err instanceof Error ? err.message : t('reuploadCvError'));
+    } finally {
+      setReparsing(false);
+      if (reuploadInputRef.current) reuploadInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="container stack gap-24" style={{ maxWidth: 880, padding: '40px 24px 96px' }}>
       <div className="stack gap-4">
@@ -125,6 +167,11 @@ export default function CvWorkspacePage() {
       {parsedCv && (
         <div className="card stack gap-8" style={{ padding: 20 }}>
           <h2 style={{ fontWeight: 700, fontSize: '1.02rem' }}>{t('originalCvTitle')}</h2>
+          {(parsedCv.email || parsedCv.phone) && (
+            <p className="muted" style={{ fontSize: '0.82rem' }}>
+              {[parsedCv.email, parsedCv.phone].filter(Boolean).join(' · ')}
+            </p>
+          )}
           <p className="muted" style={{ fontSize: '0.88rem' }}>{parsedCv.summary}</p>
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             {parsedCv.suggestions.map((s) => (
@@ -135,6 +182,25 @@ export default function CvWorkspacePage() {
           </ul>
         </div>
       )}
+
+      <div className="card stack gap-8" style={{ padding: 20 }}>
+        <h2 style={{ fontWeight: 700, fontSize: '1.02rem' }}>{t('reuploadCvTitle')}</h2>
+        <p className="muted" style={{ fontSize: '0.85rem' }}>{t('reuploadCvDescription')}</p>
+        <div className="field">
+          <input
+            ref={reuploadInputRef}
+            type="file"
+            accept=".pdf,.docx,.txt"
+            className="input"
+            onChange={handleReupload}
+            disabled={reparsing}
+            data-testid="cv-reupload-input"
+          />
+        </div>
+        {reparsing && <p className="muted" style={{ fontSize: '0.85rem' }}>{t('reuploadCvButtonPending')}</p>}
+        {reparseError && <p className="error-text" style={{ fontSize: '0.85rem' }}>{reparseError}</p>}
+        {reparseMessage && <p className="muted" style={{ fontSize: '0.85rem' }}>{reparseMessage}</p>}
+      </div>
 
       <div className="card stack" style={{ padding: 24 }}>
         <h2 style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 16 }}>{t('profileTitle')}</h2>
