@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useRouter } from '@/i18n/navigation';
 import { getApiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
@@ -32,7 +32,7 @@ function usePasswordStrength(password: string) {
 
 export default function SignupPage() {
   const router = useRouter();
-  const { refresh } = useAuth();
+  const { user, loading, refresh } = useAuth();
   const t = useTranslations('Signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,6 +41,12 @@ export default function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const strength = usePasswordStrength(password);
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace('/dashboard');
+    }
+  }, [loading, user, router]);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -60,6 +66,10 @@ export default function SignupPage() {
       setSubmitting(false);
     }
   };
+
+  if (loading || user) {
+    return null;
+  }
 
   return (
     <div className="container" style={{ maxWidth: 440, padding: '56px 24px' }}>

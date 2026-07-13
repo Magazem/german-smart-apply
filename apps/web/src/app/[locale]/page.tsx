@@ -1,5 +1,8 @@
+'use client';
+
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
+import { useAuth } from '@/lib/auth-context';
 
 const PILLAR_KEYS = [
   { titleKey: 'pillar1Title', bodyKey: 'pillar1Body' },
@@ -16,6 +19,7 @@ const STEP_KEYS = [
 
 export default function LandingPage() {
   const t = useTranslations('Landing');
+  const { user, loading } = useAuth();
 
   return (
     <div>
@@ -29,12 +33,20 @@ export default function LandingPage() {
             {t('heroSubtitle')}
           </p>
           <div className="row gap-12" style={{ justifyContent: 'center' }}>
-            <Link href="/signup" className="btn btn-primary" data-testid="cta-signup" style={{ padding: '14px 28px' }}>
-              {t('ctaSignup')}
-            </Link>
-            <Link href="/login" className="btn btn-secondary" style={{ padding: '14px 28px' }}>
-              {t('ctaLogin')}
-            </Link>
+            {loading ? null : user ? (
+              <Link href="/dashboard" className="btn btn-primary" data-testid="cta-dashboard" style={{ padding: '14px 28px' }}>
+                {t('ctaDashboard')}
+              </Link>
+            ) : (
+              <>
+                <Link href="/signup" className="btn btn-primary" data-testid="cta-signup" style={{ padding: '14px 28px' }}>
+                  {t('ctaSignup')}
+                </Link>
+                <Link href="/login" className="btn btn-secondary" style={{ padding: '14px 28px' }}>
+                  {t('ctaLogin')}
+                </Link>
+              </>
+            )}
           </div>
           <p className="muted" style={{ fontSize: '0.85rem' }}>
             {t('heroFootnote')}
@@ -106,9 +118,15 @@ export default function LandingPage() {
           <p className="muted" style={{ marginTop: 10 }}>
             {t('finalCtaBody')}
           </p>
-          <Link href="/signup" className="btn btn-primary" style={{ marginTop: 20, padding: '14px 28px' }}>
-            {t('ctaSignup')}
-          </Link>
+          {!loading && (
+            <Link
+              href={user ? '/dashboard' : '/signup'}
+              className="btn btn-primary"
+              style={{ marginTop: 20, padding: '14px 28px' }}
+            >
+              {user ? t('ctaDashboard') : t('ctaSignup')}
+            </Link>
+          )}
         </div>
       </section>
     </div>
