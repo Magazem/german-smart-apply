@@ -1,5 +1,6 @@
 import type { LabeledQuery } from '../types.js';
 import { buildEvalJob, buildEvalProfile } from './fixtures.js';
+import { BOOTSTRAP_QUERIES } from './bootstrap-queries.js';
 
 /**
  * Smoke dataset for Phase 3a (scaffolding the harness) - hand-written,
@@ -17,7 +18,7 @@ import { buildEvalJob, buildEvalProfile } from './fixtures.js';
  * relevant one. If a future weight change regresses that, this harness
  * should catch it.
  */
-export const LABELED_QUERIES: LabeledQuery[] = [
+const SMOKE_QUERIES: LabeledQuery[] = [
   {
     id: 'backend-engineer-de',
     labeledBy: 'human',
@@ -111,3 +112,11 @@ export const LABELED_QUERIES: LabeledQuery[] = [
     ],
   },
 ];
+
+/**
+ * The hand-written smoke queries above plus the Phase 3b LLM-judge-bootstrapped
+ * corpus (bootstrap-queries.ts). Both are labeled the same way and scored by
+ * the same harness (ranking-eval.test.ts); keeping them in one exported array
+ * means the nDCG bar is enforced across the whole dataset.
+ */
+export const LABELED_QUERIES: LabeledQuery[] = [...SMOKE_QUERIES, ...BOOTSTRAP_QUERIES];
