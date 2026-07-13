@@ -29,10 +29,23 @@ Response shape (subset we care about):
   ]
 }
 
-TODO: the exact response schema and rate limits are not covered by an official
-public OpenAPI spec at the time of writing; this adapter is built against the
-widely-observed shape used by community tooling. Before production use, verify
-field names against a live response and add pagination beyond a single page if
+Notably, the search response above never includes a description - full
+listing text only comes from a separate per-job detail call:
+  GET {base}/pc/v4/jobdetails/{refnr}
+  { ..., "stellenbeschreibung": "Wir suchen..." }
+(same `refnr` the public jobdetail web page at arbeitsagentur.de/jobsuche/
+jobdetail/{refnr} uses). `fetch()` below makes one such call per listing to
+populate `stellenbeschreibung` before handing the payload off to the
+normalizer - extract_arbeitsagentur() already reads that field, it was just
+never being populated. This roughly doubles the request count for this
+source; a failed detail call degrades to an empty description for that one
+listing rather than dropping it or aborting the whole batch.
+
+TODO: the exact response schema and rate limits (for both the search and
+detail endpoints) are not covered by an official public OpenAPI spec at the
+time of writing; this adapter is built against the widely-observed shape
+used by community tooling. Before production use, verify field names
+against a live response and add pagination beyond a single page if
 `maxErgebnisse` exceeds the page size.
 """
 from __future__ import annotations
@@ -48,6 +61,11 @@ def _search_url(base_url: str, was: str, wo: str, size: int, page: int) -> str:
     return f"{base}/pc/v4/jobs?was={was}&wo={wo}&size={size}&page={page}"
 
 
+def _detail_url(base_url: str, refnr: str) -> str:
+    base = base_url.rstrip("/")
+    return f"{base}/pc/v4/jobdetails/{refnr}"
+
+
 @retryable()
 def _get(client: HttpClient, url: str) -> dict:
     try:
@@ -59,6 +77,25 @@ def _get(client: HttpClient, url: str) -> dict:
     if resp.status_code != 200:
         raise RuntimeError(f"Arbeitsagentur returned {resp.status_code} for {url}")
     return resp.json()
+
+
+def _fetch_description(client: HttpClient, base_url: str, refnr: str, domain_allowlist: list[str]) -> str:
+    """The search endpoint never returns a description (see module
+    docstring) - only the per-job jobdetails endpoint does. A fetch failure
+    here (404, exhausted retries, network error) degrades to an empty
+    description rather than dropping the whole listing or aborting the
+    batch: a listing with no description is strictly better than losing a
+    real posting entirely. A domain-allowlist failure is NOT swallowed here
+    though - that's a governance/config bug that must fail loudly, same as
+    the search call.
+    """
+    url = _detail_url(base_url, refnr)
+    enforce_domain_allowlist(url, domain_allowlist)
+    try:
+        detail = _get(client, url)
+    except (TransientFetchError, RuntimeError):
+        return ""
+    return detail.get("stellenbeschreibung", "") or ""
 
 
 def fetch(
@@ -86,10 +123,12 @@ def fetch(
             refnr = job.get("refnr")
             if not refnr:
                 continue
+            enriched = dict(job)
+            enriched["stellenbeschreibung"] = _fetch_description(client, base_url, str(refnr), domain_allowlist)
             payloads.append(
                 RawPayload(
                     original_job_id=str(refnr),
-                    payload=job,
+                    payload=enriched,
                     fetched_at=RawPayload.now_iso(),
                 )
             )
