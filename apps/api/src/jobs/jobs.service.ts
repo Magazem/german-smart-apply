@@ -140,6 +140,7 @@ export class JobsService {
           locationPreference: profile.locationPreference,
           salaryTargetMin: profile.salaryTargetMin,
           salaryTargetMax: profile.salaryTargetMax,
+          commutePreferenceKm: profile.commutePreferenceKm,
         }
       : null;
 
@@ -290,6 +291,7 @@ export class JobsService {
       locationPreference: profile.locationPreference,
       salaryTargetMin: profile.salaryTargetMin,
       salaryTargetMax: profile.salaryTargetMax,
+      commutePreferenceKm: profile.commutePreferenceKm,
     };
   }
 

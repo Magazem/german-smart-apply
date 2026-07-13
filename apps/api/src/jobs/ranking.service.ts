@@ -17,6 +17,7 @@ export interface RankingProfileInput {
   locationPreference: string;
   salaryTargetMin: number | null;
   salaryTargetMax: number | null;
+  commutePreferenceKm: number | null;
 }
 
 export interface RankingContext {
@@ -154,6 +155,18 @@ export class RankingService {
     if (profile.targetCountryCode && profile.targetCountryCode !== job.countryCode) {
       score *= 0.5;
     }
+
+    // Placeholder pending real geo-distance data (Phase 4): commutePreferenceKm
+    // is collected but there's no candidate city/postal-code field yet to
+    // measure it against job.locationNormalized, so this can't verify actual
+    // proximity. Setting a commute radius at all means the candidate cares
+    // about physical distance for onsite/hybrid roles specifically - treating
+    // an otherwise-perfect onsite/hybrid match as slightly less certain is
+    // honest about that unverifiable gap, not a claim we know the distance.
+    if (profile.commutePreferenceKm != null && (job.remoteType === 'onsite' || job.remoteType === 'hybrid')) {
+      score *= 0.9;
+    }
+
     return score;
   }
 

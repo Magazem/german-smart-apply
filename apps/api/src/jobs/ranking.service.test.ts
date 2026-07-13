@@ -45,6 +45,7 @@ function buildProfile(overrides: Partial<RankingProfileInput> = {}): RankingProf
     locationPreference: 'any',
     salaryTargetMin: null,
     salaryTargetMax: null,
+    commutePreferenceKm: null,
     ...overrides,
   };
 }
@@ -101,5 +102,37 @@ describe('RankingService.score - interactionBias', () => {
     const withUndefined = service.score(job, { profile: buildProfile(), interactionBias: undefined });
     const withoutField = service.score(job, { profile: buildProfile() });
     expect(withUndefined.totalScore).toBe(withoutField.totalScore);
+  });
+});
+
+describe('RankingService.score - locationFit commutePreferenceKm placeholder', () => {
+  const service = new RankingService();
+
+  it('discounts an onsite match when the candidate has set a commute radius (unverifiable without geo data)', () => {
+    const job = buildJob({ remoteType: 'onsite' });
+    const withoutCommutePref = service.score(job, {
+      profile: buildProfile({ locationPreference: 'onsite', commutePreferenceKm: null }),
+    });
+    const withCommutePref = service.score(job, {
+      profile: buildProfile({ locationPreference: 'onsite', commutePreferenceKm: 20 }),
+    });
+    expect(withoutCommutePref.locationFit).toBe(1);
+    expect(withCommutePref.locationFit).toBeCloseTo(0.9);
+  });
+
+  it('also discounts a hybrid match, not just onsite', () => {
+    const job = buildJob({ remoteType: 'hybrid' });
+    const result = service.score(job, {
+      profile: buildProfile({ locationPreference: 'hybrid', commutePreferenceKm: 20 }),
+    });
+    expect(result.locationFit).toBeCloseTo(0.9);
+  });
+
+  it('does not discount a fully remote job, even with a commute radius set', () => {
+    const job = buildJob({ remoteType: 'remote' });
+    const result = service.score(job, {
+      profile: buildProfile({ locationPreference: 'remote', commutePreferenceKm: 20 }),
+    });
+    expect(result.locationFit).toBe(1);
   });
 });
