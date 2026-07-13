@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import type { CandidateProfile, CanonicalJob } from '@german-smart-apply/shared';
 import { MockAiProvider } from './mock-provider.js';
 import type { RoleGapAnalysisInput } from './types.js';
@@ -57,6 +57,7 @@ const job: CanonicalJob = {
   crawledAt: new Date().toISOString(),
   sourceTrustScore: 0.9,
   scamRiskScore: 0.02,
+  duplicateConfidence: 1,
 };
 
 describe('MockAiProvider', () => {

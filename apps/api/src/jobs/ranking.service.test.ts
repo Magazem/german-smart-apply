@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import type { CanonicalJob } from '@german-smart-apply/shared';
 import { RankingService, type RankingProfileInput } from './ranking.service.js';
 
@@ -31,6 +31,7 @@ function buildJob(overrides: Partial<CanonicalJob> = {}): CanonicalJob {
     crawledAt: new Date().toISOString(),
     sourceTrustScore: 0.9,
     scamRiskScore: 0.02,
+    duplicateConfidence: 1,
     ...overrides,
   };
 }

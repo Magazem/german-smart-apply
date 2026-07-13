@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import { marketDe } from '@german-smart-apply/market-de';
 import type { CandidateProfile, CanonicalJob } from '@german-smart-apply/shared';
 import { AnthropicAiProvider } from './anthropic-provider.js';
@@ -75,6 +75,7 @@ const job: CanonicalJob = {
   crawledAt: new Date().toISOString(),
   sourceTrustScore: 0.9,
   scamRiskScore: 0.02,
+  duplicateConfidence: 1,
 };
 
 describe('AnthropicAiProvider (live integration)', () => {

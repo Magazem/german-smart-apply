@@ -83,14 +83,12 @@ export class RankingService {
       : 0.5;
 
     const sourceTrust = job.sourceTrustScore;
-    // Hardcoded, not read from job: canonical_jobs.duplicateConfidence is
-    // genuinely populated now (near_duplicates.py sets it below 1.0 on a
-    // near-dup merge survivor), but canonical-job.mapper.ts doesn't surface
-    // it onto the shared CanonicalJob type this function receives, so there
-    // is nothing to read yet. Written but unconsumed - wiring it into the
-    // ranking formula (as plan.md's scoring inputs list intends) is a
-    // separate follow-up, not yet done.
-    const duplicateConfidence = 1;
+    // Reported, not weighted: canonical_jobs.duplicateConfidence (populated
+    // by near_duplicates.py, below 1.0 on a near-dup merge survivor) is real
+    // signal, but folding it into totalScore is a weights-rebalance decision
+    // that belongs behind Phase 3's eval harness, not a silent addition here.
+    // For now this just stops reporting a fake "always canonical" 1.
+    const duplicateConfidence = job.duplicateConfidence;
     const riskPenalty = job.scamRiskScore;
 
     let totalScore =
