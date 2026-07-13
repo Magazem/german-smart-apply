@@ -6,6 +6,8 @@ import type {
   FollowUpEmailResult,
   InterviewPrepResult,
   ParseCvResult,
+  RoleGapAnalysisInput,
+  RoleGapAnalysisResult,
 } from './types.js';
 
 /**
@@ -147,5 +149,45 @@ export class MockAiProvider implements AiProvider {
           .map((skill) => `Highlight your hands-on experience with ${skill}, since it directly matches this role's requirements.`)
       : [`Connect your experience toward "${profile.targetRole}" to the responsibilities of this ${job.jobTitleNormalized} role.`];
     return { questions, talkingPoints, modelUsed: 'mock', tokensUsed: 0 };
+  }
+
+  async generateRoleGapAnalysis(
+    profile: CandidateProfile,
+    input: RoleGapAnalysisInput,
+    _language: string,
+  ): Promise<RoleGapAnalysisResult> {
+    const profileSkillsLower = new Set(profile.skills.map((s) => s.toLowerCase()));
+    const rankedTags = Object.entries(input.tagFrequency).sort(([, a], [, b]) => b - a);
+
+    const matchingSkills = rankedTags
+      .map(([tag]) => tag)
+      .filter((tag) => profileSkillsLower.has(tag.toLowerCase()));
+    const missingSkills = rankedTags
+      .map(([tag]) => tag)
+      .filter((tag) => !profileSkillsLower.has(tag.toLowerCase()))
+      .slice(0, 8);
+
+    const suggestedLearningTopics = missingSkills
+      .slice(0, 5)
+      .map((skill) => `Learn the fundamentals of ${skill} and build a small project that uses it.`);
+
+    const totalConsidered = matchingSkills.length + missingSkills.length;
+    const estimatedReadinessScore =
+      totalConsidered === 0 ? 50 : Math.round((matchingSkills.length / totalConsidered) * 100);
+
+    const summary = missingSkills.length
+      ? `Based on ${input.sampleJobs.length} sample posting(s) for "${input.targetRole}", you already match ${matchingSkills.length} commonly-requested skill(s) but are missing ${missingSkills.length}, most notably ${missingSkills.slice(0, 3).join(', ')}.`
+      : `Based on ${input.sampleJobs.length} sample posting(s) for "${input.targetRole}", your profile already covers the commonly-requested skills found in these postings.`;
+
+    return {
+      matchingSkills,
+      missingSkills,
+      suggestedLearningTopics,
+      suggestedCertifications: [],
+      estimatedReadinessScore,
+      summary,
+      modelUsed: 'mock',
+      tokensUsed: 0,
+    };
   }
 }

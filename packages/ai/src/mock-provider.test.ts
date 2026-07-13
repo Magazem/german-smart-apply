@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CandidateProfile, CanonicalJob } from '@german-smart-apply/shared';
 import { MockAiProvider } from './mock-provider.js';
+import type { RoleGapAnalysisInput } from './types.js';
 
 const profile: CandidateProfile = {
   id: 'p1',
@@ -140,5 +141,33 @@ describe('MockAiProvider', () => {
     const noOverlapJob: CanonicalJob = { ...job, techStackTags: ['Rust', 'Go'] };
     const result = await provider.generateInterviewPrep(profile, noOverlapJob, 'en');
     expect(result.talkingPoints[0]).toContain('Backend Engineer');
+  });
+
+  it('splits tag frequency into matching and missing skills relative to the profile', async () => {
+    const input: RoleGapAnalysisInput = {
+      targetRole: 'Backend Engineer',
+      sampleJobs: [job],
+      tagFrequency: { TypeScript: 5, PostgreSQL: 4, Kubernetes: 3, Rust: 2, Go: 1 },
+    };
+    const result = await provider.generateRoleGapAnalysis(profile, input, 'en');
+    expect(result.matchingSkills).toEqual(['TypeScript', 'PostgreSQL', 'Kubernetes']);
+    expect(result.missingSkills).toEqual(['Rust', 'Go']);
+    expect(result.suggestedLearningTopics.length).toBeGreaterThan(0);
+    expect(result.estimatedReadinessScore).toBeGreaterThan(0);
+    expect(result.estimatedReadinessScore).toBeLessThanOrEqual(100);
+    expect(result.summary).toContain('Backend Engineer');
+    expect(result.modelUsed).toBe('mock');
+    expect(result.tokensUsed).toBe(0);
+  });
+
+  it('scores full readiness when every requested skill is already matched', async () => {
+    const input: RoleGapAnalysisInput = {
+      targetRole: 'Backend Engineer',
+      sampleJobs: [job],
+      tagFrequency: { TypeScript: 5, PostgreSQL: 4 },
+    };
+    const result = await provider.generateRoleGapAnalysis(profile, input, 'en');
+    expect(result.missingSkills).toEqual([]);
+    expect(result.estimatedReadinessScore).toBe(100);
   });
 });
