@@ -24,8 +24,12 @@ jobs:
       # so `flyctl deploy` builds the image and (re)creates/starts the one
       # machine configured for this app, which runs workers/Dockerfile's
       # CMD (scripts/run_pipeline.py) to completion and exits - it does not
-      # keep serving traffic the way apps/api and apps/web do.
-      - run: flyctl deploy --config workers/fly.toml --remote-only .
+      # keep serving traffic the way apps/api and apps/web do. --ha=false is
+      # required here: without it, `fly deploy` provisions a redundant
+      # standby machine every run (confirmed live - it never boots the
+      # entrypoint, just sits stopped) which is pure clutter for a one-shot
+      # batch job that gets a brand new machine every 4 hours anyway.
+      - run: flyctl deploy --config workers/fly.toml --ha=false --remote-only .
         env:
           # `fly tokens create deploy --app german-smart-apply-workers` -
           # scoped to this app only, same narrowest-scope reasoning as the
