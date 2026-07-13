@@ -11,7 +11,24 @@ export const marketDe: MarketPack = {
       displayName: 'Greenhouse (DE companies)',
       trustTier: 'high',
       crawlFrequencyMinutes: 240,
-      config: { boardTokens: [] },
+      // Live-verified via workers/scripts/verify_source_tokens.py (each
+      // token returned a nonzero job count against the real Greenhouse
+      // API) -- do not add further tokens here without the same live
+      // check first. Mirrored in workers/common/market_de.py.
+      config: {
+        boardTokens: [
+          'n26',
+          'getyourguide',
+          'celonis',
+          'contentful',
+          'hellofresh',
+          'grover',
+          'trivago',
+          'solarisbank',
+          'traderepublic',
+          'raisin',
+        ],
+      },
     },
     {
       sourceId: 'lever-de',
@@ -19,6 +36,10 @@ export const marketDe: MarketPack = {
       displayName: 'Lever (DE companies)',
       trustTier: 'high',
       crawlFrequencyMinutes: 240,
+      // 20 candidate German/European tech companies were live-checked and
+      // every one returned zero jobs / not found -- none of the tried
+      // candidates actually use Lever (or use an unguessed slug spelling).
+      // Left empty rather than guessing further.
       config: { siteSlugs: [] },
     },
     {
@@ -51,7 +72,8 @@ export const marketDe: MarketPack = {
       // which also carries the domainAllowlist note: unlike Greenhouse/Lever,
       // each Personio company has its own subdomain host, so that allowlist
       // must be kept in lockstep with whatever gets added here.
-      config: { companySubdomains: [] },
+      // Live-verified via workers/scripts/verify_source_tokens.py.
+      config: { companySubdomains: ['candis', 'clark'] },
     },
     {
       sourceId: 'smartrecruiters-de',
@@ -59,7 +81,8 @@ export const marketDe: MarketPack = {
       displayName: 'SmartRecruiters (DE companies)',
       trustTier: 'high',
       crawlFrequencyMinutes: 240,
-      config: { companyIdentifiers: [] },
+      // Live-verified via workers/scripts/verify_source_tokens.py.
+      config: { companyIdentifiers: ['Continental'] },
     },
   ],
   languagePrompts: {
