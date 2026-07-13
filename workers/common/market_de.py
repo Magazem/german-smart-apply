@@ -33,7 +33,23 @@ SOURCES: list[SourceConfig] = [
         "displayName": "Greenhouse (DE companies)",
         "trustTier": "high",
         "crawlFrequencyMinutes": 240,
-        "config": {"boardTokens": []},
+        # Live-verified via scripts/verify_source_tokens.py (each token
+        # returned a nonzero job count against the real Greenhouse API) --
+        # do not add further tokens here without the same live check first.
+        "config": {
+            "boardTokens": [
+                "n26",
+                "getyourguide",
+                "celonis",
+                "contentful",
+                "hellofresh",
+                "grover",
+                "trivago",
+                "solarisbank",
+                "traderepublic",
+                "raisin",
+            ]
+        },
         "domainAllowlist": ["boards-api.greenhouse.io"],
     },
     {
@@ -42,6 +58,11 @@ SOURCES: list[SourceConfig] = [
         "displayName": "Lever (DE companies)",
         "trustTier": "high",
         "crawlFrequencyMinutes": 240,
+        # 20 candidate German/European tech companies were live-checked via
+        # scripts/verify_source_tokens.py and every single one returned zero
+        # jobs / not found -- none of the tried candidates actually use
+        # Lever (or use a slug spelling not guessed yet). Left empty rather
+        # than guessing further; revisit with real company-provided slugs.
         "config": {"siteSlugs": []},
         "domainAllowlist": ["api.lever.co"],
     },
@@ -80,8 +101,11 @@ SOURCES: list[SourceConfig] = [
         # (`{subdomain}.jobs.personio.de`), so domainAllowlist below must list
         # every subdomain added to companySubdomains explicitly -- keep the two
         # lists in lockstep when populating real companies.
-        "config": {"companySubdomains": []},
-        "domainAllowlist": [],
+        # Live-verified via scripts/verify_source_tokens.py -- each
+        # subdomain below returned a nonzero job count against the real
+        # Personio XML feed.
+        "config": {"companySubdomains": ["candis", "clark"]},
+        "domainAllowlist": ["candis.jobs.personio.de", "clark.jobs.personio.de"],
     },
     {
         "sourceId": "smartrecruiters-de",
@@ -89,7 +113,8 @@ SOURCES: list[SourceConfig] = [
         "displayName": "SmartRecruiters (DE companies)",
         "trustTier": "high",
         "crawlFrequencyMinutes": 240,
-        "config": {"companyIdentifiers": []},
+        # Live-verified via scripts/verify_source_tokens.py.
+        "config": {"companyIdentifiers": ["Continental"]},
         "domainAllowlist": ["api.smartrecruiters.com"],
     },
 ]

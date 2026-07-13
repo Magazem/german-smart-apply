@@ -51,6 +51,29 @@ CANDIDATE_GREENHOUSE_TOKENS = [
     "trivago",
     "solarisbank",
     "forto",
+    "zalando",
+    "delivery-hero",
+    "deliveryhero",
+    "auto1",
+    "trade-republic",
+    "traderepublic",
+    "moss",
+    "pitch",
+    "mambu",
+    "raisin",
+    "scalablecapital",
+    "getsafe",
+    "flixmobility",
+    "sennder",
+    "choco",
+    "clark",
+    "coachhub",
+    "tourlane",
+    "homeday",
+    "kontist",
+    "candis",
+    "zenjob",
+    "blinkist",
 ]
 
 CANDIDATE_LEVER_SLUGS = [
@@ -60,6 +83,14 @@ CANDIDATE_LEVER_SLUGS = [
     "wefox",
     "flaschenpost",
     "tier",
+    "babbel",
+    "spryker",
+    "simplesurance",
+    "wolt",
+    "personio",
+    "mymuesli",
+    "check24",
+    "flaconi",
 ]
 
 CANDIDATE_SMARTRECRUITERS_IDENTIFIERS = [
@@ -67,6 +98,16 @@ CANDIDATE_SMARTRECRUITERS_IDENTIFIERS = [
     "Continental",
     "DeutscheBahn",
     "Otto",
+    "BMWGroup",
+    "Adidas",
+    "Lufthansa",
+    "VodafoneDE",
+    "Bayer",
+    "Airbus",
+    "ThyssenKrupp",
+    "Merck",
+    "Puma",
+    "Zalando",
 ]
 
 CANDIDATE_PERSONIO_SUBDOMAINS = [
@@ -77,6 +118,14 @@ CANDIDATE_PERSONIO_SUBDOMAINS = [
     # careers-page URL directly (it's usually linked from their own careers
     # page, e.g. "https://boards.eu.greenhouse.io/..." equivalent for
     # Personio is "https://{subdomain}.jobs.personio.de").
+    "flaconi",
+    "mymuesli",
+    "zenjob",
+    "candis",
+    "moss",
+    "choco",
+    "clark",
+    "kontist",
 ]
 
 
