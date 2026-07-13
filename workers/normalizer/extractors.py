@@ -90,8 +90,15 @@ def extract_arbeitsagentur(payload: dict) -> dict:
         "description_html": None,
         "description_text": payload.get("stellenbeschreibung", "") or "",
         "location_raw": location_raw,
-        "source_url": detail_url,
-        "apply_url": external_url or detail_url,
+        # Unlike every other source (where source_url === apply_url, the ATS
+        # page serves both purposes), Arbeitsagentur's own detail page is
+        # never where you actually submit an application - "apply" always
+        # goes to the employer's original external posting when one exists.
+        # So apply_url is the BA detail page (what the "Apply on
+        # Arbeitsagentur" button should open) and source_url is the external
+        # original listing (what "View original listing" should open).
+        "source_url": external_url or detail_url,
+        "apply_url": detail_url,
         "posted_at": payload.get("aktuelleVeroeffentlichungsdatum") or payload.get("eintrittsdatum"),
         "employment_type_hint": None,
         "remote_hint": None,

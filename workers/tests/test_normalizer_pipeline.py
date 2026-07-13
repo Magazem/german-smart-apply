@@ -125,6 +125,10 @@ def test_build_raw_job_fields_arbeitsagentur():
     assert result["locationNormalized"] == "Bonn"  # not in market-de's location dict -> title-cased fallback
     assert result["language"] == "de"
     assert "kubernetes" in result["techStackTags"]
+    # "Apply on Arbeitsagentur" (applyUrl) must open the BA detail page;
+    # "View original listing" (sourceUrl) must open the employer's own posting.
+    assert result["applyUrl"] == "https://www.arbeitsagentur.de/jobsuche/jobdetail/10000-1234567890-S"
+    assert result["sourceUrl"] == "https://telekom.example/karriere/12345"
 
 
 def test_build_raw_job_fields_stepstone():
