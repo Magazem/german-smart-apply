@@ -38,17 +38,18 @@ export interface OpenRouterChatClient {
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
-// Free-tier default: tencent/hy3:free (Tencent's Hy3, 295B MoE/21B active,
-// Apache 2.0) supports native tool use/structured output and is a notably
-// stronger model than the previous default (openai/gpt-oss-120b:free) -
-// SWE-bench Verified 78.0, purpose-built for agentic/tool-calling workloads.
-// IMPORTANT: this free tier is a promotional window only through
-// 2026-07-21 (per openrouter.ai/tencent/hy3:free) - after that this exact
-// slug likely stops resolving and the model becomes paid (tencent/hy3, a
-// still-cheap $0.14/$0.58 per M tokens as of writing). Override via
-// OPENROUTER_MODEL - swap back to another :free slug, or to 'tencent/hy3'
-// with OpenRouter credit, once this window closes.
-const DEFAULT_MODEL = 'tencent/hy3:free';
+// Reverted back to openai/gpt-oss-120b:free (was briefly tencent/hy3:free)
+// after real production traffic started hitting "CV/cover-letter generation
+// is temporarily unavailable" - AiProviderError coming out of an actual
+// OpenRouter call, right after the swap went live. tencent/hy3:free's
+// catalog metadata advertises tool_choice/tools support, but that couldn't
+// be verified against a real request before shipping (no OPENROUTER_API_KEY
+// available in the environment that made the change), and it's a days-old
+// model (released 2026-07-06) - plausibly its real tool-calling behavior
+// under load doesn't match the advertised metadata yet. Re-evaluate
+// tencent/hy3:free later with a real key and OPENROUTER_MODEL override
+// *before* changing this default again, not the other way around.
+const DEFAULT_MODEL = 'openai/gpt-oss-120b:free';
 
 function toAiProviderError(err: unknown, context: string): AiProviderError {
   if (err instanceof AiProviderError) {
