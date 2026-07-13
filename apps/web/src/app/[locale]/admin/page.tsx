@@ -57,6 +57,12 @@ export default function AdminPage() {
   const [runningAlerts, setRunningAlerts] = useState(false);
   const [alertRunError, setAlertRunError] = useState<string | null>(null);
 
+  const [openRouterModel, setOpenRouterModel] = useState<string | null>(null);
+  const [modelInput, setModelInput] = useState('');
+  const [savingModel, setSavingModel] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
+  const [modelMessage, setModelMessage] = useState<string | null>(null);
+
   useEffect(() => {
     if (authLoading) return;
     let cancelled = false;
@@ -76,6 +82,12 @@ export default function AdminPage() {
     void api.admin.analytics().then((result) => {
       if (!cancelled) setAnalytics(result);
     }, handleError);
+    void api.admin.getOpenRouterModel().then((result) => {
+      if (!cancelled) {
+        setOpenRouterModel(result.model);
+        setModelInput(result.model ?? '');
+      }
+    }, handleError);
     return () => {
       cancelled = true;
     };
@@ -91,6 +103,38 @@ export default function AdminPage() {
       setAlertRunError(err instanceof Error ? err.message : t('runAlertsError'));
     } finally {
       setRunningAlerts(false);
+    }
+  };
+
+  const handleSaveModel = async () => {
+    setSavingModel(true);
+    setModelError(null);
+    setModelMessage(null);
+    try {
+      const result = await getApiClient().admin.setOpenRouterModel(modelInput.trim() || null);
+      setOpenRouterModel(result.model);
+      setModelInput(result.model ?? '');
+      setModelMessage(result.model ? t('modelSavedMessage', { model: result.model }) : t('modelClearedMessage'));
+    } catch (err) {
+      setModelError(err instanceof Error ? err.message : t('modelSaveError'));
+    } finally {
+      setSavingModel(false);
+    }
+  };
+
+  const handleClearModel = async () => {
+    setModelInput('');
+    setSavingModel(true);
+    setModelError(null);
+    setModelMessage(null);
+    try {
+      const result = await getApiClient().admin.setOpenRouterModel(null);
+      setOpenRouterModel(result.model);
+      setModelMessage(t('modelClearedMessage'));
+    } catch (err) {
+      setModelError(err instanceof Error ? err.message : t('modelSaveError'));
+    } finally {
+      setSavingModel(false);
     }
   };
 
@@ -240,6 +284,60 @@ export default function AdminPage() {
                 emailsSent: alertRun.emailsSent,
                 jobsMatched: alertRun.totalJobsMatched,
               })}
+            </p>
+          )}
+        </div>
+      )}
+
+      {!error && (
+        <div className="card stack gap-12" style={{ padding: 20 }} data-testid="admin-model-override-card">
+          <div className="stack gap-4">
+            <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{t('modelOverrideTitle')}</h2>
+            <p className="muted" style={{ fontSize: '0.8rem' }}>
+              {t('modelOverrideHint')}
+            </p>
+            <p className="muted" style={{ fontSize: '0.8rem' }}>
+              {openRouterModel
+                ? t('modelCurrentlyActive', { model: openRouterModel })
+                : t('modelUsingDefault')}
+            </p>
+          </div>
+          <div className="row gap-8" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="text"
+              className="input"
+              style={{ flex: 1, minWidth: 260, fontFamily: 'var(--font-mono)' }}
+              placeholder={t('modelInputPlaceholder')}
+              value={modelInput}
+              onChange={(e) => setModelInput(e.target.value)}
+              disabled={savingModel}
+              data-testid="admin-model-input"
+            />
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={handleSaveModel}
+              disabled={savingModel || modelInput.trim() === (openRouterModel ?? '')}
+              data-testid="admin-model-save"
+            >
+              {savingModel ? t('modelSaving') : t('modelSaveButton')}
+            </button>
+            {openRouterModel && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={handleClearModel}
+                disabled={savingModel}
+                data-testid="admin-model-clear"
+              >
+                {t('modelClearButton')}
+              </button>
+            )}
+          </div>
+          {modelError && <p style={{ fontSize: '0.82rem', color: 'var(--color-danger)' }}>{modelError}</p>}
+          {modelMessage && (
+            <p style={{ fontSize: '0.85rem' }} data-testid="admin-model-result">
+              {modelMessage}
             </p>
           )}
         </div>

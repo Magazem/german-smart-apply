@@ -11,12 +11,25 @@ export { AiProviderError, type AiProviderErrorCode } from './errors.js';
 export { AnthropicAiProvider, type AnthropicMessagesClient, type AnthropicAiProviderOptions } from './anthropic-provider.js';
 export { OpenRouterAiProvider, type OpenRouterChatClient, type OpenRouterAiProviderOptions } from './openrouter-provider.js';
 
+export interface CreateAiProviderOptions {
+  /**
+   * Takes priority over OPENROUTER_MODEL when both are present - lets a
+   * caller (e.g. an admin-editable runtime setting, see
+   * apps/api/src/ai/ai-provider-factory.service.ts) override the model
+   * per-call without touching the environment. Ignored entirely if
+   * OPENROUTER_API_KEY isn't set (Anthropic/mock don't take a model
+   * override here).
+   */
+  openRouterModel?: string;
+}
+
 /**
  * Factory used by API/worker callers. Priority order:
  *   1. OpenRouterAiProvider, if OPENROUTER_API_KEY is set - a cheap way to
  *      validate real-model behavior (incl. several free models) before
  *      committing to Anthropic's paid API. Model defaults to a free tier
- *      slug, overridable via OPENROUTER_MODEL.
+ *      slug, overridable via OPENROUTER_MODEL or options.openRouterModel
+ *      (which wins if both are set).
  *   2. AnthropicAiProvider, if ANTHROPIC_API_KEY is set - the production
  *      choice once you're ready to commit.
  *   3. MockAiProvider otherwise (e.g. local dev/sandboxes without any key,
@@ -28,9 +41,12 @@ export { OpenRouterAiProvider, type OpenRouterChatClient, type OpenRouterAiProvi
  * is accepted as a parameter so this factory - and every provider it can
  * return - is never hardcoded to one country as more market packs come online.
  */
-export function createAiProvider(marketPack: MarketPack = marketDe): AiProvider {
+export function createAiProvider(
+  marketPack: MarketPack = marketDe,
+  options: CreateAiProviderOptions = {},
+): AiProvider {
   if (process.env.OPENROUTER_API_KEY) {
-    const model = process.env.OPENROUTER_MODEL;
+    const model = options.openRouterModel || process.env.OPENROUTER_MODEL;
     console.log(`[ai] using OpenRouterAiProvider (model=${model || '(default free tier)'})`);
     return new OpenRouterAiProvider(marketPack, { model });
   }

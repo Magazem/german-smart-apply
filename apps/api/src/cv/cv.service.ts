@@ -2,11 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { createAiProvider } from '@german-smart-apply/ai';
 import type { Prisma } from '@german-smart-apply/db';
 import type { ParsedCvResult } from '@german-smart-apply/shared';
 import pdfParse from 'pdf-parse';
 import * as mammoth from 'mammoth';
+import { AiProviderFactory } from '../ai/ai-provider-factory.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TokenUsageService } from '../token-usage/token-usage.service.js';
 
@@ -29,11 +29,11 @@ const SUPPORTED_MIME_TYPES = new Set([
 @Injectable()
 export class CvService {
   private readonly logger = new Logger(CvService.name);
-  private readonly aiProvider = createAiProvider();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokenUsage: TokenUsageService,
+    private readonly aiProviderFactory: AiProviderFactory,
   ) {}
 
   async uploadAndParse(userId: string, file: UploadedFileLike, language = 'en') {
@@ -63,7 +63,8 @@ export class CvService {
 
     try {
       const text = await this.extractText(file.buffer, file.mimetype);
-      const { parsed, modelUsed, tokensUsed } = await this.aiProvider.parseCv(text, language);
+      const aiProvider = await this.aiProviderFactory.getProvider();
+      const { parsed, modelUsed, tokensUsed } = await aiProvider.parseCv(text, language);
       await this.tokenUsage.record(userId, 'parseCv', modelUsed, tokensUsed);
 
       const updatedDocument = await this.prisma.client.cvDocument.update({

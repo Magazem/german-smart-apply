@@ -517,3 +517,22 @@ model RoleGapAnalysis {
   @@index([userId, createdAt])
   @@map("role_gap_analyses")
 }
+
+// ─────────────────────────────────────────────────────────────
+// App-wide runtime settings
+// ─────────────────────────────────────────────────────────────
+
+// Generic key/value store for admin-editable settings that should take
+// effect immediately (no redeploy/env var change) - e.g. an OpenRouter
+// model override for A/B testing free vs. paid models. Deliberately a flat
+// key/value table rather than one dedicated column/table per setting, so
+// adding a new runtime-editable setting later doesn't need its own
+// migration. See apps/api/src/ai/ai-provider-factory.service.ts for the
+// first consumer.
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("app_settings")
+}

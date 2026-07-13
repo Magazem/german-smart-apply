@@ -7,9 +7,10 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { AiProviderError, createAiProvider } from '@german-smart-apply/ai';
+import { AiProviderError } from '@german-smart-apply/ai';
 import type { Prisma } from '@german-smart-apply/db';
 import { canTransition, type ApplicationStatus, type CvVariantStyle } from '@german-smart-apply/shared';
+import { AiProviderFactory } from '../ai/ai-provider-factory.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TokenUsageService } from '../token-usage/token-usage.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
@@ -32,11 +33,11 @@ const FOLLOW_UP_ELIGIBLE_STATUSES: ApplicationStatus[] = ['applied', 'interview'
 @Injectable()
 export class ApplicationsService {
   private readonly logger = new Logger(ApplicationsService.name);
-  private readonly aiProvider = createAiProvider();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokenUsage: TokenUsageService,
+    private readonly aiProviderFactory: AiProviderFactory,
   ) {}
 
   async list(userId: string) {
@@ -248,9 +249,10 @@ export class ApplicationsService {
 
     let cvVariant, coverLetter;
     try {
+      const aiProvider = await this.aiProviderFactory.getProvider();
       [cvVariant, coverLetter] = await Promise.all([
-        this.aiProvider.generateCvVariant(sharedProfile, sharedJob, lang, variantStyle),
-        this.aiProvider.generateCoverLetter(sharedProfile, sharedJob, lang, variantStyle),
+        aiProvider.generateCvVariant(sharedProfile, sharedJob, lang, variantStyle),
+        aiProvider.generateCoverLetter(sharedProfile, sharedJob, lang, variantStyle),
       ]);
     } catch (err) {
       this.logger.error(`Draft generation failed for application ${applicationId}: ${String(err)}`);
@@ -348,7 +350,8 @@ export class ApplicationsService {
 
     let followUp;
     try {
-      followUp = await this.aiProvider.generateFollowUpEmail(sharedProfile, sharedJob, lang, daysSinceApplied);
+      const aiProvider = await this.aiProviderFactory.getProvider();
+      followUp = await aiProvider.generateFollowUpEmail(sharedProfile, sharedJob, lang, daysSinceApplied);
     } catch (err) {
       this.logger.error(`Follow-up generation failed for application ${applicationId}: ${String(err)}`);
       if (err instanceof AiProviderError) {
@@ -412,7 +415,8 @@ export class ApplicationsService {
 
     let prep;
     try {
-      prep = await this.aiProvider.generateInterviewPrep(sharedProfile, sharedJob, lang);
+      const aiProvider = await this.aiProviderFactory.getProvider();
+      prep = await aiProvider.generateInterviewPrep(sharedProfile, sharedJob, lang);
     } catch (err) {
       this.logger.error(`Interview prep generation failed for application ${applicationId}: ${String(err)}`);
       if (err instanceof AiProviderError) {

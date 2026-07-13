@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { APPLICATION_STATUSES, type ApplicationStatus } from '@german-smart-apply/shared';
+import { AiProviderFactory } from '../ai/ai-provider-factory.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TokenUsageService } from '../token-usage/token-usage.service.js';
 
@@ -17,7 +18,24 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokenUsage: TokenUsageService,
+    private readonly aiProviderFactory: AiProviderFactory,
   ) {}
+
+  /**
+   * Lets an admin type any OpenRouter model slug (free or paid) and have it
+   * take effect immediately for every subsequent AI call, no redeploy - see
+   * AiProviderFactory for why that's possible (the model is resolved fresh
+   * per request, not baked into a long-lived provider instance). Only takes
+   * effect when OPENROUTER_API_KEY is the active provider; Anthropic/mock
+   * ignore it entirely.
+   */
+  async getOpenRouterModelOverride(): Promise<{ model: string | null }> {
+    return { model: await this.aiProviderFactory.getModelOverride() };
+  }
+
+  async setOpenRouterModelOverride(model: string | null | undefined): Promise<{ model: string | null }> {
+    return { model: await this.aiProviderFactory.setModelOverride(model) };
+  }
 
   async listSourcesWithHealth() {
     const sources = await this.prisma.client.source.findMany({ orderBy: { displayName: 'asc' } });

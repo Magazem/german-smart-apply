@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { AiModule } from './ai/ai.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ProfileModule } from './profile/profile.module.js';
 import { CvModule } from './cv/cv.module.js';
@@ -14,6 +15,7 @@ import { RoleGapAnalysisModule } from './role-gap-analysis/role-gap-analysis.mod
 @Module({
   imports: [
     PrismaModule,
+    AiModule,
     TokenUsageModule,
     AuthModule,
     ProfileModule,

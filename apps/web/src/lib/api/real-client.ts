@@ -351,5 +351,12 @@ export class RealApiClient implements ApiClient {
     runAlerts: async (): Promise<AlertRunSummary> =>
       this.request<AlertRunSummary>('/admin/alerts/run', { method: 'POST' }),
     analytics: async (): Promise<AnalyticsSummary> => this.request<AnalyticsSummary>('/admin/analytics'),
+    getOpenRouterModel: async (): Promise<{ model: string | null }> =>
+      this.request<{ model: string | null }>('/admin/settings/openrouter-model'),
+    setOpenRouterModel: async (model: string | null): Promise<{ model: string | null }> =>
+      this.request<{ model: string | null }>('/admin/settings/openrouter-model', {
+        method: 'PUT',
+        body: JSON.stringify({ model }),
+      }),
   };
 }

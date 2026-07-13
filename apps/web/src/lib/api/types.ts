@@ -223,5 +223,9 @@ export interface ApiClient {
     /** Manually-invokable only — there is no standing scheduler. */
     runAlerts(): Promise<AlertRunSummary>;
     analytics(): Promise<AnalyticsSummary>;
+    /** Current OpenRouter model override, or null if none is set (falls back to the deployed default). */
+    getOpenRouterModel(): Promise<{ model: string | null }>;
+    /** Pass null (or an empty string) to clear the override. Takes effect immediately, no redeploy. */
+    setOpenRouterModel(model: string | null): Promise<{ model: string | null }>;
   };
 }
