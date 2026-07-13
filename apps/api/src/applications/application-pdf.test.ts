@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import pdfParse from 'pdf-parse';
 import { buildApplicationPdf } from './application-pdf.js';
 
-const candidate = { fullName: 'Jane Doe', email: 'jane@example.com' };
+const candidate = { fullName: 'Jane Doe', email: 'jane@example.com', phone: '+49 151 1234567' };
 
 const job = {
   jobTitle: 'Backend Engineer',

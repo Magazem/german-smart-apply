@@ -407,6 +407,8 @@ export class AnthropicAiProvider implements AiProvider {
         norms.photoExpected ? 'include a photo placeholder' : 'no photo'
       }, dates formatted as ${norms.dateFormat}. Mirror relevant terminology from the job description where truthful.`,
       "Use standard, ATS-parsable section headers exactly as commonly recognized: 'Work Experience', 'Education', 'Skills' (or the equivalent standard header in the target language) — do not invent creative or nonstandard section names.",
+      "Open with a contact header (name, email, phone) using whatever contact fields are present in the candidate profile below - omit any that are missing, never invent one.",
+      "Build the Work Experience and Education sections from the candidate's actual listed positions and degrees below (title, company, dates, description / degree, institution, years) - reorder, re-emphasize, and rephrase for relevance to the target job, but every employer, title, and institution named must come from that list, never invented.",
       "Where the candidate genuinely has matching experience, front-load role-relevant keywords and phrasing drawn from the job description into the corresponding bullet points — but only where it reflects real, truthful overlap with the candidate's background.",
       'Quantify achievements with concrete numbers wherever the candidate profile provides them (%, €, team size, time saved); do not fabricate numbers where none exist.',
       "Write in third person / resume-style phrasing (avoid 'I', 'my') throughout, consistent with standard CV conventions.",

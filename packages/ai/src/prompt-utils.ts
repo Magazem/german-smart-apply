@@ -68,6 +68,24 @@ export function parseParsedCvInput(input: unknown, context: string): ParsedCvRes
   };
 }
 
+function formatExperienceEntry(exp: CandidateProfile['experience'][number]): string {
+  const dates = `${exp.startDate ?? '?'} - ${exp.endDate ?? 'present'}`;
+  return `- ${exp.title} at ${exp.company} (${dates}): ${exp.description}`;
+}
+
+function formatEducationEntry(edu: CandidateProfile['education'][number]): string {
+  const years = edu.startYear || edu.endYear ? ` (${edu.startYear ?? '?'} - ${edu.endYear ?? '?'})` : '';
+  return `- ${edu.degree}, ${edu.institution}${years}`;
+}
+
+/**
+ * Every generation call (CV variant, cover letter, interview prep, match
+ * explanation) reads the candidate exclusively through this function - it
+ * used to only surface targetRole/seniority/locationPreference/skills/summary,
+ * so no prompt ever saw the candidate's actual jobs, education, contact
+ * info, or spoken languages no matter how good the model or the rest of the
+ * prompt was. Now mirrors everything CV parsing actually extracts.
+ */
 export function formatProfileForPrompt(profile: CandidateProfile): string {
   const lines = [
     `Target role: ${profile.targetRole}`,
@@ -75,7 +93,16 @@ export function formatProfileForPrompt(profile: CandidateProfile): string {
     `Location preference: ${profile.locationPreference}`,
     `Skills: ${profile.skills.join(', ') || 'none listed'}`,
   ];
+  if (profile.languages.length > 0) lines.push(`Languages: ${profile.languages.join(', ')}`);
   if (profile.summary) lines.push(`Current summary: ${profile.summary}`);
+  if (profile.experience.length > 0) {
+    lines.push(`Work experience:\n${profile.experience.map(formatExperienceEntry).join('\n')}`);
+  }
+  if (profile.education.length > 0) {
+    lines.push(`Education:\n${profile.education.map(formatEducationEntry).join('\n')}`);
+  }
+  const contact = [profile.email, profile.phone].filter(Boolean).join(' | ');
+  if (contact) lines.push(`Contact: ${contact}`);
   if (profile.fullName) lines.unshift(`Candidate name: ${profile.fullName}`);
   return lines.join('\n');
 }

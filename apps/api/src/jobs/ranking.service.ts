@@ -125,7 +125,14 @@ export class RankingService {
   }
 
   private skillOverlap(skills: string[], stackTags: string[]): number {
-    if (skills.length === 0 || stackTags.length === 0) return 0.3;
+    // 0.1, not 0: missing tag data (common on non-tech postings that were
+    // never given techStackTags) shouldn't be indistinguishable from a
+    // measured near-total mismatch, but it also shouldn't be generous enough
+    // to meaningfully inflate an unrelated job's score - this was 0.3 before,
+    // which (combined with the old, flatter weights) let e.g. a legal
+    // counselor profile score within a few points of a genuinely relevant
+    // programming job against a job with no tags at all.
+    if (skills.length === 0 || stackTags.length === 0) return 0.1;
     const skillSet = new Set(skills.map((s) => s.toLowerCase()));
     const tagSet = new Set(stackTags.map((t) => t.toLowerCase()));
     return jaccard(skillSet, tagSet);

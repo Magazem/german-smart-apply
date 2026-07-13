@@ -1,13 +1,49 @@
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsEmail,
   IsIn,
   IsInt,
   IsOptional,
   IsString,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+
+export class ExperienceEntryDto {
+  @IsString()
+  title!: string;
+
+  @IsString()
+  company!: string;
+
+  @IsOptional()
+  @IsString()
+  startDate!: string | null;
+
+  @IsOptional()
+  @IsString()
+  endDate!: string | null;
+
+  @IsString()
+  description!: string;
+}
+
+export class EducationEntryDto {
+  @IsString()
+  degree!: string;
+
+  @IsString()
+  institution!: string;
+
+  @IsOptional()
+  startYear!: number | null;
+
+  @IsOptional()
+  endYear!: number | null;
+}
 
 /**
  * Mirrors the shared ApiClient contract's `profile.update(patch: Partial<CandidateProfile>)`
@@ -52,6 +88,15 @@ export class UpdateProfileDto {
   fullName?: string;
 
   @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  phone?: string;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   @ArrayMaxSize(100)
@@ -60,6 +105,26 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   summary?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => ExperienceEntryDto)
+  experience?: ExperienceEntryDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => EducationEntryDto)
+  education?: EducationEntryDto[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(20)
+  languages?: string[];
 
   @IsOptional()
   @IsInt()

@@ -122,9 +122,14 @@ export class CvService {
         data: {
           userId,
           fullName: parsed.fullName,
+          email: parsed.email,
+          phone: parsed.phone,
           targetRole: parsed.experience[0]?.title ?? 'Not specified yet',
           summary: parsed.summary,
           skills: parsed.skills,
+          experience: parsed.experience as unknown as Prisma.InputJsonValue,
+          education: parsed.education as unknown as Prisma.InputJsonValue,
+          languages: parsed.languages,
           seniority: 'mid',
         },
       });
@@ -136,8 +141,17 @@ export class CvService {
         // An empty string isn't a value the user "has" - treat it the same
         // as null/undefined so a later CV parse can still fill it in.
         fullName: existing.fullName || parsed.fullName,
+        email: existing.email || parsed.email,
+        phone: existing.phone || parsed.phone,
         summary: existing.summary || parsed.summary,
         skills: existing.skills.length > 0 ? existing.skills : parsed.skills,
+        experience: (Array.isArray(existing.experience) && existing.experience.length > 0
+          ? existing.experience
+          : parsed.experience) as unknown as Prisma.InputJsonValue,
+        education: (Array.isArray(existing.education) && existing.education.length > 0
+          ? existing.education
+          : parsed.education) as unknown as Prisma.InputJsonValue,
+        languages: existing.languages.length > 0 ? existing.languages : parsed.languages,
       },
     });
   }

@@ -22,6 +22,7 @@ export interface ApplicationPdfDraft {
 export interface ApplicationPdfCandidate {
   fullName: string | null;
   email: string;
+  phone: string | null;
 }
 
 function formatSalary(job: ApplicationPdfJob): string | null {
@@ -61,7 +62,9 @@ export async function buildApplicationPdf(
   const doc = new PDFDocument({ size: 'A4', margin: 56 });
 
   doc.font('Helvetica-Bold').fontSize(18).text(candidate.fullName ?? candidate.email);
-  doc.font('Helvetica').fontSize(10).fillColor('#555555').text(candidate.email);
+  doc.font('Helvetica').fontSize(10).fillColor('#555555').text(
+    [candidate.email, candidate.phone].filter(Boolean).join(' · '),
+  );
   doc.fillColor('#000000');
 
   doc.moveDown(1);
