@@ -231,6 +231,8 @@ model User {
   applications     Application[]
   savedSearches    SavedSearch[]
   tokenUsageEvents TokenUsageEvent[]
+  consentRecords   ConsentRecord[]
+  roleGapAnalyses  RoleGapAnalysis[]
 
   @@map("users")
 }
@@ -456,4 +458,52 @@ model TokenUsageEvent {
 
   @@index([userId, feature])
   @@map("token_usage_events")
+}
+
+enum ConsentType {
+  terms
+  privacy
+  marketing
+}
+
+// Append-only consent log (never updated/deleted) so we can always prove what
+// a user agreed to and when, even after the policy text is later revised -
+// a mutable "accepted: true" flag on User can't demonstrate that.
+model ConsentRecord {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consentType   ConsentType
+  policyVersion String
+  acceptedAt    DateTime    @default(now())
+
+  @@index([userId, consentType])
+  @@map("consent_records")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Career coach domain
+// ─────────────────────────────────────────────────────────────
+
+// Persisted (not regenerated on every view) since a run costs real AI tokens
+// and users will want to revisit past analyses to see how their skills have
+// progressed - same rationale as ApplicationDraft.
+model RoleGapAnalysis {
+  id                        String   @id @default(uuid())
+  userId                    String
+  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetRole                String
+  matchingSkills            String[] @default([])
+  missingSkills             String[] @default([])
+  suggestedLearningTopics   String[] @default([])
+  suggestedCertifications   String[] @default([])
+  estimatedReadinessScore   Int
+  summary                   String
+  sampleJobCount            Int      @default(0)
+  modelUsed                 String
+  tokensUsed                Int      @default(0)
+  createdAt                 DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("role_gap_analyses")
 }
