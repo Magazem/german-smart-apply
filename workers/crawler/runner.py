@@ -14,7 +14,7 @@ from typing import Any
 
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from crawler import arbeitsagentur, greenhouse, lever, stepstone
+from crawler import arbeitsagentur, greenhouse, lever, personio, smartrecruiters, stepstone
 from crawler.base import DomainNotAllowedError, HttpClient, RawPayload, TransientFetchError
 
 ADAPTERS = {
@@ -22,6 +22,8 @@ ADAPTERS = {
     "lever": lever,
     "arbeitsagentur": arbeitsagentur,
     "stepstone": stepstone,
+    "personio": personio,
+    "smartrecruiters": smartrecruiters,
 }
 
 

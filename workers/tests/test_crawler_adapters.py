@@ -6,15 +6,22 @@ from __future__ import annotations
 
 import pytest
 
-from crawler import arbeitsagentur, greenhouse, lever, stepstone
+from crawler import arbeitsagentur, greenhouse, lever, personio, smartrecruiters, stepstone
 from crawler.base import DomainNotAllowedError, TransientFetchError, enforce_domain_allowlist
-from tests.conftest import load_fixture
+from tests.conftest import FIXTURES_DIR, load_fixture
 from tests.fakes import FakeClient, FakeResponse, FlakyThenOkClient, RaisingClient
 
 GREENHOUSE_ALLOWLIST = ["boards-api.greenhouse.io"]
 LEVER_ALLOWLIST = ["api.lever.co"]
 ARBEITSAGENTUR_ALLOWLIST = ["rest.arbeitsagentur.de"]
 STEPSTONE_ALLOWLIST = ["www.stepstone.de"]
+PERSONIO_ALLOWLIST = ["acme.jobs.personio.de"]
+SMARTRECRUITERS_ALLOWLIST = ["api.smartrecruiters.com"]
+
+
+def load_text_fixture(name: str) -> str:
+    with open(FIXTURES_DIR / name, encoding="utf-8") as f:
+        return f.read()
 
 
 # ---------------------------------------------------------------------------
@@ -308,3 +315,136 @@ def test_stepstone_skips_listings_without_an_id():
 
     assert len(payloads) == 1
     assert payloads[0].original_job_id == "ss-1"
+
+
+# ---------------------------------------------------------------------------
+# Personio
+# ---------------------------------------------------------------------------
+
+def test_personio_fetch_returns_raw_payloads():
+    xml_text = load_text_fixture("personio_feed.xml")
+    url = personio._feed_url("acme")
+    client = FakeClient({url: FakeResponse(raw_text=xml_text)})
+
+    payloads = personio.fetch(client, {"companySubdomains": ["acme"]}, PERSONIO_ALLOWLIST)
+
+    assert len(payloads) == 2
+    assert payloads[0].original_job_id == "2001"
+    assert payloads[0].payload["name"] == "Senior Backend Engineer (m/w/d)"
+    assert payloads[0].payload["office"] == "Berlin"
+    assert client.calls == [url]
+
+
+def test_personio_fetch_empty_company_subdomains_returns_empty_list():
+    client = FakeClient()
+    payloads = personio.fetch(client, {"companySubdomains": []}, PERSONIO_ALLOWLIST)
+    assert payloads == []
+    assert client.calls == []
+
+
+def test_personio_fetch_rejects_disallowed_host_config():
+    client = FakeClient()
+    with pytest.raises(DomainNotAllowedError):
+        personio.fetch(client, {"companySubdomains": ["acme"]}, ["not-personio.example"])
+    assert client.calls == []
+
+
+def test_personio_retries_on_transient_failure_then_succeeds():
+    xml_text = load_text_fixture("personio_feed.xml")
+    url = personio._feed_url("acme")
+    client = FlakyThenOkClient(url, success=FakeResponse(raw_text=xml_text), fail_times=1)
+
+    payloads = personio.fetch(client, {"companySubdomains": ["acme"]}, PERSONIO_ALLOWLIST)
+
+    assert len(payloads) == 2
+    assert len(client.calls) == 2
+
+
+def test_personio_raises_after_exhausting_retries():
+    url = personio._feed_url("acme")
+    client = FakeClient({url: FakeResponse(status_code=503, raw_text="")})
+    with pytest.raises(TransientFetchError):
+        personio.fetch(client, {"companySubdomains": ["acme"]}, PERSONIO_ALLOWLIST)
+
+
+def test_personio_wraps_a_raw_client_exception_as_transient_and_retries():
+    client = RaisingClient(ConnectionError("connection refused"))
+    with pytest.raises(TransientFetchError):
+        personio.fetch(client, {"companySubdomains": ["acme"]}, PERSONIO_ALLOWLIST)
+    assert len(client.calls) == 3
+
+
+def test_personio_skips_positions_without_an_id():
+    xml_text = """<?xml version="1.0"?>
+<workzag-jobs>
+  <position>
+    <name>Missing id listing</name>
+  </position>
+  <position>
+    <id>9999</id>
+    <name>Valid listing</name>
+  </position>
+</workzag-jobs>"""
+    url = personio._feed_url("acme")
+    client = FakeClient({url: FakeResponse(raw_text=xml_text)})
+
+    payloads = personio.fetch(client, {"companySubdomains": ["acme"]}, PERSONIO_ALLOWLIST)
+
+    assert len(payloads) == 1
+    assert payloads[0].original_job_id == "9999"
+
+
+# ---------------------------------------------------------------------------
+# SmartRecruiters
+# ---------------------------------------------------------------------------
+
+def test_smartrecruiters_fetch_returns_raw_payloads():
+    fixture = load_fixture("smartrecruiters_postings.json")
+    url = smartrecruiters._postings_url("acme")
+    client = FakeClient({url: FakeResponse(fixture)})
+
+    payloads = smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST)
+
+    assert len(payloads) == 2
+    assert payloads[0].original_job_id == "744000012345678"
+    assert payloads[0].payload["name"] == "Senior Backend Engineer (m/f/d)"
+    assert client.calls == [url]
+
+
+def test_smartrecruiters_fetch_empty_company_identifiers_returns_empty_list():
+    client = FakeClient()
+    payloads = smartrecruiters.fetch(client, {"companyIdentifiers": []}, SMARTRECRUITERS_ALLOWLIST)
+    assert payloads == []
+    assert client.calls == []
+
+
+def test_smartrecruiters_fetch_rejects_disallowed_host_config():
+    client = FakeClient()
+    with pytest.raises(DomainNotAllowedError):
+        smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, ["not-smartrecruiters.example"])
+    assert client.calls == []
+
+
+def test_smartrecruiters_retries_on_transient_failure_then_succeeds():
+    fixture = load_fixture("smartrecruiters_postings.json")
+    url = smartrecruiters._postings_url("acme")
+    client = FlakyThenOkClient(url, success=FakeResponse(fixture), fail_times=1)
+
+    payloads = smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST)
+
+    assert len(payloads) == 2
+    assert len(client.calls) == 2
+
+
+def test_smartrecruiters_raises_after_exhausting_retries():
+    url = smartrecruiters._postings_url("acme")
+    client = FakeClient({url: FakeResponse({"error": "boom"}, status_code=503)})
+    with pytest.raises(TransientFetchError):
+        smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST)
+
+
+def test_smartrecruiters_wraps_a_raw_client_exception_as_transient_and_retries():
+    client = RaisingClient(ConnectionError("connection refused"))
+    with pytest.raises(TransientFetchError):
+        smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST)
+    assert len(client.calls) == 3

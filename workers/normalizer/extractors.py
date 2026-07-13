@@ -98,6 +98,53 @@ def extract_arbeitsagentur(payload: dict) -> dict:
     }
 
 
+def extract_personio(payload: dict) -> dict:
+    descriptions: dict = payload.get("descriptions") or {}
+    description_html = "".join(f"<h3>{name}</h3>{value}" for name, value in descriptions.items())
+    subdomain = payload.get("_company_subdomain", "")
+
+    return {
+        "original_job_id": str(payload["id"]),
+        "company_name_raw": subdomain or "Unknown",
+        "job_title_raw": payload.get("name", ""),
+        "description_html": description_html or None,
+        "description_text": _strip_html(description_html),
+        "location_raw": payload.get("office", ""),
+        "source_url": f"https://{subdomain}.jobs.personio.de/job/{payload['id']}",
+        "apply_url": f"https://{subdomain}.jobs.personio.de/job/{payload['id']}",
+        "posted_at": payload.get("createdAt"),
+        "employment_type_hint": payload.get("employmentType") or payload.get("schedule"),
+        "remote_hint": None,
+    }
+
+
+def extract_smartrecruiters(payload: dict) -> dict:
+    company = payload.get("company") or {}
+    location = payload.get("location") or {}
+    department = payload.get("department") or {}
+    employment = payload.get("typeOfEmployment") or {}
+    sections = ((payload.get("jobAd") or {}).get("sections")) or {}
+    description_html = "".join(
+        f"<h3>{section.get('title', '')}</h3>{section.get('text', '')}" for section in sections.values()
+    )
+    location_parts = [p for p in [location.get("city"), location.get("region")] if p]
+    identifier = company.get("identifier", "")
+
+    return {
+        "original_job_id": str(payload["id"]),
+        "company_name_raw": company.get("name") or identifier or "Unknown",
+        "job_title_raw": payload.get("name", ""),
+        "description_html": description_html or None,
+        "description_text": _strip_html(description_html),
+        "location_raw": ", ".join(location_parts),
+        "source_url": f"https://jobs.smartrecruiters.com/{identifier}/{payload['id']}",
+        "apply_url": f"https://jobs.smartrecruiters.com/{identifier}/{payload['id']}",
+        "posted_at": payload.get("releasedDate"),
+        "employment_type_hint": employment.get("label") or department.get("label"),
+        "remote_hint": location.get("remote"),
+    }
+
+
 def extract_stepstone(payload: dict) -> dict:
     return {
         "original_job_id": str(payload.get("id", "")),
@@ -119,6 +166,8 @@ EXTRACTORS = {
     "lever": extract_lever,
     "arbeitsagentur": extract_arbeitsagentur,
     "stepstone": extract_stepstone,
+    "personio": extract_personio,
+    "smartrecruiters": extract_smartrecruiters,
 }
 
 

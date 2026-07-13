@@ -11,8 +11,14 @@ import json as json_module
 
 
 class FakeResponse:
-    def __init__(self, json_data, status_code: int = 200):
+    """Wraps either JSON (the common case) or raw text (e.g. XML feeds like
+    Personio's) -- pass `raw_text` for adapters that read `.text` directly
+    instead of calling `.json()`.
+    """
+
+    def __init__(self, json_data=None, status_code: int = 200, raw_text: str | None = None):
         self._json = json_data
+        self._raw_text = raw_text
         self.status_code = status_code
 
     def json(self):
@@ -20,6 +26,8 @@ class FakeResponse:
 
     @property
     def text(self) -> str:
+        if self._raw_text is not None:
+            return self._raw_text
         return json_module.dumps(self._json)
 
 
