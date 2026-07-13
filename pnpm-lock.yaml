@@ -144,6 +144,9 @@ importers:
       '@german-smart-apply/ai':
         specifier: workspace:*
         version: link:../../packages/ai
+      '@german-smart-apply/market-de':
+        specifier: workspace:*
+        version: link:../../packages/market-de
       '@german-smart-apply/shared':
         specifier: workspace:*
         version: link:../../packages/shared

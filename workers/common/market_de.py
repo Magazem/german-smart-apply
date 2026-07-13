@@ -220,13 +220,13 @@ TRUST_TIER_SCORES: dict[str, float] = {
 
 # Mirrors marketDe.rankingWeights (kept for completeness / future ranking layer).
 RANKING_WEIGHTS = {
-    "titleSimilarity": 0.25,
-    "skillOverlap": 0.25,
-    "locationFit": 0.15,
-    "recency": 0.1,
-    "salaryFit": 0.1,
-    "languageFit": 0.05,
-    "sourceTrust": 0.05,
+    "titleSimilarity": 0.32,
+    "skillOverlap": 0.32,
+    "locationFit": 0.1,
+    "recency": 0.07,
+    "salaryFit": 0.08,
+    "languageFit": 0.03,
+    "sourceTrust": 0.03,
     "riskPenalty": 0.05,
 }
 

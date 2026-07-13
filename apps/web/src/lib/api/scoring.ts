@@ -1,3 +1,4 @@
+import { marketDe } from '@german-smart-apply/market-de';
 import type { CandidateProfile, CanonicalJob, JobMatchScore } from '@german-smart-apply/shared';
 
 /**
@@ -27,21 +28,15 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
 
   const riskPenalty = job.scamRiskScore;
 
-  // Rebalanced to mirror apps/api/src/jobs/ranking.service.ts's real-backend
-  // weights: titleSimilarity + skillOverlap (the only two signals that
-  // measure whether the job is even in the candidate's field) now dominate,
-  // rather than being outweighed by location/recency/salary/language/source
-  // signals that don't know or care what field the job is in.
-  const weights = {
-    titleSimilarity: 0.3,
-    skillOverlap: 0.32,
-    locationFit: 0.1,
-    recency: 0.07,
-    salaryFit: 0.08,
-    languageFit: 0.03,
-    sourceTrust: 0.05,
-    riskPenalty: 0.2, // subtracted, not added
-  };
+  // The real weights, not a hand-maintained copy - this used to be a
+  // separate hardcoded object that had already drifted from
+  // packages/market-de's rankingWeights (e.g. riskPenalty 0.2 here vs the
+  // real 0.05, and the 8 values here didn't even sum to 1 like the real
+  // weights do), silently making the mock/demo experience score jobs
+  // differently than the real backend. Importing the same source of truth
+  // apps/api/src/jobs/ranking.service.ts uses means the two can't diverge
+  // again without both call sites changing together.
+  const weights = marketDe.rankingWeights;
 
   const positive =
     titleSimilarity * weights.titleSimilarity +
