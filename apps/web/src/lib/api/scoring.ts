@@ -99,13 +99,22 @@ function ratioOverlap(a: string[], b: string[]): number {
 }
 
 function computeLocationFit(profile: CandidateProfile, job: CanonicalJob): number {
-  if (profile.locationPreference === 'any') return 0.85;
-  if (profile.locationPreference === job.remoteType) return 1;
-  if (profile.locationPreference === 'remote' && job.remoteType === 'hybrid') return 0.55;
-  if (profile.locationPreference === 'hybrid' && job.remoteType === 'remote') return 0.75;
-  if (profile.locationPreference === 'hybrid' && job.remoteType === 'onsite') return 0.5;
-  if (profile.locationPreference === 'onsite' && job.remoteType === 'hybrid') return 0.6;
-  return 0.35;
+  let score: number;
+  if (profile.locationPreference === 'any') score = 0.85;
+  else if (profile.locationPreference === job.remoteType) score = 1;
+  else if (profile.locationPreference === 'remote' && job.remoteType === 'hybrid') score = 0.55;
+  else if (profile.locationPreference === 'hybrid' && job.remoteType === 'remote') score = 0.75;
+  else if (profile.locationPreference === 'hybrid' && job.remoteType === 'onsite') score = 0.5;
+  else if (profile.locationPreference === 'onsite' && job.remoteType === 'hybrid') score = 0.6;
+  else score = 0.35;
+
+  // Mirrors ranking.service.ts's locationFit() discount - see its comment
+  // for why this is a placeholder rather than a real distance check.
+  if (profile.commutePreferenceKm != null && (job.remoteType === 'onsite' || job.remoteType === 'hybrid')) {
+    score *= 0.9;
+  }
+
+  return score;
 }
 
 function computeRecencyBoost(postedAt: string | null): number {
