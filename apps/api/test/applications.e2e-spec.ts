@@ -22,7 +22,7 @@ describe('Applications workflow (e2e)', () => {
     const email = uniqueEmail('applications');
     const authRes = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password: 'correct-horse-battery-staple' });
+      .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     accessToken = authRes.body.accessToken;
     userId = authRes.body.user.id;
 
@@ -182,7 +182,7 @@ describe('Applications workflow (e2e)', () => {
     const email = uniqueEmail('applications-other-reader');
     const authRes = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password: 'correct-horse-battery-staple' });
+      .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     const otherToken = authRes.body.accessToken;
     const otherUserId = authRes.body.user.id;
 
@@ -220,7 +220,7 @@ describe('Applications workflow (e2e)', () => {
     const email = uniqueEmail('no-profile');
     const authRes = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password: 'correct-horse-battery-staple' });
+      .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     const token = authRes.body.accessToken;
     const otherUserId = authRes.body.user.id;
 
@@ -376,7 +376,7 @@ describe('Applications workflow (e2e)', () => {
       const email = uniqueEmail('pdf-other-reader');
       const authRes = await request(app.getHttpServer())
         .post('/auth/register')
-        .send({ email, password: 'correct-horse-battery-staple' });
+        .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
       const otherToken = authRes.body.accessToken;
       const otherUserId = authRes.body.user.id;
 
@@ -544,7 +544,7 @@ describe('Applications workflow (e2e)', () => {
       const email = uniqueEmail('follow-up-other-user');
       const authRes = await request(app.getHttpServer())
         .post('/auth/register')
-        .send({ email, password: 'correct-horse-battery-staple' });
+        .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
       const otherToken = authRes.body.accessToken;
       const otherUserId = authRes.body.user.id;
 
@@ -615,7 +615,7 @@ describe('Applications workflow (e2e)', () => {
       const email = uniqueEmail('follow-up-no-profile');
       const authRes = await request(app.getHttpServer())
         .post('/auth/register')
-        .send({ email, password: 'correct-horse-battery-staple' });
+        .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
       const token = authRes.body.accessToken;
       const otherUserId = authRes.body.user.id;
 
@@ -681,7 +681,7 @@ describe('Applications workflow (e2e)', () => {
       const email = uniqueEmail('interview-prep-other-user');
       const authRes = await request(app.getHttpServer())
         .post('/auth/register')
-        .send({ email, password: 'correct-horse-battery-staple' });
+        .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
       const otherToken = authRes.body.accessToken;
       const otherUserId = authRes.body.user.id;
 
@@ -730,7 +730,7 @@ describe('Applications workflow (e2e)', () => {
       const email = uniqueEmail('interview-prep-no-profile');
       const authRes = await request(app.getHttpServer())
         .post('/auth/register')
-        .send({ email, password: 'correct-horse-battery-staple' });
+        .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
       const token = authRes.body.accessToken;
       const otherUserId = authRes.body.user.id;
 

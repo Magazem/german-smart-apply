@@ -25,7 +25,7 @@ describe('CV upload (e2e)', () => {
     const email = uniqueEmail('cv');
     const res = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password: 'correct-horse-battery-staple' });
+      .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     accessToken = res.body.accessToken;
     userId = res.body.user.id;
   });
@@ -90,7 +90,7 @@ describe('CV upload (e2e)', () => {
     const email = uniqueEmail('cv-empty-fields');
     const authRes = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password: 'correct-horse-battery-staple' });
+      .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     const token = authRes.body.accessToken;
     const otherUserId = authRes.body.user.id;
 
@@ -119,7 +119,7 @@ describe('CV upload (e2e)', () => {
     const email = uniqueEmail('cv-none');
     const authRes = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password: 'correct-horse-battery-staple' });
+      .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     const token = authRes.body.accessToken;
     const otherUserId = authRes.body.user.id;
 

@@ -8,7 +8,7 @@ describe('Auth (e2e)', () => {
   let app: INestApplication;
   let prisma: TestApp['prisma'];
   const email = uniqueEmail('auth');
-  const password = 'correct-horse-battery-staple';
+  const password = 'Correct-Horse9-Battery';
   const createdUserIds: string[] = [];
 
   beforeAll(async () => {
@@ -27,7 +27,7 @@ describe('Auth (e2e)', () => {
   it('registers a new account', async () => {
     const res = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password })
+      .send({ email, password, acceptedTerms: true, acceptedPolicyVersion: '1.0' })
       .expect(201);
 
     expect(res.body.accessToken).toEqual(expect.any(String));
@@ -38,14 +38,33 @@ describe('Auth (e2e)', () => {
   it('rejects registering the same email twice', async () => {
     await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password })
+      .send({ email, password, acceptedTerms: true, acceptedPolicyVersion: '1.0' })
       .expect(409);
   });
 
   it('rejects registration with a too-short password', async () => {
     await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email: uniqueEmail('short'), password: 'short' })
+      .send({ email: uniqueEmail('short'), password: 'short', acceptedTerms: true, acceptedPolicyVersion: '1.0' })
+      .expect(400);
+  });
+
+  it('rejects registration with a password missing required character classes', async () => {
+    await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: uniqueEmail('weak'),
+        password: 'alllowercase',
+        acceptedTerms: true,
+        acceptedPolicyVersion: '1.0',
+      })
+      .expect(400);
+  });
+
+  it('rejects registration without accepting the terms', async () => {
+    await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({ email: uniqueEmail('noconsent'), password, acceptedTerms: false, acceptedPolicyVersion: '1.0' })
       .expect(400);
   });
 

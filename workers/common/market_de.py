@@ -60,11 +60,37 @@ SOURCES: list[SourceConfig] = [
         "displayName": "Stepstone structured feed",
         "trustTier": "medium",
         "crawlFrequencyMinutes": 360,
-        # TODO: Stepstone does not publish a documented public structured-feed
-        # API. This config/domain is a best-effort placeholder until a real
-        # feed URL / contract is confirmed (see workers/crawler/stepstone.py).
+        # BLOCKED (not an engineering gap): Stepstone does not publish a
+        # documented public structured-feed API. Getting real jobs out of this
+        # source requires a partnerships/business conversation with Stepstone
+        # for feed/API access, not more adapter code -- see
+        # workers/crawler/stepstone.py's own docstring.
         "config": {},
         "domainAllowlist": ["www.stepstone.de"],
+    },
+    {
+        "sourceId": "personio-de",
+        "sourceType": "personio",
+        "displayName": "Personio (DE companies)",
+        "trustTier": "high",
+        "crawlFrequencyMinutes": 240,
+        # config.companySubdomains starts empty, same bootstrapping pattern as
+        # greenhouse-de/lever-de. IMPORTANT: unlike Greenhouse/Lever (one fixed
+        # API host), each Personio company is served from its own subdomain
+        # (`{subdomain}.jobs.personio.de`), so domainAllowlist below must list
+        # every subdomain added to companySubdomains explicitly -- keep the two
+        # lists in lockstep when populating real companies.
+        "config": {"companySubdomains": []},
+        "domainAllowlist": [],
+    },
+    {
+        "sourceId": "smartrecruiters-de",
+        "sourceType": "smartrecruiters",
+        "displayName": "SmartRecruiters (DE companies)",
+        "trustTier": "high",
+        "crawlFrequencyMinutes": 240,
+        "config": {"companyIdentifiers": []},
+        "domainAllowlist": ["api.smartrecruiters.com"],
     },
 ]
 

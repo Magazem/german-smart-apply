@@ -39,6 +39,29 @@ export interface ParseCvResult {
   tokensUsed: number;
 }
 
+export interface RoleGapAnalysisResult {
+  matchingSkills: string[];
+  missingSkills: string[];
+  suggestedLearningTopics: string[];
+  suggestedCertifications: string[];
+  estimatedReadinessScore: number;
+  summary: string;
+  modelUsed: string;
+  tokensUsed: number;
+}
+
+/**
+ * A deterministic, pre-aggregated slice of real postings for a target role -
+ * computed server-side (see apps/api/src/role-gap-analysis) before ever
+ * reaching the AI layer, so no provider implementation invents postings or
+ * skill-frequency data itself.
+ */
+export interface RoleGapAnalysisInput {
+  targetRole: string;
+  sampleJobs: CanonicalJob[];
+  tagFrequency: Record<string, number>;
+}
+
 /**
  * The single seam between the product (API, workers) and any model backend.
  * Swap the provider returned by createAiProvider() without touching callers -
@@ -86,6 +109,12 @@ export interface AiProvider {
     job: CanonicalJob,
     language: string,
   ): Promise<InterviewPrepResult>;
+
+  generateRoleGapAnalysis(
+    profile: CandidateProfile,
+    input: RoleGapAnalysisInput,
+    language: string,
+  ): Promise<RoleGapAnalysisResult>;
 }
 
 // Model IDs verified current via the claude-api skill's model catalog
@@ -110,7 +139,8 @@ export const TASK_MODEL_TIER: Record<
   | 'coverLetter'
   | 'matchExplanation'
   | 'followUpEmail'
-  | 'interviewPrep',
+  | 'interviewPrep'
+  | 'roleGapAnalysis',
   ModelTier
 > = {
   parseCv: 'cheap',
@@ -120,6 +150,7 @@ export const TASK_MODEL_TIER: Record<
   matchExplanation: 'strong',
   followUpEmail: 'strong',
   interviewPrep: 'strong',
+  roleGapAnalysis: 'strong',
 };
 
 // Shared prompt-instruction fragments per variant style, so the real and

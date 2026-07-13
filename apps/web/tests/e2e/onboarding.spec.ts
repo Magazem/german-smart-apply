@@ -17,7 +17,8 @@ test.describe('Onboarding: landing -> CV upload -> 5 questions -> matches', () =
     // 2. Sign up
     await expect(page).toHaveURL(/\/signup/);
     await page.getByTestId('signup-email').fill(uniqueEmail());
-    await page.getByTestId('signup-password').fill('password1234');
+    await page.getByTestId('signup-password').fill('Password1234');
+    await page.getByTestId('signup-accept-terms').check();
     await page.getByTestId('signup-submit').click();
 
     // 3. Onboarding step 1: upload CV file
@@ -30,8 +31,9 @@ test.describe('Onboarding: landing -> CV upload -> 5 questions -> matches', () =
     await expect(page.getByText('Parsed: Jordan Schmidt')).toBeVisible({ timeout: 10_000 });
     await page.getByTestId('onboarding-continue-step2').click();
 
-    // 4. Onboarding step 2: five quick questions
-    await expect(page.getByRole('heading', { name: 'Five quick questions' })).toBeVisible();
+    // 4. Onboarding step 2: quick questions (name is pre-filled from the CV parse)
+    await expect(page.getByRole('heading', { name: 'Quick questions' })).toBeVisible();
+    await expect(page.getByTestId('onboarding-full-name')).toHaveValue('Jordan Schmidt');
     await page.getByTestId('onboarding-target-role').fill('Backend Engineer');
     await page.getByTestId('onboarding-country').selectOption('DE');
     await page.getByTestId('onboarding-language').selectOption('en');
@@ -59,7 +61,8 @@ test.describe('Onboarding: landing -> CV upload -> 5 questions -> matches', () =
   test('CV can also be provided by pasting text instead of uploading a file', async ({ page }) => {
     await page.goto('/signup');
     await page.getByTestId('signup-email').fill(uniqueEmail());
-    await page.getByTestId('signup-password').fill('password1234');
+    await page.getByTestId('signup-password').fill('Password1234');
+    await page.getByTestId('signup-accept-terms').check();
     await page.getByTestId('signup-submit').click();
 
     await expect(page).toHaveURL(/\/onboarding/);

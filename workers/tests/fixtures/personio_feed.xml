@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workzag-jobs>
+  <position>
+    <id>2001</id>
+    <name>Senior Backend Engineer (m/w/d)</name>
+    <office>Berlin</office>
+    <department>Engineering</department>
+    <employmentType>Permanent Employee</employmentType>
+    <schedule>Full-time</schedule>
+    <createdAt>2026-06-01T10:00:00Z</createdAt>
+    <jobDescriptions>
+      <jobDescription>
+        <name>Qualifications</name>
+        <value><![CDATA[<p>Experience with Python and AWS. Gehalt: 65.000 - 80.000 EUR.</p>]]></value>
+      </jobDescription>
+    </jobDescriptions>
+  </position>
+  <position>
+    <id>2002</id>
+    <name>Werkstudent Marketing</name>
+    <office>Munich</office>
+    <department>Marketing</department>
+    <employmentType>Student</employmentType>
+    <schedule>Part-time</schedule>
+    <createdAt>2026-06-02T09:00:00Z</createdAt>
+    <jobDescriptions>
+      <jobDescription>
+        <name>About the role</name>
+        <value><![CDATA[<p>Praktikum/Werkstudent Rolle im Marketing Team.</p>]]></value>
+      </jobDescription>
+    </jobDescriptions>
+  </position>
+</workzag-jobs>

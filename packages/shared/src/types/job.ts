@@ -25,7 +25,9 @@ export type SourceType =
   | 'teamtailor'
   | 'successfactors'
   | 'arbeitsagentur'
-  | 'stepstone';
+  | 'stepstone'
+  | 'personio'
+  | 'smartrecruiters';
 
 /**
  * Canonical job schema — the single shape every source adapter's raw payload

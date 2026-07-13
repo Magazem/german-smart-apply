@@ -70,11 +70,15 @@ const testMarketPack: MarketPack = {
     matchExplanation: 'Explain in {{language}} why this candidate fits {{jobTitle}}.',
     followUpEmail: 'Write a follow-up email in {{language}} for {{jobTitle}} at {{companyName}}, {{daysSinceApplied}} days since applying.',
     interviewPrep: 'Prepare the candidate in {{language}} for an interview for {{jobTitle}} at {{companyName}}.',
+    roleGapAnalysis: 'Analyze in {{language}} the gap for {{targetRole}}.',
   },
   cvFormattingNorms: {
     preferredLengthPages: 2,
     photoExpected: false,
     dateFormat: 'MM/YYYY',
+  },
+  coverLetterFormattingNorms: {
+    preferredLengthWords: 380,
   },
   salaryParsing: { currency: 'EUR', thousandsSeparator: '.', decimalSeparator: ',' },
   locationDictionary: {},
@@ -436,6 +440,85 @@ describe('AnthropicAiProvider', () => {
       await expect(provider.generateInterviewPrep(profile, job, 'en')).rejects.toMatchObject({
         code: 'malformed_response',
       });
+    });
+  });
+
+  describe('generateRoleGapAnalysis', () => {
+    it('routes to the strong tier, includes the anti-fabrication instruction, and forces the tool', async () => {
+      const { client, create } = fakeClient(() =>
+        toolUseMessage(
+          'record_role_gap_analysis',
+          {
+            matchingSkills: ['TypeScript', 'PostgreSQL'],
+            missingSkills: ['Kafka'],
+            suggestedLearningTopics: ['Learn event-driven architecture with Kafka.'],
+            suggestedCertifications: [],
+            estimatedReadinessScore: 72,
+            summary: 'You match most requirements but are missing Kafka experience.',
+          },
+          { model: 'claude-sonnet-5', usage: baseUsage({ input_tokens: 200, output_tokens: 100 }) },
+        ),
+      );
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      const result = await provider.generateRoleGapAnalysis(
+        profile,
+        {
+          targetRole: 'Backend Engineer',
+          sampleJobs: [job],
+          tagFrequency: { TypeScript: 5, PostgreSQL: 4, Kafka: 3 },
+        },
+        'en',
+      );
+
+      const params = create.mock.calls[0][0] as Anthropic.MessageCreateParamsNonStreaming;
+      expect(params.model).toBe(MODEL_ROUTING.strong);
+      expect(params.system).toContain('Do not invent, exaggerate, or infer skills, postings, certifications');
+      expect(params.system).toContain('Analyze in en the gap for Backend Engineer.');
+      expect(params.tool_choice).toEqual({ type: 'tool', name: 'record_role_gap_analysis' });
+      expect(result.matchingSkills).toEqual(['TypeScript', 'PostgreSQL']);
+      expect(result.missingSkills).toEqual(['Kafka']);
+      expect(result.estimatedReadinessScore).toBe(72);
+      expect(result.summary).toContain('Kafka');
+      expect(result.modelUsed).toBe('claude-sonnet-5');
+      expect(result.tokensUsed).toBe(300);
+    });
+
+    it('clamps an out-of-range readiness score into 0-100', async () => {
+      const { client } = fakeClient(() =>
+        toolUseMessage('record_role_gap_analysis', {
+          matchingSkills: [],
+          missingSkills: [],
+          suggestedLearningTopics: [],
+          suggestedCertifications: [],
+          estimatedReadinessScore: 150,
+          summary: 'Overconfident score.',
+        }),
+      );
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      const result = await provider.generateRoleGapAnalysis(
+        profile,
+        { targetRole: 'Backend Engineer', sampleJobs: [], tagFrequency: {} },
+        'en',
+      );
+
+      expect(result.estimatedReadinessScore).toBe(100);
+    });
+
+    it('throws malformed_response when the tool input is missing summary or estimatedReadinessScore', async () => {
+      const { client } = fakeClient(() =>
+        toolUseMessage('record_role_gap_analysis', { matchingSkills: [] }),
+      );
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      await expect(
+        provider.generateRoleGapAnalysis(
+          profile,
+          { targetRole: 'Backend Engineer', sampleJobs: [], tagFrequency: {} },
+          'en',
+        ),
+      ).rejects.toMatchObject({ code: 'malformed_response' });
     });
   });
 

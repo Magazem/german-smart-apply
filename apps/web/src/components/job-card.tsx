@@ -1,4 +1,5 @@
-import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { Link } from '@/i18n/navigation';
 import type { CanonicalJob, JobMatchScore } from '@german-smart-apply/shared';
 import { formatEmploymentType, formatRelativeDate, formatRemoteType, formatSeniority, formatSalary } from '@/lib/format';
 import { MatchScoreBar } from './match-score';
@@ -13,6 +14,7 @@ export function JobCard({
   match?: JobMatchScore | null;
   whyMatch?: string;
 }) {
+  const t = useTranslations('JobCard');
   return (
     <article className="card" data-testid="job-card" data-job-id={job.jobId} style={{ padding: 20 }}>
       <div className="row spread" style={{ alignItems: 'flex-start' }}>
@@ -35,7 +37,7 @@ export function JobCard({
         <span className="tag">{formatSeniority(job.seniority)}</span>
         <span className="tag">{formatEmploymentType(job.employmentType)}</span>
         <span className="tag">{formatSalary(job.salaryMin, job.salaryMax, job.salaryCurrency)}</span>
-        <span className="tag">Posted {formatRelativeDate(job.postedAt)}</span>
+        <span className="tag">{t('postedDate', { date: formatRelativeDate(job.postedAt) })}</span>
       </div>
 
       <div className="row row-wrap gap-8" style={{ marginTop: 10 }}>
@@ -52,14 +54,25 @@ export function JobCard({
 
       <div className="row spread" style={{ marginTop: 14, alignItems: 'center' }}>
         <RiskBadge scamRiskScore={job.scamRiskScore} />
-        <Link href={`/jobs/${job.jobId}`} className="btn btn-secondary btn-sm">
-          View details
-        </Link>
+        <div className="row gap-8">
+          <a
+            href={job.applyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-secondary btn-sm"
+            data-testid="apply-original-link"
+          >
+            {t('applyOn', { source: job.sourceType })}
+          </a>
+          <Link href={`/jobs/${job.jobId}`} className="btn btn-secondary btn-sm">
+            {t('viewDetails')}
+          </Link>
+        </div>
       </div>
 
       {whyMatch && (
         <p className="muted" style={{ marginTop: 12, fontSize: '0.85rem', borderTop: '1px dashed var(--color-border)', paddingTop: 10 }}>
-          <strong style={{ color: 'var(--color-text)' }}>Why this matches: </strong>
+          <strong style={{ color: 'var(--color-text)' }}>{t('whyMatchLabel')}</strong>
           {whyMatch}
         </p>
       )}

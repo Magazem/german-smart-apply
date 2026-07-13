@@ -6,6 +6,7 @@ import type {
   ParsedCvResult,
 } from '@german-smart-apply/shared';
 import { AiProviderError } from './errors.js';
+import type { RoleGapAnalysisInput } from './types.js';
 
 export function interpolate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, key: string) => vars[key] ?? '');
@@ -88,4 +89,30 @@ export function formatJobForPrompt(job: CanonicalJob): string {
     `Tech stack: ${job.techStackTags.join(', ') || 'not specified'}`,
     `Description: ${job.jobDescriptionText}`,
   ].join('\n');
+}
+
+/**
+ * Formats the pre-aggregated role-gap-analysis input: a target role, a
+ * deterministic tag-frequency count computed server-side across every
+ * matching posting (not just the sample), and a small representative sample
+ * of full postings. Keeps token cost bounded without the model ever needing
+ * to see all matching postings itself.
+ */
+export function formatRoleGapAnalysisInput(input: RoleGapAnalysisInput): string {
+  const tagLines = Object.entries(input.tagFrequency)
+    .sort(([, a], [, b]) => b - a)
+    .map(([tag, count]) => `${tag} (${count})`)
+    .join(', ');
+
+  const sampleLines = input.sampleJobs
+    .map((job, i) => `--- Sample posting ${i + 1} ---\n${formatJobForPrompt(job)}`)
+    .join('\n\n');
+
+  return [
+    `Target role: ${input.targetRole}`,
+    `Skill/tag frequency across ${input.sampleJobs.length > 0 ? 'all matching postings' : 'no matching postings'}: ${
+      tagLines || 'none available'
+    }`,
+    sampleLines ? `Representative sample postings:\n\n${sampleLines}` : 'No sample postings available.',
+  ].join('\n\n');
 }

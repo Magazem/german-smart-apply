@@ -18,7 +18,7 @@ describe('Profile (e2e)', () => {
     const email = uniqueEmail('profile');
     const res = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password: 'correct-horse-battery-staple' });
+      .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     accessToken = res.body.accessToken;
     userId = res.body.user.id;
   });
@@ -51,7 +51,7 @@ describe('Profile (e2e)', () => {
     const email = uniqueEmail('profile-partial');
     const res = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password: 'correct-horse-battery-staple' });
+      .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     const partialToken = res.body.accessToken as string;
     const partialUserId = res.body.user.id as string;
 

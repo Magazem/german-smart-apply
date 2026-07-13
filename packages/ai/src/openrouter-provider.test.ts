@@ -66,8 +66,10 @@ const testMarketPack: MarketPack = {
     matchExplanation: 'Explain in {{language}} why this candidate fits {{jobTitle}}.',
     followUpEmail: 'Write a follow-up email in {{language}} for {{jobTitle}} at {{companyName}}, {{daysSinceApplied}} days since applying.',
     interviewPrep: 'Prepare the candidate in {{language}} for an interview for {{jobTitle}} at {{companyName}}.',
+    roleGapAnalysis: 'Analyze in {{language}} the gap for {{targetRole}}.',
   },
   cvFormattingNorms: { preferredLengthPages: 2, photoExpected: false, dateFormat: 'MM/YYYY' },
+  coverLetterFormattingNorms: { preferredLengthWords: 380 },
   salaryParsing: { currency: 'EUR', thousandsSeparator: '.', decimalSeparator: ',' },
   locationDictionary: {},
   scamHeuristics: { suspiciousDomainPatterns: [], suspiciousContactPatterns: [] },
@@ -337,6 +339,50 @@ describe('OpenRouterAiProvider', () => {
       await expect(provider.generateInterviewPrep(profile, job, 'en')).rejects.toMatchObject({
         code: 'malformed_response',
       });
+    });
+  });
+
+  describe('generateRoleGapAnalysis', () => {
+    it('returns a structured gap analysis from a tool call', async () => {
+      const { client, create } = fakeClient(() =>
+        toolCallCompletion('record_role_gap_analysis', {
+          matchingSkills: ['TypeScript'],
+          missingSkills: ['Kafka'],
+          suggestedLearningTopics: ['Learn Kafka basics.'],
+          suggestedCertifications: [],
+          estimatedReadinessScore: 65,
+          summary: 'Solid match, missing Kafka.',
+        }),
+      );
+      const provider = new OpenRouterAiProvider(testMarketPack, { client });
+
+      const result = await provider.generateRoleGapAnalysis(
+        profile,
+        { targetRole: 'Backend Engineer', sampleJobs: [job], tagFrequency: { TypeScript: 3, Kafka: 2 } },
+        'en',
+      );
+
+      const params = create.mock.calls[0][0] as OpenAI.ChatCompletionCreateParamsNonStreaming;
+      expect(params.tool_choice).toEqual({ type: 'function', function: { name: 'record_role_gap_analysis' } });
+      expect(result.matchingSkills).toEqual(['TypeScript']);
+      expect(result.missingSkills).toEqual(['Kafka']);
+      expect(result.estimatedReadinessScore).toBe(65);
+      expect(result.summary).toContain('Kafka');
+    });
+
+    it('throws malformed_response when summary or estimatedReadinessScore is missing', async () => {
+      const { client } = fakeClient(() =>
+        toolCallCompletion('record_role_gap_analysis', { matchingSkills: [] }),
+      );
+      const provider = new OpenRouterAiProvider(testMarketPack, { client });
+
+      await expect(
+        provider.generateRoleGapAnalysis(
+          profile,
+          { targetRole: 'Backend Engineer', sampleJobs: [], tagFrequency: {} },
+          'en',
+        ),
+      ).rejects.toMatchObject({ code: 'malformed_response' });
     });
   });
 

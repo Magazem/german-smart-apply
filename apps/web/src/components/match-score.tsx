@@ -1,6 +1,8 @@
+import { useTranslations } from 'next-intl';
 import type { JobMatchScore } from '@german-smart-apply/shared';
 
 export function MatchScoreBar({ match, compact }: { match: JobMatchScore | null | undefined; compact?: boolean }) {
+  const t = useTranslations('MatchScore');
   if (!match) return null;
   const pct = Math.round(match.totalScore * 100);
   const color = pct >= 70 ? 'var(--color-success)' : pct >= 45 ? 'var(--color-accent)' : 'var(--color-text-muted)';
@@ -35,20 +37,21 @@ export function MatchScoreBar({ match, compact }: { match: JobMatchScore | null 
           {pct}%
         </div>
       </div>
-      {!compact && <span className="muted" style={{ fontSize: '0.82rem' }}>match score</span>}
+      {!compact && <span className="muted" style={{ fontSize: '0.82rem' }}>{t('matchScoreLabel')}</span>}
     </div>
   );
 }
 
 export function MatchBreakdown({ match }: { match: JobMatchScore }) {
+  const t = useTranslations('MatchScore');
   const rows: Array<[string, number]> = [
-    ['Title fit', match.titleSimilarity],
-    ['Skill overlap', match.skillOverlap],
-    ['Location fit', match.locationFit],
-    ['Recency', match.recencmyBoost],
-    ['Salary fit', match.salaryFit],
-    ['Language fit', match.languageFit],
-    ['Source trust', match.sourceTrust],
+    [t('titleFit'), match.titleSimilarity],
+    [t('skillOverlap'), match.skillOverlap],
+    [t('locationFit'), match.locationFit],
+    [t('recency'), match.recencmyBoost],
+    [t('salaryFit'), match.salaryFit],
+    [t('languageFit'), match.languageFit],
+    [t('sourceTrust'), match.sourceTrust],
   ];
   return (
     <div className="stack gap-8">
@@ -79,7 +82,7 @@ export function MatchBreakdown({ match }: { match: JobMatchScore }) {
       {match.riskPenalty > 0 && (
         <div className="row gap-8">
           <span className="muted" style={{ fontSize: '0.8rem', width: 100, flexShrink: 0 }}>
-            Risk penalty
+            {t('riskPenalty')}
           </span>
           <div
             style={{

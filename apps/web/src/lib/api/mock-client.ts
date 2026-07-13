@@ -12,6 +12,7 @@ import {
   type InterviewPrepDraft,
   type JobFeedbackType,
   type JobSearchFilters,
+  type RoleGapAnalysis,
 } from '@german-smart-apply/shared';
 import { DEDUP_STATS_FIXTURE, SOURCE_HEALTH_FIXTURES } from './admin-fixtures';
 import { JOB_FIXTURES } from './fixtures';
@@ -71,6 +72,11 @@ function interviewPrepsFor(db: MockDb, applicationId: string): InterviewPrepDraf
   return (db.interviewPrepDrafts ?? {})[applicationId] ?? [];
 }
 
+/** Guards against a pre-role-gap-analysis-feature localStorage payload where db.roleGapAnalyses doesn't exist yet. */
+function roleGapAnalysesFor(db: MockDb, userId: string): RoleGapAnalysis[] {
+  return (db.roleGapAnalyses ?? {})[userId] ?? [];
+}
+
 const FOLLOW_UP_ELIGIBLE_STATUSES: ApplicationStatus[] = ['applied', 'interview'];
 
 function toAuthUser(u: MockUser): AuthUser {
@@ -127,15 +133,25 @@ export class MockApiClient implements ApiClient {
   }
 
   auth = {
-    register: async ({ email, password, fullName }: RegisterInput): Promise<AuthSession> => {
+    register: async ({ email, password, acceptedTerms }: RegisterInput): Promise<AuthSession> => {
       await delay();
       const db = this.getDb();
       const normalizedEmail = email.trim().toLowerCase();
       if (!normalizedEmail || !normalizedEmail.includes('@')) {
         throw new Error('Enter a valid email address.');
       }
-      if (password.length < 8) {
-        throw new Error('Password must be at least 8 characters.');
+      if (!acceptedTerms) {
+        throw new Error('You must agree to the Terms of Service and Privacy Policy to create an account.');
+      }
+      if (
+        password.length < 10 ||
+        !/[a-z]/.test(password) ||
+        !/[A-Z]/.test(password) ||
+        !/\d/.test(password)
+      ) {
+        throw new Error(
+          'Password must be at least 10 characters and include an uppercase letter, a lowercase letter, and a number.',
+        );
       }
       if (db.users.some((u) => u.email === normalizedEmail)) {
         throw new Error('An account with this email already exists. Try logging in instead.');
@@ -144,7 +160,7 @@ export class MockApiClient implements ApiClient {
         id: uid('user'),
         email: normalizedEmail,
         passwordHash: weakHash(password),
-        fullName: fullName?.trim() || null,
+        fullName: null,
         tier: 'free',
         createdAt: nowIso(),
       };
@@ -708,6 +724,62 @@ export class MockApiClient implements ApiClient {
       await delay(80);
       this.requireUserId(this.getDb());
       return { totalTokens: 0, byFeature: [] };
+    },
+  };
+
+  roleGapAnalysis = {
+    list: async (): Promise<RoleGapAnalysis[]> => {
+      await delay(80);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      return roleGapAnalysesFor(db, userId);
+    },
+
+    create: async (targetRole: string, language?: string): Promise<RoleGapAnalysis> => {
+      await delay(500);
+      const db = this.getDb();
+      const userId = this.requireUserId(db);
+      const profile = db.profiles[userId];
+      if (!profile || !profile.targetRole) {
+        throw new Error('Complete your candidate profile before running a role gap analysis.');
+      }
+
+      const wanted = targetRole.toLowerCase();
+      const candidateJobs = JOB_FIXTURES.filter((j) => j.jobTitleNormalized.toLowerCase().includes(wanted));
+
+      const tagFrequency: Record<string, number> = {};
+      for (const job of candidateJobs) {
+        for (const tag of job.techStackTags) {
+          tagFrequency[tag] = (tagFrequency[tag] ?? 0) + 1;
+        }
+      }
+      const sampleJobs = candidateJobs.slice(0, 5);
+
+      const result = await aiProvider.generateRoleGapAnalysis(
+        profile,
+        { targetRole, sampleJobs, tagFrequency },
+        language ?? profile.preferredLanguage,
+      );
+
+      const analysis: RoleGapAnalysis = {
+        id: uid('rolegap'),
+        userId,
+        targetRole,
+        matchingSkills: result.matchingSkills,
+        missingSkills: result.missingSkills,
+        suggestedLearningTopics: result.suggestedLearningTopics,
+        suggestedCertifications: result.suggestedCertifications,
+        estimatedReadinessScore: result.estimatedReadinessScore,
+        summary: result.summary,
+        sampleJobCount: candidateJobs.length,
+        modelUsed: result.modelUsed,
+        tokensUsed: result.tokensUsed,
+        createdAt: nowIso(),
+      };
+      db.roleGapAnalyses ??= {};
+      db.roleGapAnalyses[userId] = [analysis, ...roleGapAnalysesFor(db, userId)];
+      saveDb(db);
+      return analysis;
     },
   };
 

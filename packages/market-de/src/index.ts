@@ -35,7 +35,31 @@ export const marketDe: MarketPack = {
       displayName: 'Stepstone structured feed',
       trustTier: 'medium',
       crawlFrequencyMinutes: 360,
+      // BLOCKED (not an engineering gap): no documented public Stepstone
+      // feed API exists. Real access needs a partnerships conversation with
+      // Stepstone, not more adapter code.
       config: {},
+    },
+    {
+      sourceId: 'personio-de',
+      sourceType: 'personio',
+      displayName: 'Personio (DE companies)',
+      trustTier: 'high',
+      crawlFrequencyMinutes: 240,
+      // companySubdomains starts empty, same bootstrapping pattern as
+      // greenhouse-de/lever-de above. Mirrored in workers/common/market_de.py,
+      // which also carries the domainAllowlist note: unlike Greenhouse/Lever,
+      // each Personio company has its own subdomain host, so that allowlist
+      // must be kept in lockstep with whatever gets added here.
+      config: { companySubdomains: [] },
+    },
+    {
+      sourceId: 'smartrecruiters-de',
+      sourceType: 'smartrecruiters',
+      displayName: 'SmartRecruiters (DE companies)',
+      trustTier: 'high',
+      crawlFrequencyMinutes: 240,
+      config: { companyIdentifiers: [] },
     },
   ],
   languagePrompts: {
@@ -49,11 +73,16 @@ export const marketDe: MarketPack = {
       'Write a brief, polite follow-up email in {{language}} from the candidate to the hiring team for {{jobTitle}} at {{companyName}}, referencing that it has been {{daysSinceApplied}} days since they applied. Reaffirm interest and ask for a status update. Follow German business-email conventions (formal register, Sehr geehrte/r for German text). Keep it short - a few sentences, not a full letter.',
     interviewPrep:
       'Prepare the candidate in {{language}} for an interview for {{jobTitle}} at {{companyName}}. Generate 5-8 likely interview questions tailored to this role and company (mix of behavioral and role-specific/technical questions), plus 3-5 short talking points the candidate can use, each grounded in a concrete overlap between their profile and the job requirements. Keep questions and talking points concise and specific, not generic.',
+    roleGapAnalysis:
+      'Analyze in {{language}} how well this candidate matches the target role of {{targetRole}}, using only the candidate profile and the sample of real job postings and skill-tag frequency data provided. Identify which required skills the candidate already has (matchingSkills), which real, commonly-requested skills from the sample postings the candidate is missing (missingSkills), concrete learning topics that would close those gaps (suggestedLearningTopics), and any relevant certifications commonly requested in these postings (suggestedCertifications). Give an honest estimatedReadinessScore from 0-100 and a short summary explaining it.',
   },
   cvFormattingNorms: {
     preferredLengthPages: 2,
     photoExpected: false,
     dateFormat: 'MM/YYYY',
+  },
+  coverLetterFormattingNorms: {
+    preferredLengthWords: 380,
   },
   salaryParsing: {
     currency: 'EUR',

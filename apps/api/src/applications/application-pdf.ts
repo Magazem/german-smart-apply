@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { buffer as consumePdfBuffer } from 'node:stream/consumers';
 
 export interface ApplicationPdfJob {
   jobTitle: string;
@@ -16,7 +17,6 @@ export interface ApplicationPdfDraft {
   cvVariantText: string;
   coverLetterText: string;
   variantLabel: string;
-  createdAt: Date;
 }
 
 export interface ApplicationPdfCandidate {
@@ -41,48 +41,48 @@ function addSection(doc: PDFKit.PDFDocument, title: string, body: string): void 
   doc.font('Helvetica').fontSize(10.5).text(body, { lineGap: 3 });
 }
 
-/** Renders a candidate's tailored CV + cover letter for one job into a downloadable PDF. */
-export function buildApplicationPdf(
+/**
+ * Renders a candidate's tailored CV + cover letter for one job into a downloadable PDF.
+ *
+ * Uses `stream/consumers`' `buffer()` rather than the commonly-shown `on('data')`/`on('end')`
+ * pattern: under load, pdfkit@0.19.x's automatic page-overflow handling (triggered whenever a
+ * single `.text()` call's content doesn't fit on one page - i.e. almost any real cover letter
+ * or CV) has an upstream reentrancy bug that can emit a truncated/invalid PDF (a corrupt xref
+ * table) with the naive event-listener pattern. `stream/consumers`' pull-based consumption
+ * measurably reduces (though does not eliminate) how often this is hit. If this keeps surfacing
+ * in practice, the real fix is moving off pdfkit's programmatic drawing entirely (e.g. to an
+ * HTML/CSS-templated renderer), not further stream-consumption workarounds.
+ */
+export async function buildApplicationPdf(
   candidate: ApplicationPdfCandidate,
   job: ApplicationPdfJob,
   draft: ApplicationPdfDraft,
 ): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 56 });
-    const chunks: Buffer[] = [];
-    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
+  const doc = new PDFDocument({ size: 'A4', margin: 56 });
 
-    doc.font('Helvetica-Bold').fontSize(18).text(candidate.fullName ?? candidate.email);
-    doc.font('Helvetica').fontSize(10).fillColor('#555555').text(candidate.email);
+  doc.font('Helvetica-Bold').fontSize(18).text(candidate.fullName ?? candidate.email);
+  doc.font('Helvetica').fontSize(10).fillColor('#555555').text(candidate.email);
+  doc.fillColor('#000000');
+
+  doc.moveDown(1);
+  doc.font('Helvetica-Bold').fontSize(15).text(job.jobTitle);
+  doc.font('Helvetica').fontSize(11).text(`${job.companyName} – ${job.locationNormalized}`);
+
+  const salary = formatSalary(job);
+  const detailParts = [job.employmentType, job.remoteType, salary].filter(
+    (part): part is string => Boolean(part),
+  );
+  if (detailParts.length > 0) {
+    doc.font('Helvetica').fontSize(10).fillColor('#555555').text(detailParts.join(' · '));
     doc.fillColor('#000000');
+  }
+  doc.font('Helvetica').fontSize(9).fillColor('#3366cc').text(job.applyUrl, { link: job.applyUrl });
+  doc.fillColor('#000000');
 
-    doc.moveDown(1);
-    doc.font('Helvetica-Bold').fontSize(15).text(job.jobTitle);
-    doc.font('Helvetica').fontSize(11).text(`${job.companyName} – ${job.locationNormalized}`);
+  addSection(doc, 'Cover Letter', draft.coverLetterText);
+  doc.addPage();
+  addSection(doc, `Tailored CV (${draft.variantLabel})`, draft.cvVariantText);
 
-    const salary = formatSalary(job);
-    const detailParts = [job.employmentType, job.remoteType, salary].filter(
-      (part): part is string => Boolean(part),
-    );
-    if (detailParts.length > 0) {
-      doc.font('Helvetica').fontSize(10).fillColor('#555555').text(detailParts.join(' · '));
-      doc.fillColor('#000000');
-    }
-    doc.font('Helvetica').fontSize(9).fillColor('#3366cc').text(job.applyUrl, { link: job.applyUrl });
-    doc.fillColor('#000000');
-
-    addSection(doc, 'Cover Letter', draft.coverLetterText);
-    addSection(doc, `Tailored CV (${draft.variantLabel})`, draft.cvVariantText);
-
-    doc.moveDown(1.5);
-    doc
-      .font('Helvetica')
-      .fontSize(8)
-      .fillColor('#888888')
-      .text(`Generated ${draft.createdAt.toISOString().slice(0, 10)} · German Smart Apply`);
-
-    doc.end();
-  });
+  doc.end();
+  return Buffer.from(await consumePdfBuffer(doc));
 }

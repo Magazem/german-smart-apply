@@ -20,13 +20,13 @@ describe('Admin source health (e2e)', () => {
 
     const userRes = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email: uniqueEmail('admin-regular'), password: 'correct-horse-battery-staple' });
+      .send({ email: uniqueEmail('admin-regular'), password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     userToken = userRes.body.accessToken;
     userId = userRes.body.user.id;
 
     const adminRes = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email: uniqueEmail('admin-promoted'), password: 'correct-horse-battery-staple' });
+      .send({ email: uniqueEmail('admin-promoted'), password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     adminToken = adminRes.body.accessToken;
     adminId = adminRes.body.user.id;
     // Promotion has no self-serve endpoint by design (same as there's no
@@ -211,10 +211,10 @@ describe('Admin source health (e2e)', () => {
 
       const freeRes = await request(app.getHttpServer())
         .post('/auth/register')
-        .send({ email: uniqueEmail('analytics-free'), password: 'correct-horse-battery-staple' });
+        .send({ email: uniqueEmail('analytics-free'), password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
       const proRes = await request(app.getHttpServer())
         .post('/auth/register')
-        .send({ email: uniqueEmail('analytics-pro'), password: 'correct-horse-battery-staple' });
+        .send({ email: uniqueEmail('analytics-pro'), password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
       await prisma.client.user.update({
         where: { id: proRes.body.user.id },
         data: { subscriptionStatus: 'pro' },

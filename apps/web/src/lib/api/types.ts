@@ -12,6 +12,7 @@ import type {
   JobMatchScore,
   JobSearchFilters,
   ParsedCvResult,
+  RoleGapAnalysis,
 } from '@german-smart-apply/shared';
 
 /**
@@ -38,7 +39,8 @@ export interface AuthSession {
 export interface RegisterInput {
   email: string;
   password: string;
-  fullName?: string;
+  acceptedTerms: boolean;
+  acceptedPolicyVersion: string;
 }
 
 export interface LoginInput {
@@ -206,6 +208,12 @@ export interface ApiClient {
   };
   usage: {
     summary(): Promise<TokenUsageSummary>;
+  };
+  roleGapAnalysis: {
+    /** Past analyses for the current user, most recent first. */
+    list(): Promise<RoleGapAnalysis[]>;
+    /** Runs a new analysis against real matching postings and persists it. */
+    create(targetRole: string, language?: string): Promise<RoleGapAnalysis>;
   };
   admin: {
     /** Throws/rejects for a non-admin caller — both clients enforce this, not just the UI. */

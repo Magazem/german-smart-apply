@@ -1,28 +1,34 @@
 'use client';
 
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { Link, usePathname, useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { initials } from '@/lib/format';
+import { ThemeToggle } from './theme-toggle';
+import { LanguageSwitcher } from './language-switcher';
 
-const LINKS = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/jobs', label: 'Job search' },
-  { href: '/saved-searches', label: 'Saved searches' },
-  { href: '/applications', label: 'Applications' },
-  { href: '/cv', label: 'CV workspace' },
-  { href: '/billing', label: 'Billing' },
-];
+const LINK_KEYS = [
+  { href: '/dashboard', key: 'dashboard' },
+  { href: '/jobs', key: 'jobs' },
+  { href: '/saved-searches', key: 'savedSearches' },
+  { href: '/applications', key: 'applications' },
+  { href: '/cv', key: 'cv' },
+  { href: '/career-coach', key: 'careerCoach' },
+  { href: '/billing', key: 'billing' },
+] as const;
 
 export function Nav() {
   const { user, loading, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const t = useTranslations('Nav');
 
   const handleLogout = async () => {
     await logout();
     router.push('/');
   };
+
+  const links = user?.role === 'admin' ? [...LINK_KEYS, { href: '/admin', key: 'admin' } as const] : LINK_KEYS;
 
   return (
     <header
@@ -34,7 +40,7 @@ export function Nav() {
         zIndex: 20,
       }}
     >
-      <div className="container row spread" style={{ height: 64 }}>
+      <div className="container row spread" style={{ minHeight: 64, padding: '10px 0' }}>
         <Link href="/" className="row gap-8" style={{ textDecoration: 'none', fontWeight: 800, fontSize: '1.05rem' }}>
           <span
             aria-hidden
@@ -52,12 +58,16 @@ export function Nav() {
           >
             SA
           </span>
-          Smart Apply
+          {t('brand')}
         </Link>
 
         {!loading && user && (
-          <nav className="row gap-16" style={{ flex: 1, justifyContent: 'center' }} aria-label="Primary">
-            {(user.role === 'admin' ? [...LINKS, { href: '/admin', label: 'Admin' }] : LINKS).map((link) => {
+          <nav
+            className="row row-wrap"
+            style={{ flex: 1, justifyContent: 'center', gap: 'var(--nav-link-gap, 16px)' }}
+            aria-label="Primary"
+          >
+            {links.map((link) => {
               const active = pathname === link.href || pathname?.startsWith(`${link.href}/`);
               return (
                 <Link
@@ -65,14 +75,15 @@ export function Nav() {
                   href={link.href}
                   style={{
                     textDecoration: 'none',
-                    fontSize: '0.9rem',
+                    fontSize: 'var(--nav-link-size, 0.9rem)',
                     fontWeight: active ? 700 : 500,
                     color: active ? 'var(--color-primary)' : 'var(--color-text-muted)',
                     padding: '8px 4px',
+                    whiteSpace: 'nowrap',
                     borderBottom: active ? '2px solid var(--color-primary)' : '2px solid transparent',
                   }}
                 >
-                  {link.label}
+                  {t(link.key)}
                 </Link>
               );
             })}
@@ -80,6 +91,8 @@ export function Nav() {
         )}
 
         <div className="row gap-12">
+          <LanguageSwitcher />
+          <ThemeToggle />
           {loading ? null : user ? (
             <>
               <span
@@ -108,16 +121,16 @@ export function Nav() {
                 </span>
               </span>
               <button className="btn btn-ghost btn-sm" onClick={handleLogout} data-testid="logout-button">
-                Log out
+                {t('logOut')}
               </button>
             </>
           ) : (
             <>
               <Link href="/login" className="btn btn-ghost btn-sm">
-                Log in
+                {t('logIn')}
               </Link>
               <Link href="/signup" className="btn btn-primary btn-sm">
-                Get started free
+                {t('getStarted')}
               </Link>
             </>
           )}

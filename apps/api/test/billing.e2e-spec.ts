@@ -18,7 +18,7 @@ describe('Billing (e2e, MockBillingProvider - no Stripe keys in this sandbox)', 
     const email = uniqueEmail('billing');
     const res = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password: 'correct-horse-battery-staple' });
+      .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     accessToken = res.body.accessToken;
     userId = res.body.user.id;
   });

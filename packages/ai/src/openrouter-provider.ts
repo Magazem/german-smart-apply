@@ -7,6 +7,8 @@ import type {
   FollowUpEmailResult,
   InterviewPrepResult,
   ParseCvResult,
+  RoleGapAnalysisInput,
+  RoleGapAnalysisResult,
 } from './types.js';
 import { CV_VARIANT_STYLE_INSTRUCTIONS } from './types.js';
 import { AiProviderError } from './errors.js';
@@ -14,6 +16,7 @@ import {
   asStringArray,
   formatJobForPrompt,
   formatProfileForPrompt,
+  formatRoleGapAnalysisInput,
   interpolate,
   isRecord,
   parseParsedCvInput,
@@ -130,6 +133,7 @@ const PARSED_CV_TOOL_NAME = 'record_parsed_cv';
 const CV_SUGGESTIONS_TOOL_NAME = 'record_cv_suggestions';
 const FOLLOW_UP_EMAIL_TOOL_NAME = 'record_follow_up_email';
 const INTERVIEW_PREP_TOOL_NAME = 'record_interview_prep';
+const ROLE_GAP_ANALYSIS_TOOL_NAME = 'record_role_gap_analysis';
 
 function buildParsedCvTool(): OpenAI.ChatCompletionTool {
   return {
@@ -229,6 +233,59 @@ function buildInterviewPrepTool(): OpenAI.ChatCompletionTool {
           talkingPoints: { type: 'array', items: { type: 'string' }, description: "3-5 talking points grounded in the candidate's background." },
         },
         required: ['questions', 'talkingPoints'],
+      },
+    },
+  };
+}
+
+function buildRoleGapAnalysisTool(): OpenAI.ChatCompletionTool {
+  return {
+    type: 'function',
+    function: {
+      name: ROLE_GAP_ANALYSIS_TOOL_NAME,
+      description: 'Record the target-role gap analysis.',
+      parameters: {
+        type: 'object',
+        properties: {
+          matchingSkills: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              "Skills/technologies the candidate's profile already shows that genuinely overlap with the sample postings and tag frequency.",
+          },
+          missingSkills: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Skills/technologies commonly requested in the sample postings or tag frequency that the candidate profile does not show. Only from the provided data, never invented.',
+          },
+          suggestedLearningTopics: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Concrete topics to study to close the missing-skill gaps.',
+          },
+          suggestedCertifications: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Relevant certifications, only if genuinely well-known and relevant - an empty array is fine.',
+          },
+          estimatedReadinessScore: {
+            type: 'number',
+            description: 'An honest estimate from 0-100 of how ready the candidate is for the target role today.',
+          },
+          summary: {
+            type: 'string',
+            description: 'A short 2-4 sentence summary explaining the readiness score and the biggest gaps.',
+          },
+        },
+        required: [
+          'matchingSkills',
+          'missingSkills',
+          'suggestedLearningTopics',
+          'suggestedCertifications',
+          'estimatedReadinessScore',
+          'summary',
+        ],
       },
     },
   };
@@ -368,11 +425,16 @@ export class OpenRouterAiProvider implements AiProvider {
     const context = 'generateCvVariant';
     const norms = this.marketPack.cvFormattingNorms;
     const system = [
+      "Do not invent, exaggerate, or infer facts, employers, titles, dates, or metrics that are not present in the candidate profile provided. Rephrasing and reordering are fine; fabrication is not.",
       interpolate(this.marketPack.languagePrompts.cvSummary, { language }),
       `Rewrite the candidate's CV as a tailored variant for the target job below, written in ${language}.`,
       `Follow this market's formatting norms: ~${norms.preferredLengthPages} page(s), ${
         norms.photoExpected ? 'include a photo placeholder' : 'no photo'
       }, dates formatted as ${norms.dateFormat}. Mirror relevant terminology from the job description where truthful.`,
+      "Use standard, ATS-parsable section headers exactly as commonly recognized: 'Work Experience', 'Education', 'Skills' (or the equivalent standard header in the target language) — do not invent creative or nonstandard section names.",
+      "Where the candidate genuinely has matching experience, front-load role-relevant keywords and phrasing drawn from the job description into the corresponding bullet points — but only where it reflects real, truthful overlap with the candidate's background.",
+      'Quantify achievements with concrete numbers wherever the candidate profile provides them (%, €, team size, time saved); do not fabricate numbers where none exist.',
+      "Write in third person / resume-style phrasing (avoid 'I', 'my') throughout, consistent with standard CV conventions.",
       CV_VARIANT_STYLE_INSTRUCTIONS[variantStyle],
       'Return only the CV content, with no preamble or commentary.',
     ]
@@ -406,14 +468,16 @@ export class OpenRouterAiProvider implements AiProvider {
     variantStyle: CvVariantStyle = 'standard',
   ): Promise<AiGenerationResult> {
     const context = 'generateCoverLetter';
+    const { preferredLengthWords } = this.marketPack.coverLetterFormattingNorms;
     const system = [
+      'Do not invent, exaggerate, or infer facts, employers, titles, dates, or metrics that are not present in the candidate profile provided. Rephrasing and reordering are fine; fabrication is not.',
       interpolate(this.marketPack.languagePrompts.coverLetter, {
         language,
         jobTitle: job.jobTitleNormalized,
         companyName: job.companyNameNormalized,
       }),
       CV_VARIANT_STYLE_INSTRUCTIONS[variantStyle],
-      `Preferred length: ~${this.marketPack.cvFormattingNorms.preferredLengthPages} page(s). Return only the letter text, with no preamble or commentary.`,
+      `Target length: approximately ${preferredLengthWords} words (roughly one page). Do not pad — a shorter, sharper letter is better than a longer, padded one. Return only the letter text, with no preamble or commentary.`,
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -558,6 +622,56 @@ export class OpenRouterAiProvider implements AiProvider {
     return {
       questions,
       talkingPoints,
+      modelUsed: completion.model,
+      tokensUsed: completion.usage?.total_tokens ?? 0,
+    };
+  }
+
+  async generateRoleGapAnalysis(
+    profile: CandidateProfile,
+    input: RoleGapAnalysisInput,
+    language: string,
+  ): Promise<RoleGapAnalysisResult> {
+    const context = 'generateRoleGapAnalysis';
+    const system = [
+      'Do not invent, exaggerate, or infer skills, postings, certifications, or facts that are not present in the candidate profile, the sample postings, or the tag frequency data provided. Base every finding strictly on that data.',
+      interpolate(this.marketPack.languagePrompts.roleGapAnalysis, {
+        language,
+        targetRole: input.targetRole,
+      }),
+      `Call the ${ROLE_GAP_ANALYSIS_TOOL_NAME} tool with the result, written in ${language}. Do not include any other commentary.`,
+    ].join('\n\n');
+
+    const user = [formatProfileForPrompt(profile), formatRoleGapAnalysisInput(input)].join('\n\n');
+
+    const completion = await this.createCompletion(
+      {
+        max_tokens: 2048,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        tools: [buildRoleGapAnalysisTool()],
+        tool_choice: { type: 'function', function: { name: ROLE_GAP_ANALYSIS_TOOL_NAME } },
+      },
+      context,
+    );
+
+    const output = extractStructuredOutput(completion, ROLE_GAP_ANALYSIS_TOOL_NAME, context);
+    if (!isRecord(output) || typeof output.summary !== 'string' || typeof output.estimatedReadinessScore !== 'number') {
+      throw new AiProviderError(
+        `${context}: response missing "summary" or "estimatedReadinessScore"`,
+        'malformed_response',
+      );
+    }
+
+    return {
+      matchingSkills: asStringArray(output.matchingSkills),
+      missingSkills: asStringArray(output.missingSkills),
+      suggestedLearningTopics: asStringArray(output.suggestedLearningTopics),
+      suggestedCertifications: asStringArray(output.suggestedCertifications),
+      estimatedReadinessScore: Math.max(0, Math.min(100, output.estimatedReadinessScore)),
+      summary: output.summary,
       modelUsed: completion.model,
       tokensUsed: completion.usage?.total_tokens ?? 0,
     };

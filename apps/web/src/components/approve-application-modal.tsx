@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import type { ApplicationDraft } from '@german-smart-apply/shared';
 
@@ -18,6 +19,7 @@ export function ApproveApplicationModal({
   onRequestChanges: () => Promise<void>;
   onClose: () => void;
 }) {
+  const t = useTranslations('ApproveModal');
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState<'approve' | 'changes' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +32,7 @@ export function ApproveApplicationModal({
     try {
       await onApprove();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not approve this application.');
+      setError(e instanceof Error ? e.message : t('approveError'));
       setBusy(null);
     }
   };
@@ -42,7 +44,7 @@ export function ApproveApplicationModal({
     try {
       await onRequestChanges();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not send this back for changes.');
+      setError(e instanceof Error ? e.message : t('requestChangesError'));
       setBusy(null);
     }
   };
@@ -73,10 +75,10 @@ export function ApproveApplicationModal({
       >
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)' }}>
           <h2 id="approve-modal-title" style={{ fontSize: '1.15rem', fontWeight: 800 }}>
-            Review before you approve
+            {t('heading')}
           </h2>
           <p className="muted" style={{ marginTop: 6, fontSize: '0.9rem' }}>
-            {jobTitle} at {companyName}. Nothing is sent anywhere until you explicitly approve it below.
+            {t('subtitle', { jobTitle, companyName })}
           </p>
         </div>
 
@@ -86,14 +88,14 @@ export function ApproveApplicationModal({
             className={`btn btn-sm ${tab === 'cv' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setTab('cv')}
           >
-            CV variant
+            {t('cvTab')}
           </button>
           <button
             type="button"
             className={`btn btn-sm ${tab === 'letter' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setTab('letter')}
           >
-            Cover letter
+            {t('letterTab')}
           </button>
         </div>
 
@@ -124,14 +126,12 @@ export function ApproveApplicationModal({
               data-testid="approve-confirm-checkbox"
               style={{ marginTop: 3 }}
             />
-            <span>
-              I have reviewed this CV variant and cover letter and want to submit this application myself.
-            </span>
+            <span>{t('confirmLabel')}</span>
           </label>
 
           <div className="row spread">
             <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} disabled={busy !== null}>
-              Cancel
+              {t('cancelButton')}
             </button>
             <div className="row gap-8">
               <button
@@ -141,7 +141,7 @@ export function ApproveApplicationModal({
                 disabled={busy !== null}
                 data-testid="request-changes-button"
               >
-                {busy === 'changes' ? 'Sending back…' : 'Request changes'}
+                {busy === 'changes' ? t('sendingBack') : t('requestChangesButton')}
               </button>
               <button
                 type="button"
@@ -150,7 +150,7 @@ export function ApproveApplicationModal({
                 disabled={!confirmed || busy !== null}
                 data-testid="confirm-approve-button"
               >
-                {busy === 'approve' ? 'Submitting…' : 'Approve & mark as applied'}
+                {busy === 'approve' ? t('submitting') : t('approveButton')}
               </button>
             </div>
           </div>

@@ -15,6 +15,12 @@ describe('marketDe pack', () => {
     expect(sourceTypes).toContain('arbeitsagentur');
   });
 
+  it('declares the Phase 3 Personio and SmartRecruiters sources', () => {
+    const sourceTypes = marketDe.sources.map((s) => s.sourceType);
+    expect(sourceTypes).toContain('personio');
+    expect(sourceTypes).toContain('smartrecruiters');
+  });
+
   it('ranking weights sum to 1 (within floating point tolerance)', () => {
     const sum = Object.values(marketDe.rankingWeights).reduce((a, b) => a + b, 0);
     expect(sum).toBeCloseTo(1, 5);

@@ -1,4 +1,7 @@
+import { useTranslations } from 'next-intl';
+
 export function TrustStrip() {
+  const t = useTranslations('TrustStrip');
   return (
     <div
       role="note"
@@ -10,9 +13,7 @@ export function TrustStrip() {
     >
       <div className="container row gap-8" style={{ padding: '10px 24px', fontSize: '0.82rem' }}>
         <span aria-hidden>🛡️</span>
-        <span className="muted">
-          We never auto-apply on your behalf. Every application requires your explicit approval before it is sent.
-        </span>
+        <span className="muted">{t('message')}</span>
       </div>
     </div>
   );
