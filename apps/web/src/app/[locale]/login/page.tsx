@@ -2,18 +2,24 @@
 
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { DEMO_EMAIL, DEMO_PASSWORD, getApiClient, isMockApi } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 
 export default function LoginPage() {
   const t = useTranslations('Login');
   const router = useRouter();
-  const { refresh } = useAuth();
+  const { user, loading, refresh } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace('/dashboard');
+    }
+  }, [loading, user, router]);
 
   const afterLogin = async () => {
     await refresh();
@@ -45,6 +51,10 @@ export default function LoginPage() {
       setSubmitting(false);
     }
   };
+
+  if (loading || user) {
+    return null;
+  }
 
   return (
     <div className="container" style={{ maxWidth: 440, padding: '56px 24px' }}>
