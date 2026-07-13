@@ -127,7 +127,6 @@ export class ApplicationsService {
         cvVariantText: draft.cvVariantText,
         coverLetterText: draft.coverLetterText,
         variantLabel: draft.variantLabel,
-        createdAt: draft.createdAt,
       },
     );
   }

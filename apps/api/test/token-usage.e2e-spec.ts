@@ -20,7 +20,7 @@ describe('Token usage tracking (e2e)', () => {
     const email = uniqueEmail('usage');
     const res = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password: 'correct-horse-battery-staple' });
+      .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     accessToken = res.body.accessToken;
     userId = res.body.user.id;
   });
@@ -85,7 +85,7 @@ describe('Token usage tracking (e2e)', () => {
     const email = uniqueEmail('usage-other');
     const authRes = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email, password: 'correct-horse-battery-staple' });
+      .send({ email, password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     const otherToken = authRes.body.accessToken;
     const otherUserId = authRes.body.user.id;
 

@@ -10,7 +10,8 @@ export type TokenUsageFeature =
   | 'coverLetter'
   | 'matchExplanation'
   | 'followUpEmail'
-  | 'interviewPrep';
+  | 'interviewPrep'
+  | 'roleGapAnalysis';
 
 export interface TokenUsageSummary {
   totalTokens: number;

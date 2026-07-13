@@ -9,6 +9,7 @@ import { SavedSearchesModule } from './saved-searches/saved-searches.module.js';
 import { BillingModule } from './billing/billing.module.js';
 import { TokenUsageModule } from './token-usage/token-usage.module.js';
 import { AdminModule } from './admin/admin.module.js';
+import { RoleGapAnalysisModule } from './role-gap-analysis/role-gap-analysis.module.js';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AdminModule } from './admin/admin.module.js';
     SavedSearchesModule,
     BillingModule,
     AdminModule,
+    RoleGapAnalysisModule,
   ],
 })
 export class AppModule {}

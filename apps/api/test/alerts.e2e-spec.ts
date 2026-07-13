@@ -21,13 +21,13 @@ describe('Alerts (e2e)', () => {
 
     const userRes = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email: uniqueEmail('alerts-owner'), password: 'correct-horse-battery-staple' });
+      .send({ email: uniqueEmail('alerts-owner'), password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     userToken = userRes.body.accessToken;
     userId = userRes.body.user.id;
 
     const adminRes = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email: uniqueEmail('alerts-admin'), password: 'correct-horse-battery-staple' });
+      .send({ email: uniqueEmail('alerts-admin'), password: 'Correct-Horse9-Battery', acceptedTerms: true, acceptedPolicyVersion: '1.0' });
     adminToken = adminRes.body.accessToken;
     adminId = adminRes.body.user.id;
     await prisma.client.user.update({ where: { id: adminId }, data: { role: 'admin' } });
