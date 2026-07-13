@@ -242,6 +242,8 @@ model CandidateProfile {
   userId              String   @unique
   user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   fullName            String?
+  email               String?
+  phone               String?
   targetRole          String
   targetCountryCode   String   @default("DE")
   preferredLanguage   String   @default("en")
@@ -249,6 +251,14 @@ model CandidateProfile {
   locationPreference  String   @default("any")
   skills              String[] @default([])
   summary             String?
+  // JSON, not a related table: same shape as ParsedCvExperience/
+  // ParsedCvEducation in packages/shared - a straight copy from CV-parse
+  // output, not independently queried/filtered today. Revisit as proper
+  // relational tables if the product later needs e.g. "years of experience"
+  // calculations at the DB layer.
+  experience          Json     @default("[]")
+  education           Json     @default("[]")
+  languages           String[] @default([])
   salaryTargetMin     Int?
   salaryTargetMax     Int?
   workAuthorization   String?

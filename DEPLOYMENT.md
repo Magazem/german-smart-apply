@@ -57,9 +57,10 @@ that real-model output actually flows through the app end to end (not
 fly secrets set --app german-smart-apply-api OPENROUTER_API_KEY="sk-or-..."
 ```
 
-Defaults to `openai/gpt-oss-120b:free` (supports native tool-calling/structured
-output, unlike many free models on OpenRouter's rotating roster). Override with
-`OPENROUTER_MODEL` if that slug stops being available — check
+Defaults to `tencent/hy3:free` (supports native tool-calling/structured output;
+free only through 2026-07-21 as a promotional window, then becomes the paid
+`tencent/hy3`). Override with `OPENROUTER_MODEL` once that window closes or
+that slug stops being available — check
 [openrouter.ai/models](https://openrouter.ai/models) filtered to `:free`.
 Free-tier rate limits are low (as of writing, ~50 requests/day per key without
 added credit) — fine for a smoke test, not for real traffic. Once satisfied

@@ -27,14 +27,19 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
 
   const riskPenalty = job.scamRiskScore;
 
+  // Rebalanced to mirror apps/api/src/jobs/ranking.service.ts's real-backend
+  // weights: titleSimilarity + skillOverlap (the only two signals that
+  // measure whether the job is even in the candidate's field) now dominate,
+  // rather than being outweighed by location/recency/salary/language/source
+  // signals that don't know or care what field the job is in.
   const weights = {
-    titleSimilarity: 0.22,
-    skillOverlap: 0.24,
-    locationFit: 0.14,
-    recency: 0.08,
-    salaryFit: 0.1,
-    languageFit: 0.08,
-    sourceTrust: 0.09,
+    titleSimilarity: 0.3,
+    skillOverlap: 0.32,
+    locationFit: 0.1,
+    recency: 0.07,
+    salaryFit: 0.08,
+    languageFit: 0.03,
+    sourceTrust: 0.05,
     riskPenalty: 0.2, // subtracted, not added
   };
 
@@ -71,10 +76,10 @@ function round2(n: number): number {
 function tokenOverlapScore(a: string, b: string): number {
   const ta = tokenize(a);
   const tb = tokenize(b);
-  if (ta.size === 0 || tb.size === 0) return 0.3;
+  if (ta.size === 0 || tb.size === 0) return 0.1;
   let hits = 0;
   for (const t of ta) if (tb.has(t)) hits += 1;
-  return Math.min(1, hits / Math.max(ta.size, 1) + (hits > 0 ? 0.2 : 0));
+  return Math.min(1, hits / Math.max(ta.size, 1) + (hits > 0 ? 0.1 : 0));
 }
 
 function tokenize(s: string): Set<string> {
@@ -87,7 +92,7 @@ function tokenize(s: string): Set<string> {
 }
 
 function ratioOverlap(a: string[], b: string[]): number {
-  if (a.length === 0 || b.length === 0) return 0.2;
+  if (a.length === 0 || b.length === 0) return 0.1;
   const setB = new Set(b.map((s) => s.toLowerCase()));
   const hits = a.filter((s) => setB.has(s.toLowerCase())).length;
   return Math.min(1, hits / Math.min(a.length, b.length, 5));

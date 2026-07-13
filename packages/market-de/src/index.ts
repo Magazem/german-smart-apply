@@ -166,14 +166,21 @@ export const marketDe: MarketPack = {
     'allianz se': ['Allianz', 'Allianz Deutschland'],
     'continental ag': ['Continental', 'Conti'],
   },
+  // Rebalanced so domain fit (titleSimilarity + skillOverlap, the only two
+  // signals that actually measure whether the job is in the candidate's
+  // field) dominates the score - 64% combined, up from 50%. Before this, a
+  // job in a completely unrelated field could still reach ~45-48% purely
+  // from location/recency/salary/language/sourceTrust defaults, which don't
+  // know or care what field the job is in. See ranking.service.ts's
+  // skillOverlap() for the matching floor-value fix (0.3 -> 0.1).
   rankingWeights: {
-    titleSimilarity: 0.25,
-    skillOverlap: 0.25,
-    locationFit: 0.15,
-    recency: 0.1,
-    salaryFit: 0.1,
-    languageFit: 0.05,
-    sourceTrust: 0.05,
+    titleSimilarity: 0.32,
+    skillOverlap: 0.32,
+    locationFit: 0.1,
+    recency: 0.07,
+    salaryFit: 0.08,
+    languageFit: 0.03,
+    sourceTrust: 0.03,
     riskPenalty: 0.05,
   },
 };

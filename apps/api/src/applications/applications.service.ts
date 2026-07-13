@@ -107,7 +107,14 @@ export class ApplicationsService {
     }
 
     return buildApplicationPdf(
-      { fullName: profile?.fullName ?? null, email: user.email },
+      {
+        fullName: profile?.fullName ?? null,
+        // Prefer the CV-parsed contact email (what the candidate actually
+        // listed for recruiters to use) over the account login email, which
+        // may be a different, more personal address.
+        email: profile?.email ?? user.email,
+        phone: profile?.phone ?? null,
+      },
       {
         // Raw (as-originally-posted) casing, not the lowercased *Normalized
         // fields used internally for matching/dedup - this PDF is an

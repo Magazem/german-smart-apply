@@ -35,10 +35,42 @@ export function ensureDemoSeed(db: MockDb): void {
   };
   db.users.push(demoUser);
 
+  const demoExperience = [
+    {
+      title: 'Backend Engineer',
+      company: 'PayFlow GmbH',
+      startDate: '2022-01',
+      endDate: null,
+      description: 'Own payments-ledger services handling 2M+ transactions/day.',
+    },
+    {
+      title: 'Software Engineer',
+      company: 'LogiTrack AG',
+      startDate: '2019-06',
+      endDate: '2021-12',
+      description: 'Built tracking APIs for a European logistics platform.',
+    },
+  ];
+  const demoEducation = [
+    {
+      degree: 'B.Sc. Computer Science',
+      institution: 'TU Berlin',
+      startYear: 2015,
+      endYear: 2019,
+    },
+  ];
+  const demoLanguages = ['en', 'de'];
+
   const profile: CandidateProfile = {
     id: uid('profile'),
     userId,
     fullName: 'Alex Demo',
+    // Same values as parsedCv below - demonstrates a CV parse's contact
+    // info/experience/education/languages actually surviving onto the
+    // profile the AI layer prompts from, not just living in the disconnected
+    // "last parsed CV" record the way it used to.
+    email: DEMO_EMAIL,
+    phone: '+49 151 0000000',
     targetRole: 'Backend Engineer',
     targetCountryCode: 'DE',
     preferredLanguage: 'en',
@@ -47,6 +79,9 @@ export function ensureDemoSeed(db: MockDb): void {
     skills: ['TypeScript', 'Node.js', 'Java', 'PostgreSQL', 'Docker', 'AWS'],
     summary:
       'Backend engineer with 5 years of experience building event-driven services in fintech and logistics. Comfortable owning services end to end, from design through on-call.',
+    experience: demoExperience,
+    education: demoEducation,
+    languages: demoLanguages,
     salaryTargetMin: 65000,
     salaryTargetMax: 85000,
     workAuthorization: 'EU work permit (no sponsorship required)',
@@ -65,31 +100,9 @@ export function ensureDemoSeed(db: MockDb): void {
     summary:
       'Backend engineer with 5 years of experience building event-driven services in fintech and logistics.',
     skills: ['TypeScript', 'Node.js', 'Java', 'PostgreSQL', 'Docker', 'AWS'],
-    experience: [
-      {
-        title: 'Backend Engineer',
-        company: 'PayFlow GmbH',
-        startDate: '2022-01',
-        endDate: null,
-        description: 'Own payments-ledger services handling 2M+ transactions/day.',
-      },
-      {
-        title: 'Software Engineer',
-        company: 'LogiTrack AG',
-        startDate: '2019-06',
-        endDate: '2021-12',
-        description: 'Built tracking APIs for a European logistics platform.',
-      },
-    ],
-    education: [
-      {
-        degree: 'B.Sc. Computer Science',
-        institution: 'TU Berlin',
-        startYear: 2015,
-        endYear: 2019,
-      },
-    ],
-    languages: ['en', 'de'],
+    experience: demoExperience,
+    education: demoEducation,
+    languages: demoLanguages,
     suggestions: [
       'Quantify the impact of your payments-ledger work (uptime %, transaction volume, incidents prevented).',
       'Add a short "core skills" line near the top so applicant-tracking systems surface TypeScript and Java immediately.',

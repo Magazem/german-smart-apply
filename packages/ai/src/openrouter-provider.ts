@@ -38,13 +38,17 @@ export interface OpenRouterChatClient {
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
-// Free-tier default: openai/gpt-oss-120b:free supports native tool use and
-// structured output (unlike many free models on OpenRouter's rotating
-// roster), so it's a reasonable default for testing this provider's wiring
-// before committing to a paid model. Override via OPENROUTER_MODEL - the
-// free-model roster rotates, and this ID is not guaranteed to stay available
-// forever.
-const DEFAULT_MODEL = 'openai/gpt-oss-120b:free';
+// Free-tier default: tencent/hy3:free (Tencent's Hy3, 295B MoE/21B active,
+// Apache 2.0) supports native tool use/structured output and is a notably
+// stronger model than the previous default (openai/gpt-oss-120b:free) -
+// SWE-bench Verified 78.0, purpose-built for agentic/tool-calling workloads.
+// IMPORTANT: this free tier is a promotional window only through
+// 2026-07-21 (per openrouter.ai/tencent/hy3:free) - after that this exact
+// slug likely stops resolving and the model becomes paid (tencent/hy3, a
+// still-cheap $0.14/$0.58 per M tokens as of writing). Override via
+// OPENROUTER_MODEL - swap back to another :free slug, or to 'tencent/hy3'
+// with OpenRouter credit, once this window closes.
+const DEFAULT_MODEL = 'tencent/hy3:free';
 
 function toAiProviderError(err: unknown, context: string): AiProviderError {
   if (err instanceof AiProviderError) {
@@ -432,6 +436,8 @@ export class OpenRouterAiProvider implements AiProvider {
         norms.photoExpected ? 'include a photo placeholder' : 'no photo'
       }, dates formatted as ${norms.dateFormat}. Mirror relevant terminology from the job description where truthful.`,
       "Use standard, ATS-parsable section headers exactly as commonly recognized: 'Work Experience', 'Education', 'Skills' (or the equivalent standard header in the target language) — do not invent creative or nonstandard section names.",
+      "Open with a contact header (name, email, phone) using whatever contact fields are present in the candidate profile below - omit any that are missing, never invent one.",
+      "Build the Work Experience and Education sections from the candidate's actual listed positions and degrees below (title, company, dates, description / degree, institution, years) - reorder, re-emphasize, and rephrase for relevance to the target job, but every employer, title, and institution named must come from that list, never invented.",
       "Where the candidate genuinely has matching experience, front-load role-relevant keywords and phrasing drawn from the job description into the corresponding bullet points — but only where it reflects real, truthful overlap with the candidate's background.",
       'Quantify achievements with concrete numbers wherever the candidate profile provides them (%, €, team size, time saved); do not fabricate numbers where none exist.',
       "Write in third person / resume-style phrasing (avoid 'I', 'my') throughout, consistent with standard CV conventions.",

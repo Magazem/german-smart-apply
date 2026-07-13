@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import type { Prisma } from '@german-smart-apply/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { UpdateProfileDto } from './dto/update-profile.dto.js';
 
@@ -34,8 +35,13 @@ export class ProfileService {
         seniority: dto.seniority ?? 'mid',
         locationPreference: dto.locationPreference,
         fullName: dto.fullName,
+        email: dto.email,
+        phone: dto.phone,
         skills: dto.skills ?? [],
         summary: dto.summary,
+        experience: (dto.experience ?? []) as unknown as Prisma.InputJsonValue,
+        education: (dto.education ?? []) as unknown as Prisma.InputJsonValue,
+        languages: dto.languages ?? [],
         salaryTargetMin: dto.salaryTargetMin,
         salaryTargetMax: dto.salaryTargetMax,
         workAuthorization: dto.workAuthorization,
@@ -50,8 +56,17 @@ export class ProfileService {
         seniority: dto.seniority,
         locationPreference: dto.locationPreference,
         ...(dto.fullName !== undefined && { fullName: dto.fullName }),
+        ...(dto.email !== undefined && { email: dto.email }),
+        ...(dto.phone !== undefined && { phone: dto.phone }),
         ...(dto.skills !== undefined && { skills: dto.skills }),
         ...(dto.summary !== undefined && { summary: dto.summary }),
+        ...(dto.experience !== undefined && {
+          experience: dto.experience as unknown as Prisma.InputJsonValue,
+        }),
+        ...(dto.education !== undefined && {
+          education: dto.education as unknown as Prisma.InputJsonValue,
+        }),
+        ...(dto.languages !== undefined && { languages: dto.languages }),
         ...(dto.salaryTargetMin !== undefined && { salaryTargetMin: dto.salaryTargetMin }),
         ...(dto.salaryTargetMax !== undefined && { salaryTargetMax: dto.salaryTargetMax }),
         ...(dto.workAuthorization !== undefined && { workAuthorization: dto.workAuthorization }),

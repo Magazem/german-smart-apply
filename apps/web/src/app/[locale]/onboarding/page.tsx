@@ -91,10 +91,17 @@ export default function OnboardingPage() {
       setParsedCv(result);
       if (result.fullName) {
         setAnswers((a) => (a.fullName ? a : { ...a, fullName: result.fullName! }));
-        await api.profile.update({ fullName: result.fullName, skills: result.skills, summary: result.summary });
-      } else {
-        await api.profile.update({ skills: result.skills, summary: result.summary });
       }
+      await api.profile.update({
+        ...(result.fullName ? { fullName: result.fullName } : {}),
+        ...(result.email ? { email: result.email } : {}),
+        ...(result.phone ? { phone: result.phone } : {}),
+        skills: result.skills,
+        summary: result.summary,
+        experience: result.experience,
+        education: result.education,
+        languages: result.languages,
+      });
     } catch (err) {
       setCvError(err instanceof Error ? err.message : t('parseGenericError'));
     } finally {
@@ -220,6 +227,11 @@ export default function OnboardingPage() {
           {parsedCv && (
             <div className="card stack gap-8" style={{ padding: 16, background: 'var(--color-surface-alt)' }}>
               <strong>{t('parsedPrefix', { name: parsedCv.fullName ?? t('parsedFallbackName') })}</strong>
+              {(parsedCv.email || parsedCv.phone) && (
+                <p className="muted" style={{ fontSize: '0.82rem' }}>
+                  {[parsedCv.email, parsedCv.phone].filter(Boolean).join(' · ')}
+                </p>
+              )}
               <p className="muted" style={{ fontSize: '0.88rem' }}>
                 {parsedCv.summary}
               </p>

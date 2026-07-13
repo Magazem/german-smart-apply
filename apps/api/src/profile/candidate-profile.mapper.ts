@@ -1,5 +1,14 @@
 import type { CandidateProfile as PrismaCandidateProfile } from '@german-smart-apply/db';
-import type { CandidateProfile } from '@german-smart-apply/shared';
+import type { CandidateProfile, ParsedCvEducation, ParsedCvExperience } from '@german-smart-apply/shared';
+
+/** Prisma's `Json` columns come back as `unknown` - narrow defensively rather than trusting the cast, in case a row predates this column's validation. */
+function asExperienceArray(value: unknown): ParsedCvExperience[] {
+  return Array.isArray(value) ? (value as ParsedCvExperience[]) : [];
+}
+
+function asEducationArray(value: unknown): ParsedCvEducation[] {
+  return Array.isArray(value) ? (value as ParsedCvEducation[]) : [];
+}
 
 /**
  * Maps the Prisma `CandidateProfile` row (Date timestamps) onto the shared
@@ -11,6 +20,8 @@ export function toSharedCandidateProfile(record: PrismaCandidateProfile): Candid
     id: record.id,
     userId: record.userId,
     fullName: record.fullName,
+    email: record.email,
+    phone: record.phone,
     targetRole: record.targetRole,
     targetCountryCode: record.targetCountryCode,
     preferredLanguage: record.preferredLanguage,
@@ -18,6 +29,9 @@ export function toSharedCandidateProfile(record: PrismaCandidateProfile): Candid
     locationPreference: record.locationPreference as CandidateProfile['locationPreference'],
     skills: record.skills,
     summary: record.summary,
+    experience: asExperienceArray(record.experience),
+    education: asEducationArray(record.education),
+    languages: record.languages,
     salaryTargetMin: record.salaryTargetMin,
     salaryTargetMax: record.salaryTargetMax,
     workAuthorization: record.workAuthorization,
