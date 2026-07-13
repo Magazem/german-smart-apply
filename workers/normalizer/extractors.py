@@ -88,7 +88,7 @@ def extract_arbeitsagentur(payload: dict) -> dict:
         "company_name_raw": payload.get("arbeitgeber", "Unknown"),
         "job_title_raw": payload.get("titel", ""),
         "description_html": None,
-        "description_text": payload.get("stellenbeschreibung", "") or "",
+        "description_text": payload.get("stellenangebotsBeschreibung", "") or "",
         "location_raw": location_raw,
         # Unlike every other source (where source_url === apply_url, the ATS
         # page serves both purposes), Arbeitsagentur's own detail page is

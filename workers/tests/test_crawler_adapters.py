@@ -1,4 +1,4 @@
-"""Adapter unit/integration tests -- all against fixture payloads, never the
+﻿"""Adapter unit/integration tests -- all against fixture payloads, never the
 live network. Uses a FakeClient (tests/fakes.py) so responses are deterministic
 and no real HTTP call is ever attempted.
 """
@@ -166,6 +166,21 @@ def test_lever_raises_runtime_error_for_non_5xx_non_200_status():
 # Arbeitsagentur
 # ---------------------------------------------------------------------------
 
+def test_arbeitsagentur_detail_url_base64_encodes_the_refnr():
+    """Confirmed against the live API: the raw refnr in the path 404s, only
+    a base64-encoded refnr returns the real jobdetails response. This is the
+    one thing that's easy to silently break again (e.g. "simplifying" the
+    URL builder), so it gets its own direct test, not just indirect coverage
+    through fetch().
+    """
+    base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+    url = arbeitsagentur._detail_url(base_url, "10001-1003086694-S")
+    assert url == (
+        "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+        "/pc/v4/jobdetails/MTAwMDEtMTAwMzA4NjY5NC1T"
+    )
+
+
 def test_arbeitsagentur_fetch_returns_raw_payloads():
     fixture = load_fixture("arbeitsagentur_jobs.json")
     base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
@@ -174,7 +189,7 @@ def test_arbeitsagentur_fetch_returns_raw_payloads():
     client = FakeClient(
         {
             url: FakeResponse(fixture),
-            detail_url: FakeResponse({"stellenbeschreibung": "Wir suchen einen DevOps Engineer."}),
+            detail_url: FakeResponse({"stellenangebotsBeschreibung": "Wir suchen einen DevOps Engineer."}),
         }
     )
 
@@ -188,7 +203,7 @@ def test_arbeitsagentur_fetch_returns_raw_payloads():
     assert len(payloads) == 1
     assert payloads[0].original_job_id == "10000-1234567890-S"
     assert payloads[0].payload["arbeitgeber"] == "Deutsche Telekom AG"
-    assert payloads[0].payload["stellenbeschreibung"] == "Wir suchen einen DevOps Engineer."
+    assert payloads[0].payload["stellenangebotsBeschreibung"] == "Wir suchen einen DevOps Engineer."
 
 
 def test_arbeitsagentur_fetch_rejects_disallowed_host():
@@ -245,7 +260,7 @@ def test_arbeitsagentur_skips_listings_without_a_reference_number():
             {"titel": "Missing refnr listing", "arbeitgeber": "Acme GmbH"},
         ]
     }
-    client = FakeClient({url: FakeResponse(fixture), detail_url: FakeResponse({"stellenbeschreibung": "..."})})
+    client = FakeClient({url: FakeResponse(fixture), detail_url: FakeResponse({"stellenangebotsBeschreibung": "..."})})
 
     payloads = arbeitsagentur.fetch(
         client, {"baseUrl": base_url}, ARBEITSAGENTUR_ALLOWLIST, search_terms=["DevOps"]
@@ -271,7 +286,7 @@ def test_arbeitsagentur_detail_fetch_failure_degrades_to_empty_description_not_a
     payloads = arbeitsagentur.fetch(client, {"baseUrl": base_url}, ARBEITSAGENTUR_ALLOWLIST, search_terms=["DevOps"])
 
     assert len(payloads) == 1
-    assert payloads[0].payload["stellenbeschreibung"] == ""
+    assert payloads[0].payload["stellenangebotsBeschreibung"] == ""
 
 
 def test_arbeitsagentur_detail_fetch_fetches_a_separate_url_per_listing():
@@ -288,16 +303,16 @@ def test_arbeitsagentur_detail_fetch_fetches_a_separate_url_per_listing():
     client = FakeClient(
         {
             url: FakeResponse(fixture),
-            detail_url_1: FakeResponse({"stellenbeschreibung": "First listing."}),
-            detail_url_2: FakeResponse({"stellenbeschreibung": "Second listing."}),
+            detail_url_1: FakeResponse({"stellenangebotsBeschreibung": "First listing."}),
+            detail_url_2: FakeResponse({"stellenangebotsBeschreibung": "Second listing."}),
         }
     )
 
     payloads = arbeitsagentur.fetch(client, {"baseUrl": base_url}, ARBEITSAGENTUR_ALLOWLIST, search_terms=["DevOps"])
 
     assert len(payloads) == 2
-    assert payloads[0].payload["stellenbeschreibung"] == "First listing."
-    assert payloads[1].payload["stellenbeschreibung"] == "Second listing."
+    assert payloads[0].payload["stellenangebotsBeschreibung"] == "First listing."
+    assert payloads[1].payload["stellenangebotsBeschreibung"] == "Second listing."
 
 
 # ---------------------------------------------------------------------------
