@@ -8,6 +8,7 @@ import { AuthProvider } from '@/lib/auth-context';
 import { ThemeProvider } from '@/lib/theme-context';
 import { Nav } from '@/components/nav';
 import { TrustStrip } from '@/components/trust-strip';
+import { ThemeHint } from '@/components/theme-hint';
 import { Link } from '@/i18n/navigation';
 import { routing } from '@/i18n/routing';
 import './globals.css';
@@ -32,11 +33,17 @@ export const metadata: Metadata = {
 // Applies a persisted theme choice before first paint, so switching to (or reloading into)
 // the terminal theme doesn't flash the default light/dark palette first. Kept tiny and
 // defensive (try/catch, no dependency on React) since it runs before hydration.
+// A fresh visitor with nothing stored yet defaults to 'terminal' - mirrors
+// DEFAULT_THEME in lib/theme-context.tsx, keep the two in sync if this changes.
 const NO_FLASH_THEME_SCRIPT = `
 (function () {
   try {
     var t = window.localStorage.getItem('sa-theme');
-    if (t && t !== 'system') document.documentElement.setAttribute('data-theme', t);
+    if (!t) {
+      document.documentElement.setAttribute('data-theme', 'terminal');
+    } else if (t !== 'system') {
+      document.documentElement.setAttribute('data-theme', t);
+    }
   } catch (e) {}
 })();
 `;
@@ -64,6 +71,7 @@ export default async function RootLayout({
             <AuthProvider>
               <Nav />
               <TrustStrip />
+              <ThemeHint />
               <main>{children}</main>
               <footer style={{ borderTop: '1px solid var(--color-border)', marginTop: 64 }}>
                 <div
