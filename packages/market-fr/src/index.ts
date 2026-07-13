@@ -15,11 +15,15 @@ export const marketFr: MarketPack = {
     matchExplanation: '',
     followUpEmail: '',
     interviewPrep: '',
+    roleGapAnalysis: '',
   },
   cvFormattingNorms: {
     preferredLengthPages: 1,
     photoExpected: false,
     dateFormat: 'MM/YYYY',
+  },
+  coverLetterFormattingNorms: {
+    preferredLengthWords: 350,
   },
   salaryParsing: {
     currency: 'EUR',
