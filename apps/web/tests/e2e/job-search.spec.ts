@@ -65,4 +65,27 @@ test.describe('Job search filtering', () => {
     await expect(badge).toBeVisible();
     await expect(badge).toHaveAttribute('data-risk-level', 'high');
   });
+
+  test('job card and job detail page both link out to the original posting', async ({ page }) => {
+    await loginAsDemo(page);
+    await page.goto('/jobs');
+    await expect(page.getByTestId('job-card').first()).toBeVisible();
+
+    const cardLink = page.getByTestId('apply-original-link').first();
+    await expect(cardLink).toHaveAttribute('target', '_blank');
+    await expect(cardLink).toHaveAttribute('rel', /noopener/);
+    await expect(cardLink).toHaveAttribute('rel', /noreferrer/);
+    const cardHref = await cardLink.getAttribute('href');
+    expect(cardHref).toMatch(/^https?:\/\//);
+
+    await page.getByTestId('job-card-title').first().click();
+    await expect(page).toHaveURL(/\/jobs\/.+/);
+
+    const detailLink = page.getByTestId('apply-original-link');
+    await expect(detailLink).toHaveAttribute('target', '_blank');
+    await expect(detailLink).toHaveAttribute('rel', /noopener/);
+    await expect(detailLink).toHaveAttribute('rel', /noreferrer/);
+    const detailHref = await detailLink.getAttribute('href');
+    expect(detailHref).toMatch(/^https?:\/\//);
+  });
 });

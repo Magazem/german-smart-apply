@@ -7,6 +7,7 @@ import type {
   InterviewPrepDraft,
   JobFeedbackType,
   ParsedCvResult,
+  RoleGapAnalysis,
 } from '@german-smart-apply/shared';
 
 const STORAGE_KEY = 'gsa_mock_db_v1';
@@ -48,6 +49,8 @@ export interface MockDb {
   /** userId -> jobId -> feedback. Absent/undefined means no feedback recorded. */
   jobFeedback: Record<string, Record<string, JobFeedbackType>>;
   savedSearches: MockSavedSearch[];
+  /** userId -> every run analysis, most recent first. Absent on pre-feature localStorage payloads. */
+  roleGapAnalyses?: Record<string, RoleGapAnalysis[]>;
   sessionUserId: string | null;
 }
 

@@ -1,6 +1,7 @@
 'use client';
 
-import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { Link } from '@/i18n/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import type {
   Application,
@@ -22,19 +23,21 @@ interface Row {
   draft: ApplicationDraft | null;
 }
 
-const SECTIONS: Array<{ title: string; statuses: ApplicationStatus[]; hint?: string }> = [
+const SECTIONS: Array<{ id: string; statuses: ApplicationStatus[]; titleKey: string; hintKey?: string }> = [
   {
-    title: 'Needs your review',
+    id: 'needsReview',
     statuses: ['awaiting_approval'],
-    hint: 'Nothing here is sent anywhere until you explicitly approve it.',
+    titleKey: 'sectionNeedsReviewTitle',
+    hintKey: 'sectionNeedsReviewHint',
   },
-  { title: 'Drafting', statuses: ['draft_ready'] },
-  { title: 'In progress', statuses: ['new', 'viewed', 'saved'] },
-  { title: 'Submitted', statuses: ['applied', 'interview', 'offer'] },
-  { title: 'Closed', statuses: ['rejected', 'archived'] },
+  { id: 'drafting', statuses: ['draft_ready'], titleKey: 'sectionDraftingTitle' },
+  { id: 'inProgress', statuses: ['new', 'viewed', 'saved'], titleKey: 'sectionInProgressTitle' },
+  { id: 'submitted', statuses: ['applied', 'interview', 'offer'], titleKey: 'sectionSubmittedTitle' },
+  { id: 'closed', statuses: ['rejected', 'archived'], titleKey: 'sectionClosedTitle' },
 ];
 
 export default function ApplicationsPage() {
+  const t = useTranslations('Applications');
   const { loading: authLoading } = useRequireAuth();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +66,7 @@ export default function ApplicationsPage() {
       setRows(loaded);
       setLoadError(null);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Could not load your applications.');
+      setLoadError(err instanceof Error ? err.message : t('loadError'));
     } finally {
       setLoading(false);
     }
@@ -80,7 +83,7 @@ export default function ApplicationsPage() {
       await getApiClient().applications.updateStatus(row.application.id, 'awaiting_approval');
       await load();
     } catch (err) {
-      setRowError({ id: row.application.id, message: err instanceof Error ? err.message : 'Could not submit.' });
+      setRowError({ id: row.application.id, message: err instanceof Error ? err.message : t('submitForApprovalError') });
     }
   };
 
@@ -90,7 +93,7 @@ export default function ApplicationsPage() {
       await getApiClient().applications.updateStatus(row.application.id, status);
       await load();
     } catch (err) {
-      setRowError({ id: row.application.id, message: err instanceof Error ? err.message : 'Could not update status.' });
+      setRowError({ id: row.application.id, message: err instanceof Error ? err.message : t('updateStatusError') });
     }
   };
 
@@ -125,7 +128,7 @@ export default function ApplicationsPage() {
     } catch (err) {
       setRowError({
         id: row.application.id,
-        message: err instanceof Error ? err.message : 'Could not draft a follow-up email.',
+        message: err instanceof Error ? err.message : t('draftFollowUpError'),
       });
     } finally {
       setFollowUpPending(null);
@@ -147,11 +150,8 @@ export default function ApplicationsPage() {
   return (
     <div className="container stack gap-32" style={{ padding: '40px 24px 96px' }}>
       <div className="stack gap-4">
-        <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>Application queue</h1>
-        <p className="muted">
-          Every application moves through the same pipeline. Only you can move something from "awaiting your
-          approval" to "applied" — there is no automatic or one-click shortcut.
-        </p>
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>{t('pageTitle')}</h1>
+        <p className="muted">{t('pageSubtitle')}</p>
       </div>
 
       {loadError && <p className="error-text">{loadError}</p>}
@@ -159,11 +159,11 @@ export default function ApplicationsPage() {
       {rows.length === 0 && (
         <div className="card" style={{ padding: 32, textAlign: 'center' }}>
           <p className="muted">
-            No applications yet.{' '}
+            {t('emptyStatePrefix')}{' '}
             <Link href="/jobs" style={{ color: 'var(--color-primary)', fontWeight: 700 }}>
-              Browse jobs
+              {t('browseJobsLink')}
             </Link>{' '}
-            to get started.
+            {t('emptyStateSuffix')}
           </p>
         </div>
       )}
@@ -172,14 +172,14 @@ export default function ApplicationsPage() {
         const sectionRows = rows.filter((r) => section.statuses.includes(r.application.status));
         if (sectionRows.length === 0) return null;
         return (
-          <div key={section.title} className="stack gap-12">
+          <div key={section.id} className="stack gap-12">
             <div className="stack gap-4">
               <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>
-                {section.title} <span className="muted">({sectionRows.length})</span>
+                {t(section.titleKey)} <span className="muted">({sectionRows.length})</span>
               </h2>
-              {section.hint && (
+              {section.hintKey && (
                 <p className="muted" style={{ fontSize: '0.82rem' }}>
-                  {section.hint}
+                  {t(section.hintKey)}
                 </p>
               )}
             </div>
@@ -194,18 +194,18 @@ export default function ApplicationsPage() {
                           href={`/jobs/${row.application.jobId}`}
                           style={{ fontWeight: 700, textDecoration: 'none' }}
                         >
-                          {row.job?.jobTitleNormalized ?? 'Job no longer available'}
+                          {row.job?.jobTitleNormalized ?? t('jobNoLongerAvailable')}
                         </Link>
                         <StatusBadge status={row.application.status} />
                       </div>
                       {row.job && (
                         <span className="muted" style={{ fontSize: '0.85rem' }}>
-                          {row.job.companyNameNormalized} &middot; {row.job.locationNormalized} &middot;{' '}
+                          {row.job.companyNameNormalized} · {row.job.locationNormalized} ·{' '}
                           {formatSalary(row.job.salaryMin, row.job.salaryMax, row.job.salaryCurrency)}
                         </span>
                       )}
                       <span className="muted" style={{ fontSize: '0.78rem' }}>
-                        Last updated {formatDate(row.application.updatedAt)}
+                        {t('lastUpdated', { date: formatDate(row.application.updatedAt) })}
                       </span>
                     </div>
 
@@ -217,7 +217,7 @@ export default function ApplicationsPage() {
                           onClick={() => submitForApproval(row)}
                           data-testid="submit-for-approval-row"
                         >
-                          Submit for approval
+                          {t('submitForApproval')}
                         </button>
                       )}
 
@@ -228,17 +228,17 @@ export default function ApplicationsPage() {
                           onClick={() => setReviewing(row)}
                           data-testid="review-approve-button"
                         >
-                          Review &amp; approve
+                          {t('reviewAndApprove')}
                         </button>
                       )}
 
                       {row.application.status === 'applied' && (
                         <>
                           <button type="button" className="btn btn-secondary btn-sm" onClick={() => markStatus(row, 'interview')}>
-                            Mark interview
+                            {t('markInterview')}
                           </button>
                           <button type="button" className="btn btn-secondary btn-sm" onClick={() => markStatus(row, 'rejected')}>
-                            Mark rejected
+                            {t('markRejected')}
                           </button>
                         </>
                       )}
@@ -246,10 +246,10 @@ export default function ApplicationsPage() {
                       {row.application.status === 'interview' && (
                         <>
                           <button type="button" className="btn btn-secondary btn-sm" onClick={() => markStatus(row, 'offer')}>
-                            Mark offer
+                            {t('markOffer')}
                           </button>
                           <button type="button" className="btn btn-secondary btn-sm" onClick={() => markStatus(row, 'rejected')}>
-                            Mark rejected
+                            {t('markRejected')}
                           </button>
                         </>
                       )}
@@ -262,7 +262,7 @@ export default function ApplicationsPage() {
                           disabled={followUpPending === row.application.id}
                           data-testid="draft-follow-up-button"
                         >
-                          {followUpPending === row.application.id ? 'Drafting…' : 'Draft follow-up email'}
+                          {followUpPending === row.application.id ? t('draftingFollowUp') : t('draftFollowUpButton')}
                         </button>
                       )}
 
@@ -270,12 +270,12 @@ export default function ApplicationsPage() {
                         row.application.status,
                       ) && (
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => markStatus(row, 'archived')}>
-                          Archive
+                          {t('archiveButton')}
                         </button>
                       )}
 
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleHistory(row.application.id)}>
-                        {expandedHistory === row.application.id ? 'Hide history' : 'History'}
+                        {expandedHistory === row.application.id ? t('hideHistory') : t('historyButton')}
                       </button>
 
                       {['applied', 'interview'].includes(row.application.status) && (
@@ -285,7 +285,7 @@ export default function ApplicationsPage() {
                           onClick={() => toggleFollowUps(row.application.id)}
                           data-testid="toggle-follow-ups-button"
                         >
-                          {expandedFollowUps === row.application.id ? 'Hide follow-ups' : 'Follow-ups'}
+                          {expandedFollowUps === row.application.id ? t('hideFollowUps') : t('followUpsButton')}
                         </button>
                       )}
                     </div>
@@ -304,7 +304,7 @@ export default function ApplicationsPage() {
                     >
                       {followUps.length === 0 && (
                         <p className="muted" style={{ fontSize: '0.82rem' }}>
-                          No follow-up drafted yet — click "Draft follow-up email" above.
+                          {t('noFollowUpDraftedYet')}
                         </p>
                       )}
                       {followUps.map((followUp) => (
@@ -321,7 +321,7 @@ export default function ApplicationsPage() {
                               className="btn btn-ghost btn-sm"
                               onClick={() => navigator.clipboard.writeText(`${followUp.subject}\n\n${followUp.body}`)}
                             >
-                              Copy
+                              {t('copyButton')}
                             </button>
                           </div>
                           <pre
@@ -335,8 +335,7 @@ export default function ApplicationsPage() {
                             {followUp.body}
                           </pre>
                           <span className="muted" style={{ fontSize: '0.75rem' }}>
-                            Drafted {formatDate(followUp.createdAt)} — review and send this yourself; we never send it
-                            for you.
+                            {t('followUpDraftedNote', { date: formatDate(followUp.createdAt) })}
                           </span>
                         </div>
                       ))}
@@ -351,7 +350,9 @@ export default function ApplicationsPage() {
                             {formatDate(event.createdAt)}
                           </span>
                           <span>
-                            {event.fromStatus ? `${event.fromStatus} → ${event.toStatus}` : `created as ${event.toStatus}`}
+                            {event.fromStatus
+                              ? t('historyTransition', { from: event.fromStatus, to: event.toStatus })
+                              : t('historyCreatedAs', { status: event.toStatus })}
                             {event.note ? ` — ${event.note}` : ''}
                           </span>
                         </div>
@@ -367,15 +368,15 @@ export default function ApplicationsPage() {
 
       {reviewing && reviewing.draft && (
         <ApproveApplicationModal
-          jobTitle={reviewing.job?.jobTitleNormalized ?? 'this role'}
-          companyName={reviewing.job?.companyNameNormalized ?? 'this company'}
+          jobTitle={reviewing.job?.jobTitleNormalized ?? t('fallbackJobTitle')}
+          companyName={reviewing.job?.companyNameNormalized ?? t('fallbackCompanyName')}
           draft={reviewing.draft}
           onClose={() => setReviewing(null)}
           onApprove={async () => {
             await getApiClient().applications.updateStatus(
               reviewing.application.id,
               'applied',
-              'Approved and submitted by you.',
+              t('approvedNote'),
             );
             setReviewing(null);
             await load();

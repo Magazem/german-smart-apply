@@ -1,13 +1,24 @@
 'use client';
 
-import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { Link } from '@/i18n/navigation';
 import { useEffect, useState, type CSSProperties } from 'react';
 import type { Application, ApplicationDraft, CandidateProfile, CanonicalJob, ParsedCvResult } from '@german-smart-apply/shared';
 import { getApiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { useRequireAuth } from '@/lib/use-require-auth';
 
+const SENIORITY_LABEL_KEYS: Record<string, string> = {
+  intern: 'seniorityIntern',
+  junior: 'seniorityJunior',
+  mid: 'seniorityMid',
+  senior: 'senioritySenior',
+  lead: 'seniorityLead',
+  principal: 'seniorityPrincipal',
+};
+
 export default function CvWorkspacePage() {
+  const t = useTranslations('CvWorkspace');
   const { loading: authLoading } = useRequireAuth();
   const { user } = useAuth();
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
@@ -46,7 +57,7 @@ export default function CvWorkspacePage() {
         if (withJobs[0]) setSelectedAppId(withJobs[0].application.id);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Could not load your CV workspace.');
+          setError(err instanceof Error ? err.message : t('loadError'));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -82,9 +93,9 @@ export default function CvWorkspacePage() {
     try {
       const saved = await getApiClient().profile.update(profile);
       setProfile(saved);
-      setSaveMessage('Profile saved.');
+      setSaveMessage(t('profileSaved'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save your profile.');
+      setError(err instanceof Error ? err.message : t('saveError'));
     } finally {
       setSaving(false);
     }
@@ -98,7 +109,7 @@ export default function CvWorkspacePage() {
       const draft = await getApiClient().applications.draft(selectedAppId);
       setGeneratedDraft(draft);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not generate a tailored draft.');
+      setError(err instanceof Error ? err.message : t('generateError'));
     } finally {
       setGenerating(false);
     }
@@ -107,13 +118,13 @@ export default function CvWorkspacePage() {
   return (
     <div className="container stack gap-24" style={{ maxWidth: 880, padding: '40px 24px 96px' }}>
       <div className="stack gap-4">
-        <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>CV workspace</h1>
-        <p className="muted">Review and edit your parsed profile, then generate tailored materials per job.</p>
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>{t('pageTitle')}</h1>
+        <p className="muted">{t('pageDescription')}</p>
       </div>
 
       {parsedCv && (
         <div className="card stack gap-8" style={{ padding: 20 }}>
-          <h2 style={{ fontWeight: 700, fontSize: '1.02rem' }}>Original parsed CV</h2>
+          <h2 style={{ fontWeight: 700, fontSize: '1.02rem' }}>{t('originalCvTitle')}</h2>
           <p className="muted" style={{ fontSize: '0.88rem' }}>{parsedCv.summary}</p>
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             {parsedCv.suggestions.map((s) => (
@@ -126,10 +137,10 @@ export default function CvWorkspacePage() {
       )}
 
       <div className="card stack" style={{ padding: 24 }}>
-        <h2 style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 16 }}>Your profile</h2>
+        <h2 style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 16 }}>{t('profileTitle')}</h2>
 
         <div className="field">
-          <label htmlFor="fullName">Full name</label>
+          <label htmlFor="fullName">{t('fullNameLabel')}</label>
           <input
             id="fullName"
             className="input"
@@ -138,7 +149,7 @@ export default function CvWorkspacePage() {
           />
         </div>
         <div className="field">
-          <label htmlFor="targetRole">Target role</label>
+          <label htmlFor="targetRole">{t('targetRoleLabel')}</label>
           <input
             id="targetRole"
             className="input"
@@ -147,7 +158,7 @@ export default function CvWorkspacePage() {
           />
         </div>
         <div className="field">
-          <label htmlFor="summary">Summary</label>
+          <label htmlFor="summary">{t('summaryLabel')}</label>
           <textarea
             id="summary"
             className="textarea"
@@ -157,7 +168,7 @@ export default function CvWorkspacePage() {
           />
         </div>
         <div className="field">
-          <label htmlFor="skills">Skills (comma-separated)</label>
+          <label htmlFor="skills">{t('skillsLabel')}</label>
           <input
             id="skills"
             className="input"
@@ -167,7 +178,7 @@ export default function CvWorkspacePage() {
         </div>
         <div className="row gap-16" style={{ flexWrap: 'wrap' }}>
           <div className="field" style={{ flex: 1, minWidth: 160 }}>
-            <label htmlFor="seniority">Seniority</label>
+            <label htmlFor="seniority">{t('seniorityLabel')}</label>
             <select
               id="seniority"
               className="select"
@@ -176,42 +187,41 @@ export default function CvWorkspacePage() {
             >
               {['intern', 'junior', 'mid', 'senior', 'lead', 'principal'].map((s) => (
                 <option key={s} value={s}>
-                  {s[0].toUpperCase() + s.slice(1)}
+                  {t(SENIORITY_LABEL_KEYS[s])}
                 </option>
               ))}
             </select>
           </div>
           <div className="field" style={{ flex: 1, minWidth: 160 }}>
-            <label htmlFor="locationPreference">Location preference</label>
+            <label htmlFor="locationPreference">{t('locationPreferenceLabel')}</label>
             <select
               id="locationPreference"
               className="select"
               value={profile.locationPreference}
               onChange={(e) => update({ locationPreference: e.target.value as CandidateProfile['locationPreference'] })}
             >
-              <option value="onsite">On-site</option>
-              <option value="hybrid">Hybrid</option>
-              <option value="remote">Remote</option>
-              <option value="any">Any</option>
+              <option value="onsite">{t('locationOnsite')}</option>
+              <option value="hybrid">{t('locationHybrid')}</option>
+              <option value="remote">{t('locationRemote')}</option>
+              <option value="any">{t('locationAny')}</option>
             </select>
           </div>
         </div>
 
         <div className="stack gap-8" style={{ marginTop: 8, paddingTop: 16, borderTop: '1px solid var(--color-border)' }}>
           <div className="row gap-8" style={{ alignItems: 'center' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Deeper profile settings</h3>
-            <span className="badge badge-neutral">Pro</span>
+            <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>{t('deeperSettingsTitle')}</h3>
+            <span className="badge badge-neutral">{t('proBadge')}</span>
           </div>
           {!isPro && (
             <p className="muted" style={{ fontSize: '0.85rem' }}>
-              Salary targets, work authorization, blacklists, commute preferences, and portfolio links unlock on
-              Pro. <Link href="/billing" style={{ color: 'var(--color-primary)', fontWeight: 700 }}>Upgrade to Pro</Link>.
+              {t('proUnlockText')} <Link href="/billing" style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{t('upgradeToPro')}</Link>.
             </p>
           )}
 
           <div className="row gap-16" style={{ flexWrap: 'wrap', opacity: isPro ? 1 : 0.5 }}>
             <div className="field" style={{ flex: 1, minWidth: 160 }}>
-              <label htmlFor="salaryMin">Salary target min (EUR)</label>
+              <label htmlFor="salaryMin">{t('salaryMinLabel')}</label>
               <input
                 id="salaryMin"
                 type="number"
@@ -222,7 +232,7 @@ export default function CvWorkspacePage() {
               />
             </div>
             <div className="field" style={{ flex: 1, minWidth: 160 }}>
-              <label htmlFor="salaryMax">Salary target max (EUR)</label>
+              <label htmlFor="salaryMax">{t('salaryMaxLabel')}</label>
               <input
                 id="salaryMax"
                 type="number"
@@ -234,7 +244,7 @@ export default function CvWorkspacePage() {
             </div>
           </div>
           <div className="field" style={{ opacity: isPro ? 1 : 0.5 }}>
-            <label htmlFor="workAuth">Work authorization</label>
+            <label htmlFor="workAuth">{t('workAuthorizationLabel')}</label>
             <input
               id="workAuth"
               className="input"
@@ -244,7 +254,7 @@ export default function CvWorkspacePage() {
             />
           </div>
           <div className="field" style={{ opacity: isPro ? 1 : 0.5 }}>
-            <label htmlFor="commute">Commute preference (km)</label>
+            <label htmlFor="commute">{t('commutePreferenceLabel')}</label>
             <input
               id="commute"
               type="number"
@@ -255,7 +265,7 @@ export default function CvWorkspacePage() {
             />
           </div>
           <div className="field" style={{ opacity: isPro ? 1 : 0.5 }}>
-            <label htmlFor="portfolio">Portfolio links (comma-separated)</label>
+            <label htmlFor="portfolio">{t('portfolioLinksLabel')}</label>
             <input
               id="portfolio"
               className="input"
@@ -270,21 +280,20 @@ export default function CvWorkspacePage() {
         {saveMessage && <p className="muted" style={{ marginTop: 12, fontSize: '0.85rem' }}>{saveMessage}</p>}
 
         <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ marginTop: 16, alignSelf: 'flex-start' }}>
-          {saving ? 'Saving…' : 'Save profile'}
+          {saving ? t('savingLabel') : t('saveProfileButton')}
         </button>
       </div>
 
       <div className="card stack gap-12" style={{ padding: 24 }}>
-        <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>Generate a tailored variant</h2>
+        <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{t('generateVariantTitle')}</h2>
         {applications.length === 0 ? (
           <p className="muted" style={{ fontSize: '0.88rem' }}>
-            Save a job from <Link href="/jobs">job search</Link> first, then come back to generate tailored materials
-            for it.
+            {t('noApplicationsPrefix')} <Link href="/jobs">{t('jobSearchLink')}</Link> {t('noApplicationsSuffix')}
           </p>
         ) : (
           <>
             <div className="field">
-              <label htmlFor="jobSelect">Choose a tracked job</label>
+              <label htmlFor="jobSelect">{t('chooseTrackedJobLabel')}</label>
               <select
                 id="jobSelect"
                 className="select"
@@ -293,29 +302,31 @@ export default function CvWorkspacePage() {
               >
                 {applications.map(({ application, job }) => (
                   <option key={application.id} value={application.id}>
-                    {job ? `${job.jobTitleNormalized} — ${job.companyNameNormalized}` : 'Unknown job'}
+                    {job
+                      ? t('jobOptionLabel', { title: job.jobTitleNormalized, company: job.companyNameNormalized })
+                      : t('unknownJobOption')}
                   </option>
                 ))}
               </select>
             </div>
             <button type="button" className="btn btn-primary" onClick={handleGenerate} disabled={generating} style={{ alignSelf: 'flex-start' }}>
-              {generating ? 'Generating…' : 'Generate tailored CV & cover letter'}
+              {generating ? t('generatingLabel') : t('generateButton')}
             </button>
 
             {generatedDraft && (
               <div className="stack gap-12" style={{ marginTop: 8 }}>
                 <div className="stack gap-6">
-                  <strong style={{ fontSize: '0.88rem' }}>CV variant</strong>
+                  <strong style={{ fontSize: '0.88rem' }}>{t('cvVariantLabel')}</strong>
                   <pre style={preStyle}>{generatedDraft.cvVariantText}</pre>
                 </div>
                 <div className="stack gap-6">
-                  <strong style={{ fontSize: '0.88rem' }}>Cover letter</strong>
+                  <strong style={{ fontSize: '0.88rem' }}>{t('coverLetterLabel')}</strong>
                   <pre style={preStyle}>{generatedDraft.coverLetterText}</pre>
                 </div>
                 <p className="muted" style={{ fontSize: '0.82rem' }}>
-                  This draft now needs your approval.{' '}
+                  {t('draftNeedsApprovalText')}{' '}
                   <Link href="/applications" style={{ color: 'var(--color-primary)', fontWeight: 700 }}>
-                    Go review it in the application queue &rarr;
+                    {t('reviewInQueueLink')}
                   </Link>
                 </p>
               </div>

@@ -1,6 +1,7 @@
 'use client';
 
-import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { Link } from '@/i18n/navigation';
 import { useEffect, useState } from 'react';
 import type { CandidateProfile, CanonicalJob, JobMatchScore, ParsedCvResult } from '@german-smart-apply/shared';
 import { getApiClient } from '@/lib/api-client';
@@ -8,6 +9,7 @@ import { useRequireAuth } from '@/lib/use-require-auth';
 import { JobCard } from '@/components/job-card';
 
 export default function DashboardPage() {
+  const t = useTranslations('Dashboard');
   const { user, loading: authLoading } = useRequireAuth();
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
   const [parsedCv, setParsedCv] = useState<ParsedCvResult | null>(null);
@@ -32,7 +34,7 @@ export default function DashboardPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : 'Could not load your dashboard.');
+          setLoadError(err instanceof Error ? err.message : t('loadError'));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -46,7 +48,7 @@ export default function DashboardPage() {
   if (authLoading) {
     return (
       <div className="container" style={{ padding: '48px 24px' }}>
-        <p className="muted">Loading…</p>
+        <p className="muted">{t('loading')}</p>
       </div>
     );
   }
@@ -57,12 +59,14 @@ export default function DashboardPage() {
     <div className="container stack gap-24" style={{ padding: '40px 24px 96px' }}>
       <div className="row spread" style={{ alignItems: 'flex-end' }}>
         <div className="stack gap-4">
-          <h1 style={{ fontSize: '1.7rem', fontWeight: 800 }}>Welcome back{user?.fullName ? `, ${user.fullName}` : ''}</h1>
-          <p className="muted">Here's your candidate summary and today's top trusted matches.</p>
+          <h1 style={{ fontSize: '1.7rem', fontWeight: 800 }}>
+            {user?.fullName ? t('welcomeBackNamed', { fullName: user.fullName }) : t('welcomeBack')}
+          </h1>
+          <p className="muted">{t('subtitle')}</p>
         </div>
         {user?.tier === 'free' && (
           <Link href="/billing" className="btn btn-secondary btn-sm">
-            Upgrade to Pro
+            {t('upgradeToPro')}
           </Link>
         )}
       </div>
@@ -76,18 +80,18 @@ export default function DashboardPage() {
       {needsOnboarding && (
         <div className="card" style={{ padding: 20 }}>
           <p>
-            You haven't finished onboarding yet.{' '}
+            {t('onboardingIncomplete')}{' '}
             <Link href="/onboarding" style={{ color: 'var(--color-primary)', fontWeight: 700 }}>
-              Finish the 5 quick questions
+              {t('finishOnboardingLink')}
             </Link>{' '}
-            to unlock matched jobs.
+            {t('unlockMatchedJobs')}
           </p>
         </div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 24 }}>
         <div className="stack gap-16">
-          <h2 style={{ fontWeight: 700, fontSize: '1.1rem' }}>Top matched jobs</h2>
+          <h2 style={{ fontWeight: 700, fontSize: '1.1rem' }}>{t('topMatchedJobs')}</h2>
           {loading ? (
             <div className="stack gap-12">
               {[0, 1, 2].map((i) => (
@@ -96,7 +100,7 @@ export default function DashboardPage() {
             </div>
           ) : topJobs.length === 0 ? (
             <div className="card" style={{ padding: 20 }}>
-              <p className="muted">No matches yet — finish onboarding to see your top jobs.</p>
+              <p className="muted">{t('noMatchesYet')}</p>
             </div>
           ) : (
             <div className="stack gap-16">
@@ -106,16 +110,16 @@ export default function DashboardPage() {
             </div>
           )}
           <Link href="/jobs" className="btn btn-secondary" style={{ alignSelf: 'flex-start' }}>
-            See all jobs &rarr;
+            {t('seeAllJobs')}
           </Link>
         </div>
 
         <div className="stack gap-16">
           <div className="card stack gap-12" style={{ padding: 20 }}>
-            <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>Candidate summary</h2>
+            <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{t('candidateSummary')}</h2>
             {profile ? (
               <div className="stack gap-8">
-                <p style={{ fontSize: '0.9rem' }}>{profile.summary ?? 'No summary yet.'}</p>
+                <p style={{ fontSize: '0.9rem' }}>{profile.summary ?? t('noSummaryYet')}</p>
                 <div className="row row-wrap gap-8">
                   {profile.skills.slice(0, 8).map((s) => (
                     <span key={s} className="tag">
@@ -124,16 +128,16 @@ export default function DashboardPage() {
                   ))}
                 </div>
                 <Link href="/cv" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', padding: '4px 0' }}>
-                  Edit in CV workspace &rarr;
+                  {t('editInCvWorkspace')}
                 </Link>
               </div>
             ) : (
-              <p className="muted">Complete onboarding to see your summary.</p>
+              <p className="muted">{t('completeOnboardingSummary')}</p>
             )}
           </div>
 
           <div className="card stack gap-12" style={{ padding: 20 }}>
-            <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>CV improvement suggestions</h2>
+            <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{t('cvSuggestionsTitle')}</h2>
             {parsedCv && parsedCv.suggestions.length > 0 ? (
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {parsedCv.suggestions.map((s) => (
@@ -143,17 +147,17 @@ export default function DashboardPage() {
                 ))}
               </ul>
             ) : (
-              <p className="muted">Upload a CV to get tailored suggestions.</p>
+              <p className="muted">{t('uploadCvForSuggestions')}</p>
             )}
           </div>
 
           <div className="card stack gap-8" style={{ padding: 20 }}>
-            <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>Application pipeline</h2>
+            <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{t('applicationPipeline')}</h2>
             <p className="muted" style={{ fontSize: '0.88rem' }}>
-              Track drafts, approvals, and outcomes in one place. Nothing is submitted without your approval.
+              {t('applicationPipelineHint')}
             </p>
             <Link href="/applications" className="btn btn-secondary btn-sm" style={{ alignSelf: 'flex-start' }}>
-              Open application queue
+              {t('openApplicationQueue')}
             </Link>
           </div>
         </div>

@@ -1,6 +1,7 @@
 'use client';
 
-import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { Link } from '@/i18n/navigation';
 import { useEffect, useState } from 'react';
 import type { CanonicalJob, JobMatchScore, JobSearchFilters, RemoteType, Seniority } from '@german-smart-apply/shared';
 import { getApiClient } from '@/lib/api-client';
@@ -9,6 +10,21 @@ import { JobCard } from '@/components/job-card';
 
 const REMOTE_OPTIONS: RemoteType[] = ['onsite', 'hybrid', 'remote'];
 const SENIORITY_OPTIONS: Seniority[] = ['intern', 'junior', 'mid', 'senior', 'lead', 'principal'];
+
+const REMOTE_LABEL_KEYS: Record<RemoteType, string> = {
+  onsite: 'remoteOnsite',
+  hybrid: 'remoteHybrid',
+  remote: 'remoteRemote',
+};
+
+const SENIORITY_LABEL_KEYS: Record<Seniority, string> = {
+  intern: 'seniorityIntern',
+  junior: 'seniorityJunior',
+  mid: 'seniorityMid',
+  senior: 'senioritySenior',
+  lead: 'seniorityLead',
+  principal: 'seniorityPrincipal',
+};
 
 interface FilterState {
   query: string;
@@ -45,6 +61,7 @@ function toApiFilters(f: FilterState): JobSearchFilters {
 }
 
 export default function JobsPage() {
+  const t = useTranslations('JobsList');
   const { loading: authLoading } = useRequireAuth();
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [jobs, setJobs] = useState<CanonicalJob[]>([]);
@@ -102,16 +119,16 @@ export default function JobsPage() {
 
   return (
     <div className="container" style={{ padding: '40px 24px 96px' }}>
-      <h1 style={{ fontSize: '1.6rem', fontWeight: 800, marginBottom: 24 }}>Job search</h1>
+      <h1 style={{ fontSize: '1.6rem', fontWeight: 800, marginBottom: 24 }}>{t('title')}</h1>
 
       <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: 24, alignItems: 'flex-start' }}>
         <aside className="card stack gap-16" style={{ padding: 20, position: 'sticky', top: 84 }}>
           <div className="field">
-            <label htmlFor="query">Search</label>
+            <label htmlFor="query">{t('searchLabel')}</label>
             <input
               id="query"
               className="input"
-              placeholder="Title, company, or stack"
+              placeholder={t('searchPlaceholder')}
               value={filters.query}
               onChange={(e) => setFilters((f) => ({ ...f, query: e.target.value }))}
               data-testid="filter-query"
@@ -119,11 +136,11 @@ export default function JobsPage() {
           </div>
 
           <div className="field">
-            <label htmlFor="title">Title contains</label>
+            <label htmlFor="title">{t('titleLabel')}</label>
             <input
               id="title"
               className="input"
-              placeholder="e.g. Backend"
+              placeholder={t('titlePlaceholder')}
               value={filters.title}
               onChange={(e) => setFilters((f) => ({ ...f, title: e.target.value }))}
               data-testid="filter-title"
@@ -131,11 +148,11 @@ export default function JobsPage() {
           </div>
 
           <div className="field">
-            <label htmlFor="stack">Tech stack (comma-separated)</label>
+            <label htmlFor="stack">{t('stackLabel')}</label>
             <input
               id="stack"
               className="input"
-              placeholder="e.g. React, TypeScript"
+              placeholder={t('stackPlaceholder')}
               value={filters.stack}
               onChange={(e) => setFilters((f) => ({ ...f, stack: e.target.value }))}
               data-testid="filter-stack"
@@ -143,7 +160,7 @@ export default function JobsPage() {
           </div>
 
           <div className="field">
-            <label>Remote type</label>
+            <label>{t('remoteTypeLabel')}</label>
             <div className="stack gap-8">
               {REMOTE_OPTIONS.map((type) => (
                 <label key={type} className="row gap-8" style={{ fontSize: '0.88rem', cursor: 'pointer' }}>
@@ -153,14 +170,14 @@ export default function JobsPage() {
                     onChange={() => toggleRemote(type)}
                     data-testid={`filter-remote-${type}`}
                   />
-                  {type[0].toUpperCase() + type.slice(1)}
+                  {t(REMOTE_LABEL_KEYS[type])}
                 </label>
               ))}
             </div>
           </div>
 
           <div className="field">
-            <label>Seniority</label>
+            <label>{t('seniorityLabel')}</label>
             <div className="stack gap-8">
               {SENIORITY_OPTIONS.map((s) => (
                 <label key={s} className="row gap-8" style={{ fontSize: '0.88rem', cursor: 'pointer' }}>
@@ -170,14 +187,14 @@ export default function JobsPage() {
                     onChange={() => toggleSeniority(s)}
                     data-testid={`filter-seniority-${s}`}
                   />
-                  {s[0].toUpperCase() + s.slice(1)}
+                  {t(SENIORITY_LABEL_KEYS[s])}
                 </label>
               ))}
             </div>
           </div>
 
           <div className="field">
-            <label htmlFor="language">Language</label>
+            <label htmlFor="language">{t('languageLabel')}</label>
             <select
               id="language"
               className="select"
@@ -185,19 +202,19 @@ export default function JobsPage() {
               onChange={(e) => setFilters((f) => ({ ...f, language: e.target.value }))}
               data-testid="filter-language"
             >
-              <option value="">Any</option>
-              <option value="en">English</option>
-              <option value="de">Deutsch</option>
+              <option value="">{t('languageAny')}</option>
+              <option value="en">{t('languageEnglish')}</option>
+              <option value="de">{t('languageGerman')}</option>
             </select>
           </div>
 
           <div className="field">
-            <label htmlFor="salaryMin">Minimum salary (EUR)</label>
+            <label htmlFor="salaryMin">{t('salaryMinLabel')}</label>
             <input
               id="salaryMin"
               type="number"
               className="input"
-              placeholder="e.g. 60000"
+              placeholder={t('salaryMinPlaceholder')}
               value={filters.salaryMin}
               onChange={(e) => setFilters((f) => ({ ...f, salaryMin: e.target.value }))}
               data-testid="filter-salary-min"
@@ -205,7 +222,7 @@ export default function JobsPage() {
           </div>
 
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFilters(EMPTY_FILTERS)}>
-            Clear filters
+            {t('clearFilters')}
           </button>
 
           <div className="stack gap-8" style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
@@ -219,14 +236,14 @@ export default function JobsPage() {
                 }}
                 data-testid="save-search-open"
               >
-                Save this search
+                {t('saveSearch')}
               </button>
             )}
             {savingSearch && (
               <div className="stack gap-8">
                 <input
                   className="input"
-                  placeholder="Name this search"
+                  placeholder={t('saveSearchNamePlaceholder')}
                   value={searchName}
                   onChange={(e) => setSearchName(e.target.value)}
                   data-testid="save-search-name"
@@ -240,7 +257,7 @@ export default function JobsPage() {
                     onClick={handleSaveSearch}
                     data-testid="save-search-confirm"
                   >
-                    {saveStatus === 'saving' ? 'Saving…' : 'Save'}
+                    {saveStatus === 'saving' ? t('saving') : t('save')}
                   </button>
                   <button
                     type="button"
@@ -250,26 +267,27 @@ export default function JobsPage() {
                       setSearchName('');
                     }}
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                 </div>
               </div>
             )}
             {saveStatus === 'saved' && (
               <p style={{ fontSize: '0.8rem', color: 'var(--color-success)' }} data-testid="save-search-success">
-                Saved — you’ll get email alerts on new matches. Manage it on the{' '}
-                <Link href="/saved-searches">saved searches page</Link>.
+                {t.rich('saveSearchSuccess', {
+                  link: (chunks) => <Link href="/saved-searches">{chunks}</Link>,
+                })}
               </p>
             )}
             {saveStatus === 'error' && (
-              <p style={{ fontSize: '0.8rem', color: 'var(--color-danger)' }}>Could not save this search.</p>
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-danger)' }}>{t('saveSearchError')}</p>
             )}
           </div>
         </aside>
 
         <div className="stack gap-16">
           <p className="muted" data-testid="jobs-result-count">
-            {loading ? 'Searching…' : `${total} job${total === 1 ? '' : 's'} found`}
+            {loading ? t('searching') : t('resultCount', { count: total })}
           </p>
           {loading ? (
             <div className="stack gap-12">
@@ -279,7 +297,7 @@ export default function JobsPage() {
             </div>
           ) : jobs.length === 0 ? (
             <div className="card" style={{ padding: 32, textAlign: 'center' }}>
-              <p className="muted">No jobs match these filters. Try loosening them.</p>
+              <p className="muted">{t('noResults')}</p>
             </div>
           ) : (
             <div className="stack gap-16" data-testid="jobs-results-list">

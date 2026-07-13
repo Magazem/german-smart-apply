@@ -27,8 +27,10 @@
     'Segoe UI Emoji';
 }
 
+/* OS-preference dark mode - only applies when the user hasn't made an explicit choice via
+   ThemeProvider (see theme-context.tsx), which always sets data-theme and must win. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --color-bg: #0e1614;
     --color-surface: #16211e;
     --color-surface-alt: #1c2925;
@@ -50,6 +52,84 @@
     --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
     --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
   }
+}
+
+/* Explicit theme choices (persisted by ThemeProvider as data-theme on <html>) always win over
+   the OS-preference media query above, regardless of source order, because that query is
+   scoped to :not([data-theme]). */
+:root[data-theme='dark'] {
+  --color-bg: #0e1614;
+  --color-surface: #16211e;
+  --color-surface-alt: #1c2925;
+  --color-border: #2a3834;
+  --color-text: #eef4f2;
+  --color-text-muted: #9db2ac;
+  --color-primary: #35c9a5;
+  --color-primary-dark: #21a482;
+  --color-primary-contrast: #06120f;
+  --color-accent: #e0a75e;
+  --color-danger: #ff6b57;
+  --color-danger-bg: #3a1a15;
+  --color-warning: #f0c750;
+  --color-warning-bg: #362a09;
+  --color-success: #5fd68e;
+  --color-success-bg: #10301d;
+  --color-info-bg: #1a2b27;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* Pitch-black terminal theme: flat, sharp, monospace. Near-black rather than pure #000 to
+   avoid OLED smear/banding; text is soft phosphor-white rather than pure white for the same
+   reason. --font-sans is overridden here (and only here) so light/dark keep the system sans
+   stack while this theme goes fully monospace. */
+:root[data-theme='terminal'] {
+  --color-bg: #050505;
+  --color-surface: #0d0d0d;
+  --color-surface-alt: #141414;
+  --color-border: #2a2a2a;
+  --color-text: #e6ffe6;
+  --color-text-muted: #6b8f6b;
+  --color-primary: #33ff66;
+  --color-primary-dark: #22cc4d;
+  --color-primary-contrast: #001a00;
+  --color-accent: #ffb000;
+  --color-danger: #ff5f56;
+  --color-danger-bg: #2a0d0b;
+  --color-warning: #ffb000;
+  --color-warning-bg: #2a1f00;
+  --color-success: #33ff66;
+  --color-success-bg: #0d2a14;
+  --color-info-bg: #0d1f1a;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --font-sans: var(--font-mono), ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  /* Monospace glyphs run wider than the sans stack at the same size, so the nav needs a
+     smaller size/gap here to keep fitting on one line like it does in the other themes. */
+  --nav-link-size: 0.78rem;
+  --nav-link-gap: 10px;
+}
+
+:root[data-theme='terminal'] .card,
+:root[data-theme='terminal'] .btn-secondary,
+:root[data-theme='terminal'] .input,
+:root[data-theme='terminal'] .select,
+:root[data-theme='terminal'] .textarea {
+  border-width: 1px;
+}
+
+:root[data-theme='terminal'] .btn-primary {
+  text-shadow: 0 0 8px rgba(51, 255, 102, 0.5);
+}
+
+:root[data-theme='terminal'] ::selection {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
 }
 
 * {

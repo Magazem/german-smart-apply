@@ -1,7 +1,7 @@
 'use client';
 
-import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type {
   Application,
@@ -12,6 +12,7 @@ import type {
   JobFeedbackType,
   JobMatchScore,
 } from '@german-smart-apply/shared';
+import { Link, useRouter } from '@/i18n/navigation';
 import { getApiClient, riskLevel } from '@/lib/api-client';
 import { useRequireAuth } from '@/lib/use-require-auth';
 import { useAuth } from '@/lib/auth-context';
@@ -26,10 +27,10 @@ import {
   formatSeniority,
 } from '@/lib/format';
 
-const VARIANT_STYLE_OPTIONS: Array<{ value: CvVariantStyle; label: string; proOnly: boolean }> = [
-  { value: 'standard', label: 'Standard', proOnly: false },
-  { value: 'concise', label: 'Concise', proOnly: true },
-  { value: 'leadership', label: 'Leadership-focused', proOnly: true },
+const VARIANT_STYLE_VALUES: Array<{ value: CvVariantStyle; proOnly: boolean }> = [
+  { value: 'standard', proOnly: false },
+  { value: 'concise', proOnly: true },
+  { value: 'leadership', proOnly: true },
 ];
 
 export default function JobDetailPage() {
@@ -37,6 +38,7 @@ export default function JobDetailPage() {
   const { user } = useAuth();
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const t = useTranslations('JobDetail');
 
   const [job, setJob] = useState<CanonicalJob | null>(null);
   const [match, setMatch] = useState<JobMatchScore | null>(null);
@@ -56,6 +58,12 @@ export default function JobDetailPage() {
   const [myFeedback, setMyFeedback] = useState<JobFeedbackType | null>(null);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const isPro = user?.tier === 'pro';
+
+  const variantStyleLabels: Record<CvVariantStyle, string> = {
+    standard: t('variantStandard'),
+    concise: t('variantConcise'),
+    leadership: t('variantLeadership'),
+  };
 
   useEffect(() => {
     if (authLoading) return;
@@ -82,7 +90,7 @@ export default function JobDetailPage() {
           app = await api.applications.create(detail.job.jobId);
         } catch {
           const existing = (await api.applications.list()).find((a) => a.jobId === detail.job.jobId);
-          if (!existing) throw new Error('Could not load your application for this job.');
+          if (!existing) throw new Error(t('applicationLoadError'));
           app = existing;
         }
         // A fresh application starts "new"; the API only allows draft
@@ -106,7 +114,7 @@ export default function JobDetailPage() {
         setInterviewPreps(preps);
       } catch (err) {
         if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : 'Could not load this job.');
+          setLoadError(err instanceof Error ? err.message : t('loadJobError'));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -130,7 +138,7 @@ export default function JobDetailPage() {
       await getApiClient().applications.updateStatus(application.id, 'saved');
       await refreshApplication();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not save this job.');
+      setActionError(err instanceof Error ? err.message : t('saveJobError'));
     }
   };
 
@@ -147,7 +155,7 @@ export default function JobDetailPage() {
       setAllDrafts(drafts);
       await refreshApplication();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not generate a tailored draft.');
+      setActionError(err instanceof Error ? err.message : t('draftGenError'));
     } finally {
       setDrafting(false);
     }
@@ -171,7 +179,7 @@ export default function JobDetailPage() {
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not download the application packet.');
+      setActionError(err instanceof Error ? err.message : t('pdfDownloadError'));
     } finally {
       setDownloadingPdf(false);
     }
@@ -185,7 +193,7 @@ export default function JobDetailPage() {
       const prep = await getApiClient().applications.generateInterviewPrep(application.id);
       setInterviewPreps((prev) => [prep, ...prev]);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not generate interview prep.');
+      setActionError(err instanceof Error ? err.message : t('interviewPrepError'));
     } finally {
       setGeneratingPrep(false);
     }
@@ -199,7 +207,7 @@ export default function JobDetailPage() {
       const res = await getApiClient().jobs.recordFeedback(job.jobId, feedback);
       setMyFeedback(res.feedback);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not record your feedback.');
+      setActionError(err instanceof Error ? err.message : t('feedbackError'));
     } finally {
       setFeedbackPending(false);
     }
@@ -222,7 +230,7 @@ export default function JobDetailPage() {
       );
       router.push('/applications');
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not submit this for approval.');
+      setActionError(err instanceof Error ? err.message : t('approvalError'));
     }
   };
 
@@ -238,7 +246,7 @@ export default function JobDetailPage() {
     return (
       <div className="container" style={{ padding: '48px 24px' }}>
         <p className="error-text">{loadError}</p>
-        <Link href="/jobs">Back to search</Link>
+        <Link href="/jobs">{t('backToSearch')}</Link>
       </div>
     );
   }
@@ -246,7 +254,9 @@ export default function JobDetailPage() {
   if (notFound || !job) {
     return (
       <div className="container" style={{ padding: '48px 24px' }}>
-        <p>Job not found. <Link href="/jobs">Back to search</Link></p>
+        <p>
+          {t('jobNotFound')} <Link href="/jobs">{t('backToSearch')}</Link>
+        </p>
       </div>
     );
   }
@@ -256,7 +266,7 @@ export default function JobDetailPage() {
   return (
     <div className="container" style={{ maxWidth: 880, padding: '40px 24px 96px' }}>
       <Link href="/jobs" className="muted" style={{ fontSize: '0.85rem', textDecoration: 'none' }}>
-        &larr; Back to search
+        &larr; {t('backToSearch')}
       </Link>
 
       {risk === 'high' && (
@@ -270,11 +280,7 @@ export default function JobDetailPage() {
             border: '1px solid var(--color-danger)',
           }}
         >
-          <strong style={{ color: 'var(--color-danger)' }}>⛔ High scam risk detected.</strong>{' '}
-          This listing shows signs commonly associated with scams: unrealistic salary for the role, vague or
-          urgent-sounding description, upfront payment or personal-document requests, and off-platform contact
-          methods. We still show it so you can judge for yourself, but we recommend not proceeding, and never
-          send money or ID documents to an employer before you have a signed contract.
+          <strong style={{ color: 'var(--color-danger)' }}>{t('highRiskTitle')}</strong> {t('highRiskBody')}
         </div>
       )}
 
@@ -293,8 +299,8 @@ export default function JobDetailPage() {
           <span className="tag">{formatSeniority(job.seniority)}</span>
           <span className="tag">{formatEmploymentType(job.employmentType)}</span>
           <span className="tag">{formatSalary(job.salaryMin, job.salaryMax, job.salaryCurrency)}</span>
-          <span className="tag">Posted {formatDate(job.postedAt)}</span>
-          <span className="tag">Source: {job.sourceType}</span>
+          <span className="tag">{t('postedLabel', { date: formatDate(job.postedAt) })}</span>
+          <span className="tag">{t('sourceLabel', { source: job.sourceType })}</span>
         </div>
 
         <div className="row row-wrap gap-8">
@@ -302,9 +308,32 @@ export default function JobDetailPage() {
           <TrustBadge sourceTrustScore={job.sourceTrustScore} />
         </div>
 
+        <div className="row row-wrap gap-8">
+          <a
+            href={job.applyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-primary btn-sm"
+            data-testid="apply-original-link"
+          >
+            {t('applyOn', { source: job.sourceType })}
+          </a>
+          {job.sourceUrl !== job.applyUrl && (
+            <a
+              href={job.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary btn-sm"
+              data-testid="view-original-listing-link"
+            >
+              {t('viewOriginalListing')}
+            </a>
+          )}
+        </div>
+
         <div className="row gap-8" style={{ alignItems: 'center' }}>
           <span className="muted" style={{ fontSize: '0.85rem' }}>
-            Not seeing enough roles like this?
+            {t('notEnoughRoles')}
           </span>
           <button
             type="button"
@@ -313,7 +342,7 @@ export default function JobDetailPage() {
             disabled={feedbackPending}
             aria-pressed={myFeedback === 'like'}
             data-testid="feedback-like-button"
-            title="More like this"
+            title={t('moreLikeThis')}
           >
             👍
           </button>
@@ -324,7 +353,7 @@ export default function JobDetailPage() {
             disabled={feedbackPending}
             aria-pressed={myFeedback === 'skip'}
             data-testid="feedback-skip-button"
-            title="Fewer like this"
+            title={t('fewerLikeThis')}
           >
             👎
           </button>
@@ -333,7 +362,7 @@ export default function JobDetailPage() {
         {application && (
           <div className="row gap-8" style={{ alignItems: 'center' }}>
             <span className="muted" style={{ fontSize: '0.85rem' }}>
-              Your application status:
+              {t('statusLabel')}
             </span>
             <StatusBadge status={application.status} />
           </div>
@@ -341,14 +370,14 @@ export default function JobDetailPage() {
 
         {match?.explanation && (
           <div className="card" style={{ padding: 16, background: 'var(--color-info-bg)', border: 'none' }}>
-            <strong style={{ fontSize: '0.9rem' }}>Why this matches: </strong>
+            <strong style={{ fontSize: '0.9rem' }}>{t('whyMatches')} </strong>
             <span style={{ fontSize: '0.9rem' }}>{match.explanation}</span>
           </div>
         )}
 
         {match && (
           <details>
-            <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: '0.88rem' }}>Match score breakdown</summary>
+            <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: '0.88rem' }}>{t('matchBreakdownSummary')}</summary>
             <div style={{ marginTop: 12 }}>
               <MatchBreakdown match={match} />
             </div>
@@ -356,7 +385,7 @@ export default function JobDetailPage() {
         )}
 
         <div className="stack gap-8">
-          <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>Full description</h2>
+          <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{t('fullDescriptionHeading')}</h2>
           <p style={{ fontSize: '0.92rem', whiteSpace: 'pre-wrap' }}>{job.jobDescriptionText}</p>
         </div>
 
@@ -372,9 +401,9 @@ export default function JobDetailPage() {
 
         {application && ['viewed', 'saved', 'draft_ready'].includes(application.status) && (
           <div className="stack gap-8">
-            <span className="muted" style={{ fontSize: '0.82rem' }}>CV variant style</span>
+            <span className="muted" style={{ fontSize: '0.82rem' }}>{t('cvVariantStyleLabel')}</span>
             <div className="row row-wrap gap-8">
-              {VARIANT_STYLE_OPTIONS.map((opt) => {
+              {VARIANT_STYLE_VALUES.map((opt) => {
                 const locked = opt.proOnly && !isPro;
                 return (
                   <button
@@ -383,22 +412,22 @@ export default function JobDetailPage() {
                     className={variantStyle === opt.value ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
                     onClick={() => setVariantStyle(opt.value)}
                     disabled={locked}
-                    title={locked ? 'Requires a Pro subscription' : undefined}
+                    title={locked ? t('proRequiredTitle') : undefined}
                     data-testid={`variant-style-${opt.value}`}
                   >
-                    {opt.label}
-                    {opt.proOnly && ' (Pro)'}
+                    {variantStyleLabels[opt.value]}
+                    {opt.proOnly && t('proSuffix')}
                   </button>
                 );
               })}
             </div>
-            {VARIANT_STYLE_OPTIONS.some((o) => o.proOnly && !isPro) && (
+            {VARIANT_STYLE_VALUES.some((o) => o.proOnly && !isPro) && (
               <p className="muted" style={{ fontSize: '0.78rem' }}>
-                Concise and leadership-focused variants require{' '}
+                {t('proVariantsNotePrefix')}{' '}
                 <Link href="/billing" style={{ color: 'var(--color-primary)' }}>
-                  Pro
+                  {t('proLinkLabel')}
                 </Link>
-                . Standard stays free.
+                {t('proVariantsNoteSuffix')}
               </p>
             )}
           </div>
@@ -410,7 +439,7 @@ export default function JobDetailPage() {
             application?.status !== 'awaiting_approval' &&
             !['applied', 'interview', 'rejected', 'offer', 'archived'].includes(application?.status ?? '') && (
               <button type="button" className="btn btn-secondary" onClick={handleSave} data-testid="save-job-button">
-                Save for later
+                {t('saveForLater')}
               </button>
             )}
 
@@ -423,31 +452,27 @@ export default function JobDetailPage() {
                 disabled={drafting}
                 data-testid="request-draft-button"
               >
-                {drafting
-                  ? 'Generating tailored draft…'
-                  : draft
-                    ? 'Regenerate tailored CV & cover letter'
-                    : 'Request tailored CV & cover letter'}
+                {drafting ? t('generatingDraft') : draft ? t('regenerateDraft') : t('requestDraft')}
               </button>
             )}
 
           {application?.status === 'draft_ready' && draft && (
             <button type="button" className="btn btn-primary" onClick={handleSubmitForApproval} data-testid="submit-for-approval-button">
               {allDrafts.length > 1
-                ? `Submit "${selectedDraft?.variantLabel ?? 'standard'}" draft for approval`
-                : 'Submit for approval'}
+                ? t('submitDraftNamed', { label: selectedDraft?.variantLabel ?? 'standard' })
+                : t('submitForApproval')}
             </button>
           )}
 
           {application?.status === 'awaiting_approval' && (
             <Link href="/applications" className="btn btn-primary">
-              Review &amp; approve in queue &rarr;
+              {t('reviewApproveQueue')}
             </Link>
           )}
 
           {['applied', 'interview', 'rejected', 'offer'].includes(application?.status ?? '') && (
             <Link href="/applications" className="btn btn-secondary">
-              View in application queue &rarr;
+              {t('viewInQueue')}
             </Link>
           )}
         </div>
@@ -455,7 +480,7 @@ export default function JobDetailPage() {
         {application && (
           <div className="card stack gap-12" style={{ padding: 20, background: 'var(--color-surface-alt)' }}>
             <div className="row spread" style={{ alignItems: 'center' }}>
-              <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Interview prep</h3>
+              <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>{t('interviewPrepHeading')}</h3>
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
@@ -463,22 +488,17 @@ export default function JobDetailPage() {
                 disabled={generatingPrep}
                 data-testid="generate-interview-prep-button"
               >
-                {generatingPrep
-                  ? 'Generating…'
-                  : interviewPreps.length > 0
-                    ? 'Regenerate interview prep'
-                    : 'Generate interview prep'}
+                {generatingPrep ? t('generatingPrep') : interviewPreps.length > 0 ? t('regeneratePrep') : t('generatePrep')}
               </button>
             </div>
             <p className="muted" style={{ fontSize: '0.82rem' }}>
-              Likely interview questions and talking points for this role, generated from your profile. Available any
-              time - no need to wait until you've applied.
+              {t('interviewPrepHint')}
             </p>
 
             {interviewPreps[0] && (
               <div className="stack gap-12" data-testid="interview-prep-content">
                 <div className="stack gap-8">
-                  <strong style={{ fontSize: '0.85rem' }}>Likely questions</strong>
+                  <strong style={{ fontSize: '0.85rem' }}>{t('likelyQuestions')}</strong>
                   <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem' }}>
                     {interviewPreps[0].questions.map((q, i) => (
                       <li key={i}>{q}</li>
@@ -486,10 +506,10 @@ export default function JobDetailPage() {
                   </ul>
                 </div>
                 <div className="stack gap-8">
-                  <strong style={{ fontSize: '0.85rem' }}>Talking points</strong>
+                  <strong style={{ fontSize: '0.85rem' }}>{t('talkingPoints')}</strong>
                   <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem' }}>
-                    {interviewPreps[0].talkingPoints.map((t, i) => (
-                      <li key={i}>{t}</li>
+                    {interviewPreps[0].talkingPoints.map((tp, i) => (
+                      <li key={i}>{tp}</li>
                     ))}
                   </ul>
                 </div>
@@ -501,7 +521,7 @@ export default function JobDetailPage() {
         {selectedDraft && (
           <div className="card stack gap-12" style={{ padding: 20, background: 'var(--color-surface-alt)' }}>
             <div className="row spread" style={{ alignItems: 'center' }}>
-              <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Tailored draft preview</h3>
+              <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>{t('draftPreviewHeading')}</h3>
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
@@ -509,12 +529,11 @@ export default function JobDetailPage() {
                 disabled={downloadingPdf}
                 data-testid="download-pdf-button"
               >
-                {downloadingPdf ? 'Preparing…' : 'Download PDF'}
+                {downloadingPdf ? t('preparingPdf') : t('downloadPdf')}
               </button>
             </div>
             <p className="muted" style={{ fontSize: '0.82rem' }}>
-              Review carefully — you'll need to explicitly approve this in the application queue before anything is
-              considered "applied".
+              {t('reviewCarefullyNote')}
             </p>
 
             {allDrafts.length > 1 && (
@@ -534,7 +553,7 @@ export default function JobDetailPage() {
             )}
 
             <div className="stack gap-8">
-              <strong style={{ fontSize: '0.85rem' }}>CV variant</strong>
+              <strong style={{ fontSize: '0.85rem' }}>{t('cvVariantHeading')}</strong>
               <pre
                 style={{
                   whiteSpace: 'pre-wrap',
@@ -551,7 +570,7 @@ export default function JobDetailPage() {
             </div>
 
             <div className="stack gap-8">
-              <strong style={{ fontSize: '0.85rem' }}>Cover letter</strong>
+              <strong style={{ fontSize: '0.85rem' }}>{t('coverLetterHeading')}</strong>
               <pre
                 style={{
                   whiteSpace: 'pre-wrap',

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import type {
   Application,
@@ -11,6 +11,7 @@ import type {
   ParsedCvResult,
   Seniority,
 } from '@german-smart-apply/shared';
+import { useRouter } from '@/i18n/navigation';
 import { getApiClient } from '@/lib/api-client';
 import { useRequireAuth } from '@/lib/use-require-auth';
 import { JobCard } from '@/components/job-card';
@@ -20,6 +21,7 @@ type Step = 1 | 2 | 3;
 const SENIORITY_OPTIONS: Seniority[] = ['intern', 'junior', 'mid', 'senior', 'lead', 'principal'];
 
 interface Answers {
+  fullName: string;
   targetRole: string;
   targetCountryCode: string;
   preferredLanguage: string;
@@ -31,6 +33,7 @@ export default function OnboardingPage() {
   const { loading } = useRequireAuth();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const t = useTranslations('Onboarding');
 
   const [step, setStep] = useState<Step>(1);
   const [cvMode, setCvMode] = useState<'file' | 'text'>('file');
@@ -40,6 +43,7 @@ export default function OnboardingPage() {
   const [cvError, setCvError] = useState<string | null>(null);
 
   const [answers, setAnswers] = useState<Answers>({
+    fullName: '',
     targetRole: '',
     targetCountryCode: 'DE',
     preferredLanguage: 'en',
@@ -57,7 +61,7 @@ export default function OnboardingPage() {
   if (loading) {
     return (
       <div className="container" style={{ padding: '64px 24px' }}>
-        <p className="muted">Loading…</p>
+        <p className="muted">{t('loading')}</p>
       </div>
     );
   }
@@ -71,14 +75,14 @@ export default function OnboardingPage() {
       if (cvMode === 'file') {
         const file = fileInputRef.current?.files?.[0];
         if (!file) {
-          setCvError('Choose a CV file first, or switch to "paste text".');
+          setCvError(t('chooseFileError'));
           setParsing(false);
           return;
         }
         result = await api.cv.upload({ kind: 'file', file });
       } else {
         if (!cvText.trim()) {
-          setCvError('Paste some CV text first.');
+          setCvError(t('pasteTextError'));
           setParsing(false);
           return;
         }
@@ -86,12 +90,13 @@ export default function OnboardingPage() {
       }
       setParsedCv(result);
       if (result.fullName) {
+        setAnswers((a) => (a.fullName ? a : { ...a, fullName: result.fullName! }));
         await api.profile.update({ fullName: result.fullName, skills: result.skills, summary: result.summary });
       } else {
         await api.profile.update({ skills: result.skills, summary: result.summary });
       }
     } catch (err) {
-      setCvError(err instanceof Error ? err.message : 'Could not parse that CV.');
+      setCvError(err instanceof Error ? err.message : t('parseGenericError'));
     } finally {
       setParsing(false);
     }
@@ -104,6 +109,7 @@ export default function OnboardingPage() {
     try {
       const api = getApiClient();
       const profile = await api.profile.update({
+        fullName: answers.fullName,
         targetRole: answers.targetRole,
         targetCountryCode: answers.targetCountryCode,
         preferredLanguage: answers.preferredLanguage,
@@ -137,10 +143,19 @@ export default function OnboardingPage() {
 
       setStep(3);
     } catch (err) {
-      setAnswersError(err instanceof Error ? err.message : 'Could not save your answers.');
+      setAnswersError(err instanceof Error ? err.message : t('answersGenericError'));
     } finally {
       setSubmittingAnswers(false);
     }
+  };
+
+  const seniorityLabels: Record<Seniority, string> = {
+    intern: t('seniorityIntern'),
+    junior: t('seniorityJunior'),
+    mid: t('seniorityMid'),
+    senior: t('senioritySenior'),
+    lead: t('seniorityLead'),
+    principal: t('seniorityPrincipal'),
   };
 
   return (
@@ -150,9 +165,9 @@ export default function OnboardingPage() {
       {step === 1 && (
         <section className="card stack gap-16" style={{ padding: 32, marginTop: 24 }}>
           <div className="stack gap-4">
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>Upload your CV</h1>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>{t('step1Heading')}</h1>
             <p className="muted" style={{ fontSize: '0.9rem' }}>
-              We'll parse it into a starter profile — skills, summary, and a few quick improvement tips.
+              {t('step1Subtitle')}
             </p>
           </div>
 
@@ -162,20 +177,20 @@ export default function OnboardingPage() {
               className={`btn btn-sm ${cvMode === 'file' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setCvMode('file')}
             >
-              Upload a file
+              {t('uploadFileToggle')}
             </button>
             <button
               type="button"
               className={`btn btn-sm ${cvMode === 'text' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setCvMode('text')}
             >
-              Paste text instead
+              {t('pasteTextToggle')}
             </button>
           </div>
 
           {cvMode === 'file' ? (
             <div className="field">
-              <label htmlFor="cv-file">CV file (.txt, .pdf)</label>
+              <label htmlFor="cv-file">{t('cvFileLabel')}</label>
               <input
                 id="cv-file"
                 ref={fileInputRef}
@@ -187,7 +202,7 @@ export default function OnboardingPage() {
             </div>
           ) : (
             <div className="field">
-              <label htmlFor="cv-text">Paste your CV text</label>
+              <label htmlFor="cv-text">{t('cvTextLabel')}</label>
               <textarea
                 id="cv-text"
                 className="textarea"
@@ -195,7 +210,7 @@ export default function OnboardingPage() {
                 value={cvText}
                 onChange={(e) => setCvText(e.target.value)}
                 data-testid="cv-text-input"
-                placeholder={'Jane Doe\nSkills: TypeScript, React, Node.js\n...'}
+                placeholder={t('cvTextPlaceholder')}
               />
             </div>
           )}
@@ -204,7 +219,7 @@ export default function OnboardingPage() {
 
           {parsedCv && (
             <div className="card stack gap-8" style={{ padding: 16, background: 'var(--color-surface-alt)' }}>
-              <strong>Parsed: {parsedCv.fullName ?? 'Your profile'}</strong>
+              <strong>{t('parsedPrefix', { name: parsedCv.fullName ?? t('parsedFallbackName') })}</strong>
               <p className="muted" style={{ fontSize: '0.88rem' }}>
                 {parsedCv.summary}
               </p>
@@ -229,12 +244,12 @@ export default function OnboardingPage() {
                   disabled={parsing}
                   data-testid="parse-cv-button"
                 >
-                  {parsing ? 'Parsing…' : 'Parse my CV'}
+                  {parsing ? t('parseCvButtonPending') : t('parseCvButtonIdle')}
                 </button>
               )}
               {parsedCv && (
                 <button type="button" className="btn btn-primary" onClick={() => setStep(2)} data-testid="onboarding-continue-step2">
-                  Continue
+                  {t('continueButton')}
                 </button>
               )}
             </div>
@@ -245,27 +260,41 @@ export default function OnboardingPage() {
       {step === 2 && (
         <section className="card stack gap-16" style={{ padding: 32, marginTop: 24 }}>
           <div className="stack gap-4">
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>Five quick questions</h1>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>{t('step2Heading')}</h1>
             <p className="muted" style={{ fontSize: '0.9rem' }}>
-              This is it — no long questionnaire. Answer these and we'll show your matches.
+              {t('step2Subtitle')}
             </p>
           </div>
 
           <form onSubmit={handleAnswers} className="stack">
             <div className="field">
-              <label htmlFor="targetRole">1. Target role</label>
+              <label htmlFor="fullName">{t('fullNameQuestion')}</label>
+              <input
+                id="fullName"
+                required
+                className="input"
+                value={answers.fullName}
+                onChange={(e) => setAnswers((a) => ({ ...a, fullName: e.target.value }))}
+                placeholder={t('fullNamePlaceholder')}
+                autoComplete="name"
+                data-testid="onboarding-full-name"
+              />
+              <span className="field-hint">{t('fullNameHint')}</span>
+            </div>
+            <div className="field">
+              <label htmlFor="targetRole">{t('targetRoleQuestion')}</label>
               <input
                 id="targetRole"
                 required
                 className="input"
                 value={answers.targetRole}
                 onChange={(e) => setAnswers((a) => ({ ...a, targetRole: e.target.value }))}
-                placeholder="e.g. Backend Engineer"
+                placeholder={t('targetRolePlaceholder')}
                 data-testid="onboarding-target-role"
               />
             </div>
             <div className="field">
-              <label htmlFor="targetCountryCode">2. Country</label>
+              <label htmlFor="targetCountryCode">{t('countryQuestion')}</label>
               <select
                 id="targetCountryCode"
                 className="select"
@@ -273,14 +302,14 @@ export default function OnboardingPage() {
                 onChange={(e) => setAnswers((a) => ({ ...a, targetCountryCode: e.target.value }))}
                 data-testid="onboarding-country"
               >
-                <option value="DE">Germany</option>
+                <option value="DE">{t('countryGermany')}</option>
                 <option value="FR" disabled>
-                  France (coming soon)
+                  {t('countryFranceSoon')}
                 </option>
               </select>
             </div>
             <div className="field">
-              <label htmlFor="preferredLanguage">3. Preferred language</label>
+              <label htmlFor="preferredLanguage">{t('languageQuestion')}</label>
               <select
                 id="preferredLanguage"
                 className="select"
@@ -288,12 +317,12 @@ export default function OnboardingPage() {
                 onChange={(e) => setAnswers((a) => ({ ...a, preferredLanguage: e.target.value }))}
                 data-testid="onboarding-language"
               >
-                <option value="en">English</option>
-                <option value="de">Deutsch</option>
+                <option value="en">{t('languageEnglish')}</option>
+                <option value="de">{t('languageGerman')}</option>
               </select>
             </div>
             <div className="field">
-              <label htmlFor="seniority">4. Seniority</label>
+              <label htmlFor="seniority">{t('seniorityQuestion')}</label>
               <select
                 id="seniority"
                 className="select"
@@ -303,13 +332,13 @@ export default function OnboardingPage() {
               >
                 {SENIORITY_OPTIONS.map((s) => (
                   <option key={s} value={s}>
-                    {s[0].toUpperCase() + s.slice(1)}
+                    {seniorityLabels[s]}
                   </option>
                 ))}
               </select>
             </div>
             <div className="field">
-              <label htmlFor="locationPreference">5. Location / remote preference</label>
+              <label htmlFor="locationPreference">{t('locationQuestion')}</label>
               <select
                 id="locationPreference"
                 className="select"
@@ -322,10 +351,10 @@ export default function OnboardingPage() {
                 }
                 data-testid="onboarding-location-pref"
               >
-                <option value="onsite">On-site</option>
-                <option value="hybrid">Hybrid</option>
-                <option value="remote">Remote</option>
-                <option value="any">Any</option>
+                <option value="onsite">{t('locationOnsite')}</option>
+                <option value="hybrid">{t('locationHybrid')}</option>
+                <option value="remote">{t('locationRemote')}</option>
+                <option value="any">{t('locationAny')}</option>
               </select>
             </div>
 
@@ -333,7 +362,7 @@ export default function OnboardingPage() {
 
             <div className="row spread">
               <button type="button" className="btn btn-ghost" onClick={() => setStep(1)}>
-                Back
+                {t('backButton')}
               </button>
               <button
                 type="submit"
@@ -341,7 +370,7 @@ export default function OnboardingPage() {
                 disabled={submittingAnswers}
                 data-testid="onboarding-see-matches"
               >
-                {submittingAnswers ? 'Finding your matches…' : 'See my matches'}
+                {submittingAnswers ? t('seeMatchesPending') : t('seeMatchesIdle')}
               </button>
             </div>
           </form>
@@ -351,13 +380,13 @@ export default function OnboardingPage() {
       {step === 3 && (
         <section className="stack gap-24" style={{ marginTop: 24 }} data-testid="onboarding-results">
           <div className="card stack gap-8" style={{ padding: 24 }}>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>You're set up — here's what we found</h1>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>{t('step3Heading')}</h1>
             <p className="muted" style={{ fontSize: '0.92rem' }}>{parsedCv?.summary}</p>
           </div>
 
           {parsedCv && parsedCv.suggestions.length > 0 && (
             <div className="card stack gap-8" style={{ padding: 24 }}>
-              <h2 style={{ fontWeight: 700 }}>CV improvement suggestions</h2>
+              <h2 style={{ fontWeight: 700 }}>{t('suggestionsHeading')}</h2>
               <ul style={{ margin: 0, paddingLeft: 20 }}>
                 {parsedCv.suggestions.map((s) => (
                   <li key={s} style={{ marginBottom: 6, fontSize: '0.9rem' }}>
@@ -370,7 +399,7 @@ export default function OnboardingPage() {
 
           <div className="stack gap-16">
             <h2 style={{ fontWeight: 700 }}>
-              Top {topJobs.length} trusted, deduplicated matches in {answers.targetCountryCode}
+              {t('topMatchesHeading', { count: topJobs.length, country: answers.targetCountryCode })}
             </h2>
             <div className="stack gap-16">
               {topJobs.map(({ job, match }) => (
@@ -382,7 +411,10 @@ export default function OnboardingPage() {
           {exampleDraft && exampleJob && (
             <div className="card stack gap-12" style={{ padding: 24 }}>
               <h2 style={{ fontWeight: 700 }}>
-                Example tailored cover letter — {exampleJob.jobTitleNormalized} at {exampleJob.companyNameNormalized}
+                {t('exampleCoverLetterHeading', {
+                  jobTitle: exampleJob.jobTitleNormalized,
+                  companyName: exampleJob.companyNameNormalized,
+                })}
               </h2>
               <pre
                 style={{
@@ -398,8 +430,7 @@ export default function OnboardingPage() {
                 {exampleDraft.coverLetterText}
               </pre>
               <p className="muted" style={{ fontSize: '0.82rem' }}>
-                This draft is saved to your application queue as "awaiting your approval" — nothing is submitted
-                until you review and approve it there.
+                {t('exampleCoverLetterNote')}
               </p>
               {exampleApp && (
                 <button
@@ -410,7 +441,7 @@ export default function OnboardingPage() {
                     router.push('/applications');
                   }}
                 >
-                  Review it in my application queue
+                  {t('reviewQueueButton')}
                 </button>
               )}
             </div>
@@ -424,7 +455,7 @@ export default function OnboardingPage() {
               data-testid="onboarding-go-dashboard"
               style={{ padding: '14px 28px' }}
             >
-              Go to my dashboard
+              {t('goDashboardButton')}
             </button>
           </div>
         </section>
@@ -434,9 +465,10 @@ export default function OnboardingPage() {
 }
 
 function ProgressHeader({ step }: { step: Step }) {
-  const labels = ['Upload CV', '5 quick questions', 'Your matches'];
+  const t = useTranslations('Onboarding');
+  const labels = [t('progressStep1'), t('progressStep2'), t('progressStep3')];
   return (
-    <div className="row gap-8" aria-label={`Step ${step} of 3`}>
+    <div className="row gap-8" aria-label={t('progressAriaLabel', { step })}>
       {labels.map((label, i) => {
         const n = (i + 1) as Step;
         const active = n === step;

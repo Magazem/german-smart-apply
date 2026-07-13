@@ -1,26 +1,28 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 import type { JobSearchFilters } from '@german-smart-apply/shared';
 import { useRequireAuth } from '@/lib/use-require-auth';
 import { getApiClient } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 import type { SavedSearch } from '@/lib/api/types';
 
-function summarizeFilters(filters: JobSearchFilters): string {
+function summarizeFilters(filters: JobSearchFilters, t: ReturnType<typeof useTranslations>): string {
   const parts: string[] = [];
   if (filters.query) parts.push(`"${filters.query}"`);
-  if (filters.title) parts.push(`title contains "${filters.title}"`);
-  if (filters.stack?.length) parts.push(`stack: ${filters.stack.join(', ')}`);
+  if (filters.title) parts.push(t('filterTitleContains', { title: filters.title }));
+  if (filters.stack?.length) parts.push(t('filterStack', { stack: filters.stack.join(', ') }));
   if (filters.remoteType?.length) parts.push(filters.remoteType.join('/'));
   if (filters.seniority?.length) parts.push(filters.seniority.join('/'));
-  if (filters.language) parts.push(filters.language === 'de' ? 'Deutsch' : 'English');
+  if (filters.language) parts.push(filters.language === 'de' ? t('languageGerman') : t('languageEnglish'));
   if (filters.salaryMin) parts.push(`≥ €${filters.salaryMin.toLocaleString()}`);
-  return parts.length > 0 ? parts.join(' · ') : 'Any job in Germany';
+  return parts.length > 0 ? parts.join(' · ') : t('anyJobInGermany');
 }
 
 export default function SavedSearchesPage() {
+  const t = useTranslations('SavedSearches');
   const { loading: authLoading } = useRequireAuth();
   const [searches, setSearches] = useState<SavedSearch[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +33,7 @@ export default function SavedSearchesPage() {
       const result = await getApiClient().savedSearches.list();
       setSearches(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load saved searches.');
+      setError(err instanceof Error ? err.message : t('loadError'));
     }
   };
 
@@ -47,7 +49,7 @@ export default function SavedSearchesPage() {
       await getApiClient().savedSearches.update(search.id, { isActive: !search.isActive });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update this saved search.');
+      setError(err instanceof Error ? err.message : t('toggleActiveError'));
     } finally {
       setPendingId(null);
     }
@@ -60,7 +62,7 @@ export default function SavedSearchesPage() {
       await getApiClient().savedSearches.remove(search.id);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete this saved search.');
+      setError(err instanceof Error ? err.message : t('deleteError'));
     } finally {
       setPendingId(null);
     }
@@ -69,7 +71,7 @@ export default function SavedSearchesPage() {
   if (authLoading) {
     return (
       <div className="container" style={{ padding: '48px 24px' }}>
-        <p className="muted">Loading…</p>
+        <p className="muted">{t('loading')}</p>
       </div>
     );
   }
@@ -77,10 +79,9 @@ export default function SavedSearchesPage() {
   return (
     <div className="container stack gap-24" style={{ padding: '40px 24px 96px' }}>
       <div className="stack gap-4">
-        <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>Saved searches</h1>
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>{t('pageTitle')}</h1>
         <p className="muted">
-          Get notified by email when new jobs match. Save a search from the{' '}
-          <Link href="/jobs">job search page</Link> — apply your filters there, then click “Save this search”.
+          {t('pageSubtitlePrefix')} <Link href="/jobs">{t('jobSearchPageLink')}</Link> {t('pageSubtitleSuffix')}
         </p>
       </div>
 
@@ -90,13 +91,12 @@ export default function SavedSearchesPage() {
         </div>
       )}
 
-      {!searches && !error && <p className="muted">Loading…</p>}
+      {!searches && !error && <p className="muted">{t('loading')}</p>}
 
       {searches && searches.length === 0 && (
         <div className="card" style={{ padding: 32, textAlign: 'center' }}>
           <p className="muted">
-            No saved searches yet. Head to <Link href="/jobs">job search</Link>, set up filters you care about, and
-            save them to get email alerts on new matches.
+            {t('emptyStatePrefix')} <Link href="/jobs">{t('jobSearchLink')}</Link> {t('emptyStateSuffix')}
           </p>
         </div>
       )}
@@ -114,11 +114,11 @@ export default function SavedSearchesPage() {
                 <div className="row gap-8" style={{ alignItems: 'center' }}>
                   <strong style={{ fontSize: '1rem' }}>{search.name}</strong>
                   <span className={search.isActive ? 'badge badge-success' : 'badge badge-neutral'}>
-                    {search.isActive ? 'Active' : 'Paused'}
+                    {search.isActive ? t('statusActive') : t('statusPaused')}
                   </span>
                 </div>
-                <span className="muted" style={{ fontSize: '0.82rem' }}>{summarizeFilters(search.filters)}</span>
-                <span className="muted" style={{ fontSize: '0.75rem' }}>Saved {formatDate(search.createdAt)}</span>
+                <span className="muted" style={{ fontSize: '0.82rem' }}>{summarizeFilters(search.filters, t)}</span>
+                <span className="muted" style={{ fontSize: '0.75rem' }}>{t('savedDateLabel', { date: formatDate(search.createdAt) })}</span>
               </div>
 
               <div className="row gap-8">
@@ -129,7 +129,7 @@ export default function SavedSearchesPage() {
                   onClick={() => toggleActive(search)}
                   data-testid={`saved-search-toggle-${search.id}`}
                 >
-                  {search.isActive ? 'Pause alerts' : 'Resume alerts'}
+                  {search.isActive ? t('pauseAlerts') : t('resumeAlerts')}
                 </button>
                 <button
                   type="button"
@@ -138,7 +138,7 @@ export default function SavedSearchesPage() {
                   onClick={() => remove(search)}
                   data-testid={`saved-search-delete-${search.id}`}
                 >
-                  Delete
+                  {t('deleteButton')}
                 </button>
               </div>
             </div>

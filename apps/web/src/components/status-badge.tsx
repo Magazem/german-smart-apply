@@ -1,5 +1,5 @@
+import { useTranslations } from 'next-intl';
 import type { ApplicationStatus } from '@german-smart-apply/shared';
-import { STATUS_LABELS } from '@/lib/format';
 
 const STATUS_STYLE: Record<ApplicationStatus, string> = {
   new: 'badge-neutral',
@@ -14,10 +14,24 @@ const STATUS_STYLE: Record<ApplicationStatus, string> = {
   archived: 'badge-neutral',
 };
 
+const STATUS_KEYS: Record<ApplicationStatus, string> = {
+  new: 'statusNew',
+  viewed: 'statusViewed',
+  saved: 'statusSaved',
+  draft_ready: 'statusDraftReady',
+  awaiting_approval: 'statusAwaitingApproval',
+  applied: 'statusApplied',
+  interview: 'statusInterview',
+  offer: 'statusOffer',
+  rejected: 'statusRejected',
+  archived: 'statusArchived',
+};
+
 export function StatusBadge({ status }: { status: ApplicationStatus }) {
+  const t = useTranslations('StatusBadge');
   return (
     <span className={`badge ${STATUS_STYLE[status]}`} data-testid="status-badge" data-status={status}>
-      {STATUS_LABELS[status]}
+      {t(STATUS_KEYS[status])}
     </span>
   );
 }

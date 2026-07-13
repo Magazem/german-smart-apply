@@ -1,46 +1,51 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useRequireAuth } from '@/lib/use-require-auth';
 import { getApiClient } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 import type { AlertRunSummary, AnalyticsSummary, DedupStats, SourceCrawlRun, SourceHealth } from '@/lib/api/types';
 
-const FUNNEL_LABELS: Record<string, string> = {
-  new: 'New',
-  viewed: 'Viewed',
-  saved: 'Saved',
-  draft_ready: 'Draft ready',
-  awaiting_approval: 'Awaiting approval',
-  applied: 'Applied',
-  interview: 'Interview',
-  offer: 'Offer',
-  rejected: 'Rejected',
-  archived: 'Archived',
+const FUNNEL_LABEL_KEYS: Record<string, string> = {
+  new: 'funnelNew',
+  viewed: 'funnelViewed',
+  saved: 'funnelSaved',
+  draft_ready: 'funnelDraftReady',
+  awaiting_approval: 'funnelAwaitingApproval',
+  applied: 'funnelApplied',
+  interview: 'funnelInterview',
+  offer: 'funnelOffer',
+  rejected: 'funnelRejected',
+  archived: 'funnelArchived',
 };
 
-function successRateBadge(rate: number | null): { className: string; label: string } {
-  if (rate === null) return { className: 'badge badge-neutral', label: 'No runs yet' };
+type T = ReturnType<typeof useTranslations>;
+
+function successRateBadge(rate: number | null, t: T): { className: string; label: string } {
+  if (rate === null) return { className: 'badge badge-neutral', label: t('noRunsYet') };
   const pct = Math.round(rate * 100);
-  if (pct >= 90) return { className: 'badge badge-success', label: `${pct}% success` };
-  if (pct >= 50) return { className: 'badge badge-warning', label: `${pct}% success` };
-  return { className: 'badge badge-danger', label: `${pct}% success` };
+  const label = t('successRate', { pct });
+  if (pct >= 90) return { className: 'badge badge-success', label };
+  if (pct >= 50) return { className: 'badge badge-warning', label };
+  return { className: 'badge badge-danger', label };
 }
 
-function runStatusBadge(status: SourceCrawlRun['status']): { className: string; label: string } {
+function runStatusBadge(status: SourceCrawlRun['status'], t: T): { className: string; label: string } {
   switch (status) {
     case 'success':
-      return { className: 'badge badge-success', label: 'Success' };
+      return { className: 'badge badge-success', label: t('runSuccess') };
     case 'partial_failure':
-      return { className: 'badge badge-warning', label: 'Partial failure' };
+      return { className: 'badge badge-warning', label: t('runPartialFailure') };
     case 'failure':
-      return { className: 'badge badge-danger', label: 'Failure' };
+      return { className: 'badge badge-danger', label: t('runFailure') };
     case 'running':
-      return { className: 'badge badge-neutral', label: 'Running' };
+      return { className: 'badge badge-neutral', label: t('runRunning') };
   }
 }
 
 export default function AdminPage() {
+  const t = useTranslations('Admin');
   const { loading: authLoading } = useRequireAuth();
   const [sources, setSources] = useState<SourceHealth[] | null>(null);
   const [dedupStats, setDedupStats] = useState<DedupStats | null>(null);
@@ -59,9 +64,7 @@ export default function AdminPage() {
     const handleError = (err: unknown) => {
       if (cancelled) return;
       setError(
-        err instanceof Error && err.message.includes('admin')
-          ? 'You don’t have access to this page — it requires an admin account.'
-          : 'Could not load admin data.',
+        err instanceof Error && err.message.includes('admin') ? t('noAccessError') : t('loadError'),
       );
     };
     void api.admin.listSources().then((result) => {
@@ -76,7 +79,7 @@ export default function AdminPage() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading]);
+  }, [authLoading, t]);
 
   const handleRunAlerts = async () => {
     setRunningAlerts(true);
@@ -85,7 +88,7 @@ export default function AdminPage() {
       const result = await getApiClient().admin.runAlerts();
       setAlertRun(result);
     } catch (err) {
-      setAlertRunError(err instanceof Error ? err.message : 'Could not run alerts.');
+      setAlertRunError(err instanceof Error ? err.message : t('runAlertsError'));
     } finally {
       setRunningAlerts(false);
     }
@@ -108,7 +111,7 @@ export default function AdminPage() {
   if (authLoading) {
     return (
       <div className="container" style={{ padding: '48px 24px' }}>
-        <p className="muted">Loading…</p>
+        <p className="muted">{t('loading')}</p>
       </div>
     );
   }
@@ -116,10 +119,8 @@ export default function AdminPage() {
   return (
     <div className="container stack gap-24" style={{ padding: '40px 24px 96px' }}>
       <div className="stack gap-4">
-        <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>Admin — source health</h1>
-        <p className="muted">
-          Crawl run history and success rate per job source, over each source’s last 20 runs.
-        </p>
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>{t('pageTitle')}</h1>
+        <p className="muted">{t('pageSubtitle')}</p>
       </div>
 
       {error && (
@@ -130,25 +131,28 @@ export default function AdminPage() {
 
       {!error && dedupStats && (
         <div className="card stack gap-12" style={{ padding: 20 }} data-testid="admin-dedup-stats">
-          <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>Deduplication</h2>
+          <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{t('dedupTitle')}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16 }}>
             <div className="stack gap-4">
-              <span className="muted" style={{ fontSize: '0.78rem' }}>Raw jobs crawled</span>
+              <span className="muted" style={{ fontSize: '0.78rem' }}>{t('rawJobsCrawled')}</span>
               <strong style={{ fontSize: '1.3rem' }}>{dedupStats.totalRawJobs.toLocaleString()}</strong>
             </div>
             <div className="stack gap-4">
-              <span className="muted" style={{ fontSize: '0.78rem' }}>Visible canonical jobs</span>
+              <span className="muted" style={{ fontSize: '0.78rem' }}>{t('visibleCanonicalJobs')}</span>
               <strong style={{ fontSize: '1.3rem' }}>{dedupStats.visibleCanonicalJobs.toLocaleString()}</strong>
             </div>
             <div className="stack gap-4">
-              <span className="muted" style={{ fontSize: '0.78rem' }}>Hidden by duplication</span>
+              <span className="muted" style={{ fontSize: '0.78rem' }}>{t('hiddenByDuplication')}</span>
               <strong style={{ fontSize: '1.3rem' }}>{dedupStats.hiddenByDuplication.toLocaleString()}</strong>
             </div>
             <div className="stack gap-4">
-              <span className="muted" style={{ fontSize: '0.78rem' }}>Duplicate clusters</span>
+              <span className="muted" style={{ fontSize: '0.78rem' }}>{t('duplicateClusters')}</span>
               <strong style={{ fontSize: '1.3rem' }}>{dedupStats.totalDuplicateClusters.toLocaleString()}</strong>
               <span className="muted" style={{ fontSize: '0.75rem' }}>
-                {dedupStats.exactDuplicateClusters} exact · {dedupStats.nearDuplicateClusters} near-dup
+                {t('duplicateClustersBreakdown', {
+                  exact: dedupStats.exactDuplicateClusters,
+                  near: dedupStats.nearDuplicateClusters,
+                })}
               </span>
             </div>
           </div>
@@ -157,32 +161,32 @@ export default function AdminPage() {
 
       {!error && analytics && (
         <div className="card stack gap-16" style={{ padding: 20 }} data-testid="admin-analytics">
-          <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>Analytics</h2>
+          <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{t('analyticsTitle')}</h2>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16 }}>
             <div className="stack gap-4">
-              <span className="muted" style={{ fontSize: '0.78rem' }}>Total users</span>
+              <span className="muted" style={{ fontSize: '0.78rem' }}>{t('totalUsers')}</span>
               <strong style={{ fontSize: '1.3rem' }}>{analytics.userCounts.total.toLocaleString()}</strong>
               <span className="muted" style={{ fontSize: '0.75rem' }}>
-                {analytics.userCounts.pro} pro · {analytics.userCounts.free} free
+                {t('userCountsBreakdown', { pro: analytics.userCounts.pro, free: analytics.userCounts.free })}
               </span>
             </div>
             <div className="stack gap-4">
-              <span className="muted" style={{ fontSize: '0.78rem' }}>Signups, last 30 days</span>
+              <span className="muted" style={{ fontSize: '0.78rem' }}>{t('signupsLast30Days')}</span>
               <strong style={{ fontSize: '1.3rem' }}>{analytics.signupsLast30Days.toLocaleString()}</strong>
             </div>
             <div className="stack gap-4">
-              <span className="muted" style={{ fontSize: '0.78rem' }}>AI tokens used (all-time)</span>
+              <span className="muted" style={{ fontSize: '0.78rem' }}>{t('aiTokensUsed')}</span>
               <strong style={{ fontSize: '1.3rem' }}>{analytics.tokenUsage.totalTokens.toLocaleString()}</strong>
             </div>
           </div>
 
           <div className="stack gap-8">
-            <span className="muted" style={{ fontSize: '0.78rem' }}>Application funnel</span>
+            <span className="muted" style={{ fontSize: '0.78rem' }}>{t('applicationFunnel')}</span>
             <div className="row row-wrap gap-8">
               {Object.entries(analytics.applicationFunnel).map(([status, count]) => (
                 <span key={status} className="tag" data-testid={`funnel-${status}`}>
-                  {FUNNEL_LABELS[status] ?? status}: {count}
+                  {t('funnelEntry', { label: FUNNEL_LABEL_KEYS[status] ? t(FUNNEL_LABEL_KEYS[status]) : status, count })}
                 </span>
               ))}
             </div>
@@ -190,11 +194,15 @@ export default function AdminPage() {
 
           {analytics.tokenUsage.byFeature.length > 0 && (
             <div className="stack gap-8">
-              <span className="muted" style={{ fontSize: '0.78rem' }}>Token usage by feature</span>
+              <span className="muted" style={{ fontSize: '0.78rem' }}>{t('tokenUsageByFeature')}</span>
               <div className="row row-wrap gap-8">
                 {analytics.tokenUsage.byFeature.map((f) => (
                   <span key={f.feature} className="tag">
-                    {f.feature}: {f.tokensUsed.toLocaleString()} ({f.callCount} calls)
+                    {t('featureUsageEntry', {
+                      feature: f.feature,
+                      tokens: f.tokensUsed.toLocaleString(),
+                      calls: f.callCount,
+                    })}
                   </span>
                 ))}
               </div>
@@ -207,10 +215,9 @@ export default function AdminPage() {
         <div className="card stack gap-12" style={{ padding: 20 }} data-testid="admin-alerts-card">
           <div className="row spread" style={{ flexWrap: 'wrap', gap: 12 }}>
             <div className="stack gap-4">
-              <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>Saved search alerts</h2>
+              <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{t('alertsTitle')}</h2>
               <p className="muted" style={{ fontSize: '0.8rem' }}>
-                Manually-invokable only — checks every active saved search for new matches and emails owners.
-                No standing scheduler runs this automatically yet.
+                {t('alertsHint')}
               </p>
             </div>
             <button
@@ -220,7 +227,7 @@ export default function AdminPage() {
               disabled={runningAlerts}
               data-testid="admin-run-alerts"
             >
-              {runningAlerts ? 'Running…' : 'Run alerts now'}
+              {runningAlerts ? t('runningAlerts') : t('runAlertsButton')}
             </button>
           </div>
           {alertRunError && (
@@ -228,24 +235,26 @@ export default function AdminPage() {
           )}
           {alertRun && (
             <p style={{ fontSize: '0.85rem' }} data-testid="admin-alerts-result">
-              Checked {alertRun.searchesChecked} active saved search{alertRun.searchesChecked === 1 ? '' : 'es'} ·
-              sent {alertRun.emailsSent} email{alertRun.emailsSent === 1 ? '' : 's'} ·
-              {' '}{alertRun.totalJobsMatched} new job{alertRun.totalJobsMatched === 1 ? '' : 's'} matched
+              {t('alertsResult', {
+                searchesChecked: alertRun.searchesChecked,
+                emailsSent: alertRun.emailsSent,
+                jobsMatched: alertRun.totalJobsMatched,
+              })}
             </p>
           )}
         </div>
       )}
 
-      {!error && !sources && <p className="muted">Loading source health…</p>}
+      {!error && !sources && <p className="muted">{t('loadingSourceHealth')}</p>}
 
       {!error && sources && sources.length === 0 && (
-        <p className="muted">No sources configured yet.</p>
+        <p className="muted">{t('noSourcesConfigured')}</p>
       )}
 
       {!error && sources && sources.length > 0 && (
         <div className="stack gap-12">
           {sources.map((source) => {
-            const rate = successRateBadge(source.successRate);
+            const rate = successRateBadge(source.successRate, t);
             const runs = runsBySource[source.id];
             const expanded = expandedId === source.id;
             return (
@@ -258,12 +267,12 @@ export default function AdminPage() {
                     </div>
                     <div className="row gap-8" style={{ fontSize: '0.78rem' }}>
                       <span className="badge badge-neutral" style={{ textTransform: 'uppercase' }}>
-                        {source.trustTier} trust
+                        {t('trustTier', { tier: source.trustTier })}
                       </span>
                       <span className={source.isActive ? 'badge badge-success' : 'badge badge-neutral'}>
-                        {source.isActive ? 'Active' : 'Paused'}
+                        {source.isActive ? t('statusActive') : t('statusPaused')}
                       </span>
-                      <span className="muted">every {source.crawlFrequencyMinutes} min</span>
+                      <span className="muted">{t('crawlFrequency', { minutes: source.crawlFrequencyMinutes })}</span>
                     </div>
                   </div>
 
@@ -271,15 +280,15 @@ export default function AdminPage() {
                     <span className={rate.className}>{rate.label}</span>
                     {source.lastRun ? (
                       <div className="stack gap-4" style={{ textAlign: 'right' }}>
-                        <span className={runStatusBadge(source.lastRun.status).className}>
-                          {runStatusBadge(source.lastRun.status).label}
+                        <span className={runStatusBadge(source.lastRun.status, t).className}>
+                          {runStatusBadge(source.lastRun.status, t).label}
                         </span>
                         <span className="muted" style={{ fontSize: '0.75rem' }}>
                           {formatDate(source.lastRun.startedAt)}
                         </span>
                       </div>
                     ) : (
-                      <span className="muted" style={{ fontSize: '0.8rem' }}>Never run</span>
+                      <span className="muted" style={{ fontSize: '0.8rem' }}>{t('neverRun')}</span>
                     )}
                     <button
                       type="button"
@@ -287,19 +296,19 @@ export default function AdminPage() {
                       onClick={() => toggleExpanded(source.id)}
                       data-testid={`admin-source-toggle-${source.sourceType}`}
                     >
-                      {expanded ? 'Hide history' : 'View history'}
+                      {expanded ? t('hideHistory') : t('viewHistory')}
                     </button>
                   </div>
                 </div>
 
                 {expanded && (
                   <div className="stack gap-8" style={{ borderTop: '1px solid var(--color-border)', paddingTop: 12 }}>
-                    {!runs && <p className="muted" style={{ fontSize: '0.85rem' }}>Loading runs…</p>}
+                    {!runs && <p className="muted" style={{ fontSize: '0.85rem' }}>{t('loadingRuns')}</p>}
                     {runs && runs.length === 0 && (
-                      <p className="muted" style={{ fontSize: '0.85rem' }}>No crawl runs recorded yet.</p>
+                      <p className="muted" style={{ fontSize: '0.85rem' }}>{t('noRunsRecorded')}</p>
                     )}
                     {runs?.map((run) => {
-                      const badge = runStatusBadge(run.status);
+                      const badge = runStatusBadge(run.status, t);
                       return (
                         <div
                           key={run.id}
@@ -311,10 +320,10 @@ export default function AdminPage() {
                             <span className="muted">{formatDate(run.startedAt)}</span>
                           </div>
                           <div className="row gap-12" style={{ color: 'var(--color-text-muted)' }}>
-                            <span>{run.jobsFetched} fetched</span>
-                            <span>{run.jobsNew} new</span>
-                            <span>{run.jobsUpdated} updated</span>
-                            {run.retryCount > 0 && <span>{run.retryCount} retries</span>}
+                            <span>{t('jobsFetched', { count: run.jobsFetched })}</span>
+                            <span>{t('jobsNew', { count: run.jobsNew })}</span>
+                            <span>{t('jobsUpdated', { count: run.jobsUpdated })}</span>
+                            {run.retryCount > 0 && <span>{t('retries', { count: run.retryCount })}</span>}
                           </div>
                           {run.errorLog && (
                             <p style={{ width: '100%', margin: 0, fontSize: '0.78rem', color: 'var(--color-danger)' }}>

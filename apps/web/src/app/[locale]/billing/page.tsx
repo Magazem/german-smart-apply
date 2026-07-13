@@ -1,36 +1,38 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useRequireAuth } from '@/lib/use-require-auth';
 import { useAuth } from '@/lib/auth-context';
 import { getApiClient } from '@/lib/api-client';
 import type { TokenUsageSummary } from '@/lib/api/types';
 
-const FREE_FEATURES = [
-  'CV parsing + starter profile',
-  'Top 5 trusted, deduplicated German job matches',
-  'One example tailored cover letter',
-  'Approval-first application queue',
-  'Basic job search & filters',
-];
+const FREE_FEATURE_KEYS = [
+  'freeFeature1',
+  'freeFeature2',
+  'freeFeature3',
+  'freeFeature4',
+  'freeFeature5',
+] as const;
 
-const PRO_FEATURES = [
-  'Everything in Free',
-  'Unlimited matched jobs & saved searches',
-  'Salary targets, work authorization, company blacklist',
-  'Multiple CV variants per job',
-  'Richer tailoring & interview prep notes',
-  'Deeper application tracking & alerts',
-];
+const PRO_FEATURE_KEYS = [
+  'proFeature1',
+  'proFeature2',
+  'proFeature3',
+  'proFeature4',
+  'proFeature5',
+  'proFeature6',
+] as const;
 
-const FEATURE_LABELS: Record<string, string> = {
-  parseCv: 'CV parsing',
-  cvVariant: 'Tailored CV generation',
-  coverLetter: 'Cover letter generation',
-  matchExplanation: 'Match explanations',
+const FEATURE_LABEL_KEYS: Record<string, string> = {
+  parseCv: 'featureParseCv',
+  cvVariant: 'featureCvVariant',
+  coverLetter: 'featureCoverLetter',
+  matchExplanation: 'featureMatchExplanation',
 };
 
 export default function BillingPage() {
+  const t = useTranslations('Billing');
   const { loading } = useRequireAuth();
   const { user } = useAuth();
   const [message, setMessage] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export default function BillingPage() {
   if (loading) {
     return (
       <div className="container" style={{ padding: '48px 24px' }}>
-        <p className="muted">Loading…</p>
+        <p className="muted">{t('loading')}</p>
       </div>
     );
   }
@@ -61,32 +63,29 @@ export default function BillingPage() {
   const handleUpgrade = () => {
     // TODO(billing workstream): wire real Stripe Checkout session creation
     // here once apps/api exposes a /billing/checkout-session endpoint.
-    setMessage('Stripe checkout isn’t wired up yet — this button is a placeholder for the billing workstream.');
+    setMessage(t('checkoutPlaceholder'));
   };
 
   return (
     <div className="container stack gap-24" style={{ padding: '40px 24px 96px' }}>
       <div className="stack gap-4">
-        <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>Billing</h1>
-        <p className="muted">
-          Free proves value fast. Pro unlocks deeper profile control and richer tailoring. Applications stay
-          approval-first on every tier.
-        </p>
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>{t('pageTitle')}</h1>
+        <p className="muted">{t('pageSubtitle')}</p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
         <div className="card stack gap-16" style={{ padding: 28 }}>
           <div className="row spread">
-            <h2 style={{ fontWeight: 800, fontSize: '1.2rem' }}>Free</h2>
-            {user?.tier === 'free' && <span className="badge badge-success">Current plan</span>}
+            <h2 style={{ fontWeight: 800, fontSize: '1.2rem' }}>{t('freeTitle')}</h2>
+            {user?.tier === 'free' && <span className="badge badge-success">{t('currentPlan')}</span>}
           </div>
           <p style={{ fontSize: '1.8rem', fontWeight: 800 }}>
-            €0<span className="muted" style={{ fontSize: '0.9rem', fontWeight: 500 }}> / month</span>
+            €0<span className="muted" style={{ fontSize: '0.9rem', fontWeight: 500 }}> {t('perMonth')}</span>
           </p>
           <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {FREE_FEATURES.map((f) => (
-              <li key={f} style={{ fontSize: '0.9rem', marginBottom: 8 }}>
-                {f}
+            {FREE_FEATURE_KEYS.map((key) => (
+              <li key={key} style={{ fontSize: '0.9rem', marginBottom: 8 }}>
+                {t(key)}
               </li>
             ))}
           </ul>
@@ -94,26 +93,26 @@ export default function BillingPage() {
 
         <div className="card stack gap-16" style={{ padding: 28, border: '2px solid var(--color-primary)' }}>
           <div className="row spread">
-            <h2 style={{ fontWeight: 800, fontSize: '1.2rem' }}>Pro</h2>
+            <h2 style={{ fontWeight: 800, fontSize: '1.2rem' }}>{t('proTitle')}</h2>
             {user?.tier === 'pro' ? (
-              <span className="badge badge-success">Current plan</span>
+              <span className="badge badge-success">{t('currentPlan')}</span>
             ) : (
-              <span className="badge badge-neutral">Most popular</span>
+              <span className="badge badge-neutral">{t('mostPopular')}</span>
             )}
           </div>
           <p style={{ fontSize: '1.8rem', fontWeight: 800 }}>
-            €19<span className="muted" style={{ fontSize: '0.9rem', fontWeight: 500 }}> / month</span>
+            €19<span className="muted" style={{ fontSize: '0.9rem', fontWeight: 500 }}> {t('perMonth')}</span>
           </p>
           <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {PRO_FEATURES.map((f) => (
-              <li key={f} style={{ fontSize: '0.9rem', marginBottom: 8 }}>
-                {f}
+            {PRO_FEATURE_KEYS.map((key) => (
+              <li key={key} style={{ fontSize: '0.9rem', marginBottom: 8 }}>
+                {t(key)}
               </li>
             ))}
           </ul>
           {user?.tier !== 'pro' && (
             <button type="button" className="btn btn-primary" onClick={handleUpgrade} data-testid="upgrade-cta">
-              Upgrade to Pro
+              {t('upgradeButton')}
             </button>
           )}
         </div>
@@ -128,23 +127,24 @@ export default function BillingPage() {
       {usage && (
         <div className="card stack gap-12" style={{ padding: 24 }}>
           <div className="stack gap-4">
-            <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>Your AI usage</h2>
+            <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{t('usageTitle')}</h2>
             <p className="muted" style={{ fontSize: '0.82rem' }}>
-              Tokens spent on CV parsing, tailored drafts, and match explanations, all-time.
+              {t('usageSubtitle')}
             </p>
           </div>
           {usage.totalTokens === 0 ? (
-            <p className="muted" style={{ fontSize: '0.88rem' }}>No AI usage recorded yet.</p>
+            <p className="muted" style={{ fontSize: '0.88rem' }}>{t('noUsageYet')}</p>
           ) : (
             <>
-              <p style={{ fontWeight: 700, fontSize: '1.1rem' }}>{usage.totalTokens.toLocaleString()} tokens</p>
+              <p style={{ fontWeight: 700, fontSize: '1.1rem' }}>{t('tokensTotal', { count: usage.totalTokens.toLocaleString() })}</p>
               <div className="stack gap-8">
                 {usage.byFeature.map((f) => (
                   <div key={f.feature} className="row spread" style={{ fontSize: '0.85rem' }}>
                     <span>
-                      {FEATURE_LABELS[f.feature] ?? f.feature} <span className="muted">({f.callCount} calls)</span>
+                      {FEATURE_LABEL_KEYS[f.feature] ? t(FEATURE_LABEL_KEYS[f.feature]) : f.feature}{' '}
+                      <span className="muted">{t('callCount', { count: f.callCount })}</span>
                     </span>
-                    <span className="muted">{f.tokensUsed.toLocaleString()} tokens</span>
+                    <span className="muted">{t('tokensUsed', { count: f.tokensUsed.toLocaleString() })}</span>
                   </div>
                 ))}
               </div>
@@ -154,8 +154,7 @@ export default function BillingPage() {
       )}
 
       <p className="muted" style={{ fontSize: '0.8rem' }}>
-        Billing is powered by Stripe (subscriptions + usage metering) once wired up — this page is a functional
-        placeholder ahead of that integration.
+        {t('stripePlaceholderNote')}
       </p>
     </div>
   );

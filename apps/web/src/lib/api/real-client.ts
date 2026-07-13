@@ -10,6 +10,7 @@ import type {
   JobFeedbackType,
   JobSearchFilters,
   ParsedCvResult,
+  RoleGapAnalysis,
 } from '@german-smart-apply/shared';
 import type {
   AlertRunSummary,
@@ -30,6 +31,21 @@ import type {
 } from './types';
 
 const TOKEN_STORAGE_KEY = 'gsa_auth_token';
+
+/**
+ * NestJS's ValidationPipe returns `{ message: string | string[], error, statusCode }` on
+ * 4xx responses; surface that human-readable message instead of the raw JSON body.
+ */
+function extractApiErrorMessage(body: string, res: Response): string {
+  try {
+    const parsed = JSON.parse(body) as { message?: string | string[] };
+    if (Array.isArray(parsed.message)) return parsed.message.join(' ');
+    if (typeof parsed.message === 'string') return parsed.message;
+  } catch {
+    // Not a JSON error body - fall through to the raw text below.
+  }
+  return body || res.statusText || `API error ${res.status}`;
+}
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -85,7 +101,7 @@ export class RealApiClient implements ApiClient {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      throw new Error(`API error ${res.status}: ${body || res.statusText}`);
+      throw new Error(extractApiErrorMessage(body, res));
     }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
@@ -305,6 +321,16 @@ export class RealApiClient implements ApiClient {
 
   usage = {
     summary: async (): Promise<TokenUsageSummary> => this.request<TokenUsageSummary>('/usage'),
+  };
+
+  roleGapAnalysis = {
+    list: async (): Promise<RoleGapAnalysis[]> =>
+      this.request<RoleGapAnalysis[]>('/role-gap-analysis'),
+    create: async (targetRole: string, language?: string): Promise<RoleGapAnalysis> =>
+      this.request<RoleGapAnalysis>('/role-gap-analysis', {
+        method: 'POST',
+        body: JSON.stringify(language ? { targetRole, language } : { targetRole }),
+      }),
   };
 
   admin = {
