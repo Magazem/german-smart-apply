@@ -865,6 +865,25 @@ export class MockApiClient implements ApiClient {
         signupsLast30Days,
       };
     },
+    // Mock world has no OpenRouter/Anthropic behind it (MockAiProvider is
+    // deterministic and ignores model entirely) - this just persists the
+    // admin's choice so the UI round-trips correctly for demo/testing
+    // purposes, matching the real backend's shape.
+    getOpenRouterModel: async (): Promise<{ model: string | null }> => {
+      await delay(80);
+      const db = this.getDb();
+      this.requireAdmin(db);
+      return { model: db.openRouterModelOverride ?? null };
+    },
+    setOpenRouterModel: async (model: string | null): Promise<{ model: string | null }> => {
+      await delay(120);
+      const db = this.getDb();
+      this.requireAdmin(db);
+      const trimmed = model?.trim() || null;
+      db.openRouterModelOverride = trimmed;
+      saveDb(db);
+      return { model: trimmed };
+    },
   };
 
   private recordEvent(

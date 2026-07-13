@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { createAiProvider } from '@german-smart-apply/ai';
 import type { Prisma } from '@german-smart-apply/db';
 import type { CanonicalJob, JobFeedbackType, JobMatchScore } from '@german-smart-apply/shared';
+import { AiProviderFactory } from '../ai/ai-provider-factory.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TokenUsageService } from '../token-usage/token-usage.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
@@ -26,12 +26,12 @@ const ALERT_MATCH_LIMIT = 20;
 @Injectable()
 export class JobsService {
   private readonly logger = new Logger(JobsService.name);
-  private readonly aiProvider = createAiProvider();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly ranking: RankingService,
     private readonly tokenUsage: TokenUsageService,
+    private readonly aiProviderFactory: AiProviderFactory,
   ) {}
 
   async search(filters: SearchJobsDto, userId?: string) {
@@ -150,7 +150,8 @@ export class JobsService {
       // complete response - a transient AI-provider failure (rate limit,
       // overload, etc.) shouldn't 500 the whole job-detail request.
       try {
-        const explanationResult = await this.aiProvider.generateMatchExplanation(
+        const aiProvider = await this.aiProviderFactory.getProvider();
+        const explanationResult = await aiProvider.generateMatchExplanation(
           toSharedCandidateProfile(profile),
           job,
           profile.preferredLanguage,

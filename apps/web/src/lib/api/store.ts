@@ -51,6 +51,8 @@ export interface MockDb {
   savedSearches: MockSavedSearch[];
   /** userId -> every run analysis, most recent first. Absent on pre-feature localStorage payloads. */
   roleGapAnalyses?: Record<string, RoleGapAnalysis[]>;
+  /** Admin-set OpenRouter model override for the mock world. Absent/null means no override. */
+  openRouterModelOverride?: string | null;
   sessionUserId: string | null;
 }
 

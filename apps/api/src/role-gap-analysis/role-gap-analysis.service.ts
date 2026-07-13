@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
-import { AiProviderError, createAiProvider } from '@german-smart-apply/ai';
+import { AiProviderError } from '@german-smart-apply/ai';
+import { AiProviderFactory } from '../ai/ai-provider-factory.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TokenUsageService } from '../token-usage/token-usage.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
@@ -19,11 +20,11 @@ const SAMPLE_JOB_LIMIT = 5;
 @Injectable()
 export class RoleGapAnalysisService {
   private readonly logger = new Logger(RoleGapAnalysisService.name);
-  private readonly aiProvider = createAiProvider();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokenUsage: TokenUsageService,
+    private readonly aiProviderFactory: AiProviderFactory,
   ) {}
 
   async list(userId: string) {
@@ -65,7 +66,8 @@ export class RoleGapAnalysisService {
 
     let analysis;
     try {
-      analysis = await this.aiProvider.generateRoleGapAnalysis(
+      const aiProvider = await this.aiProviderFactory.getProvider();
+      analysis = await aiProvider.generateRoleGapAnalysis(
         sharedProfile,
         { targetRole: dto.targetRole, sampleJobs, tagFrequency },
         lang,
