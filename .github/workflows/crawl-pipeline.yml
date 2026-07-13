@@ -1,0 +1,33 @@
+name: Run crawl pipeline
+
+on:
+  schedule:
+    # Every 4 hours - matches the finest crawlFrequencyMinutes (240) among
+    # configured sources (see workers/common/market_de.py). Coarser sources
+    # (360min/6h, e.g. Arbeitsagentur) just get crawled somewhat more often
+    # than their nominal cadence, which is harmless: run_pipeline.py crawls
+    # every active source on each invocation and every adapter/dedup step
+    # is idempotent (upsert-by-originalJobId, exact/near-dup collapsing).
+    - cron: '0 */4 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  run-pipeline:
+    name: Run crawl pipeline
+    runs-on: ubuntu-latest
+    concurrency: crawl-pipeline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # Same "pass '.' explicitly as build context" reasoning as
+      # fly-deploy.yml. This app has no [http_service] (see workers/fly.toml),
+      # so `flyctl deploy` builds the image and (re)creates/starts the one
+      # machine configured for this app, which runs workers/Dockerfile's
+      # CMD (scripts/run_pipeline.py) to completion and exits - it does not
+      # keep serving traffic the way apps/api and apps/web do.
+      - run: flyctl deploy --config workers/fly.toml --remote-only .
+        env:
+          # `fly tokens create deploy --app german-smart-apply-workers` -
+          # scoped to this app only, same narrowest-scope reasoning as the
+          # api/web tokens in fly-deploy.yml.
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_WORKERS }}
