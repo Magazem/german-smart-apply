@@ -21,17 +21,63 @@ jobs:
       - uses: superfly/flyctl-actions/setup-flyctl@master
       # Same "pass '.' explicitly as build context" reasoning as
       # fly-deploy.yml. This app has no [http_service] (see workers/fly.toml),
-      # so `flyctl deploy` builds the image and (re)creates/starts the one
-      # machine configured for this app, which runs workers/Dockerfile's
-      # CMD (scripts/run_pipeline.py) to completion and exits - it does not
-      # keep serving traffic the way apps/api and apps/web do. --ha=false is
-      # required here: without it, `fly deploy` provisions a redundant
-      # standby machine every run (confirmed live - it never boots the
-      # entrypoint, just sits stopped) which is pure clutter for a one-shot
-      # batch job that gets a brand new machine every 4 hours anyway.
+      # so `flyctl deploy` builds the image and updates the one machine
+      # configured for this app, which runs workers/Dockerfile's CMD
+      # (scripts/run_pipeline.py) to completion and exits - it does not keep
+      # serving traffic the way apps/api and apps/web do. Deploy alone only
+      # starts that machine on the very first-ever deploy (machine creation
+      # implies a start); every deploy after that just updates the existing
+      # (stopped) machine's image in place without restarting it - see the
+      # explicit start step below, which is what actually re-triggers a run.
+      # --ha=false is required here: without it, `fly deploy` provisions a
+      # redundant standby machine every run (confirmed live - it never boots
+      # the entrypoint, just sits stopped) which is pure clutter for a
+      # one-shot batch job that reuses the same machine every 4 hours.
       - run: flyctl deploy --config workers/fly.toml --ha=false --remote-only .
         env:
           # `fly tokens create deploy --app german-smart-apply-workers` -
           # scoped to this app only, same narrowest-scope reasoning as the
           # api/web tokens in fly-deploy.yml.
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_WORKERS }}
+      # `flyctl deploy` only implicitly starts a machine when it CREATES one
+      # (first-ever deploy). Every run after that targets a machine that
+      # already exists in `stopped` state (this app's machine always ends a
+      # successful run stopped - restart policy is on-failure, and exiting 0
+      # isn't a failure) - deploy just updates its image/config in place and
+      # leaves it stopped. Confirmed live: 6 straight scheduled deploys after
+      # the first all showed "success" in Actions while the machine's own
+      # event log went straight from created -> stopped with no intervening
+      # started state, and zero pipeline log lines - the job list silently
+      # stopped updating after the very first run. Explicitly starting the
+      # machine here is what actually re-triggers workers/Dockerfile's CMD.
+      #
+      # Only the primary machine is started, not every machine id, in case
+      # the redundant standby machine (see fly.toml's comment - --ha=false
+      # doesn't retroactively remove one that already exists) is still
+      # around: starting it too would run the pipeline twice concurrently
+      # against the same DB. A machine's `config.standbys` lists the id(s)
+      # it is standing by *for* (confirmed against `flyctl machine list`'s
+      # own †-marked "Standby machine" column - the machine with no
+      # standbys field of its own is the one marked standby; the id that
+      # shows up *inside* another machine's standbys array is the primary),
+      # so the primary is whatever id appears inside any machine's
+      # standbys array - not the machine lacking one.
+      - name: Start the machine (deploy alone doesn't restart an already-stopped one)
+        run: |
+          set -euo pipefail
+          MACHINES=$(flyctl machine list --app german-smart-apply-workers --json)
+          PRIMARY_ID=$(echo "$MACHINES" | jq -r '
+            [.[].config.standbys[]?] | unique | .[0] // empty
+          ')
+          if [ -z "$PRIMARY_ID" ]; then
+            # No HA standby configured (or ever has been) - single-machine
+            # app, so that one machine is the primary.
+            PRIMARY_ID=$(echo "$MACHINES" | jq -r '.[0].id // empty')
+          fi
+          if [ -z "$PRIMARY_ID" ]; then
+            echo "::error::Could not identify a machine to start - check 'flyctl machine list --app german-smart-apply-workers'"
+            exit 1
+          fi
+          flyctl machine start "$PRIMARY_ID" --app german-smart-apply-workers
+        env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_WORKERS }}
