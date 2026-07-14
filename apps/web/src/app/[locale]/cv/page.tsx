@@ -73,7 +73,15 @@ export default function CvWorkspacePage() {
     };
   }, [authLoading]);
 
-  if (!authLoading && !loading && error && !profile) {
+  if (authLoading || loading) {
+    return (
+      <div className="container" style={{ padding: '48px 24px' }}>
+        <div className="skeleton" style={{ height: 320 }} />
+      </div>
+    );
+  }
+
+  if (error) {
     return (
       <div className="container" style={{ padding: '48px 24px' }}>
         <p className="error-text">{error}</p>
@@ -81,10 +89,22 @@ export default function CvWorkspacePage() {
     );
   }
 
-  if (authLoading || loading || !profile) {
+  // A real, distinct state from "still loading" - api.profile.get() resolves
+  // null specifically when the backend has no CandidateProfile row yet
+  // (a user who signed up but never finished onboarding), not on a real
+  // failure (that's the `error` branch above). Without this branch, `loading`
+  // and "genuinely no profile" were indistinguishable and this page showed
+  // an eternal skeleton with no way out.
+  if (!profile) {
     return (
       <div className="container" style={{ padding: '48px 24px' }}>
-        <div className="skeleton" style={{ height: 320 }} />
+        <div className="card stack gap-12" style={{ padding: 24 }}>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>{t('noProfileHeading')}</h1>
+          <p className="muted">{t('noProfileText')}</p>
+          <Link href="/onboarding" className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
+            {t('completeOnboardingLink')}
+          </Link>
+        </div>
       </div>
     );
   }

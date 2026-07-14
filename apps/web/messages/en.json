@@ -441,6 +441,9 @@
   },
   "CvWorkspace": {
     "loadError": "Could not load your CV workspace.",
+    "noProfileHeading": "Let's set up your profile first",
+    "noProfileText": "You haven't finished onboarding yet, so there's no profile here to work with.",
+    "completeOnboardingLink": "Complete onboarding",
     "profileSaved": "Profile saved.",
     "saveError": "Could not save your profile.",
     "generateError": "Could not generate a tailored draft.",

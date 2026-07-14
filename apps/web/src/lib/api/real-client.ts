@@ -47,6 +47,22 @@ function extractApiErrorMessage(body: string, res: Response): string {
   return body || res.statusText || `API error ${res.status}`;
 }
 
+/**
+ * Carries the HTTP status alongside the message so callers can distinguish
+ * "expected 404, e.g. no profile yet" from a real failure (network/500) -
+ * a plain Error can't make that distinction, which previously meant
+ * swallowing every failure identically.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
   return window.localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -101,7 +117,7 @@ export class RealApiClient implements ApiClient {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      throw new Error(extractApiErrorMessage(body, res));
+      throw new ApiError(extractApiErrorMessage(body, res), res.status);
     }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
@@ -155,11 +171,18 @@ export class RealApiClient implements ApiClient {
   };
 
   profile = {
+    // A 404 here is a legitimate state - a user who hasn't finished
+    // onboarding yet genuinely has no CandidateProfile row - so it resolves
+    // to null like any other "not found yet" lookup. Anything else (network
+    // failure, 500) re-throws instead of also collapsing to null, so callers
+    // can tell "no profile" apart from "couldn't check" and show a real error
+    // rather than silently treating a backend outage as an empty profile.
     get: async (): Promise<CandidateProfile | null> => {
       try {
         return await this.request<CandidateProfile>('/profile');
-      } catch {
-        return null;
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
       }
     },
     update: async (patch: Partial<CandidateProfile>): Promise<CandidateProfile> =>

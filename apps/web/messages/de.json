@@ -441,6 +441,9 @@
   },
   "CvWorkspace": {
     "loadError": "Ihr Lebenslauf-Arbeitsbereich konnte nicht geladen werden.",
+    "noProfileHeading": "Richten wir zuerst Ihr Profil ein",
+    "noProfileText": "Sie haben das Onboarding noch nicht abgeschlossen, daher gibt es hier noch kein Profil.",
+    "completeOnboardingLink": "Onboarding abschließen",
     "profileSaved": "Profil gespeichert.",
     "saveError": "Ihr Profil konnte nicht gespeichert werden.",
     "generateError": "Der maßgeschneiderte Entwurf konnte nicht erstellt werden.",
