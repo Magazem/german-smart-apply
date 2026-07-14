@@ -29,7 +29,8 @@ describe('Ranking quality eval harness', () => {
       // Rank by what the service actually predicted, not by label order -
       // nDCG must be computed against the order a real user would see.
       const rankedRelevances = [...scored].sort((a, b) => b.predicted - a.predicted).map((s) => s.relevance);
-      return { id: query.id, ndcg: ndcgAtK(rankedRelevances) };
+      const topPredicted = Math.max(...scored.map((s) => s.predicted));
+      return { id: query.id, ndcg: ndcgAtK(rankedRelevances), topPredicted };
     });
 
     const average = perQuery.reduce((sum, q) => sum + q.ndcg, 0) / perQuery.length;
@@ -38,7 +39,7 @@ describe('Ranking quality eval harness', () => {
     // harness, not just a pass/fail gate.
     console.log('\nRanking eval report:');
     for (const q of perQuery) {
-      console.log(`  ${q.id}: nDCG@k = ${q.ndcg.toFixed(3)}`);
+      console.log(`  ${q.id}: nDCG@k = ${q.ndcg.toFixed(3)}, top totalScore = ${q.topPredicted.toFixed(3)}`);
     }
     console.log(`  AVERAGE: ${average.toFixed(3)} (bar: ${MIN_AVERAGE_NDCG})\n`);
 

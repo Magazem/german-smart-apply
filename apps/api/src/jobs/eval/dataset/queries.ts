@@ -12,11 +12,17 @@ import { BOOTSTRAP_QUERIES } from './bootstrap-queries.js';
  * to give MIN_AVERAGE_NDCG (ranking-eval.test.ts) something real to enforce
  * from day one, however small.
  *
- * Both queries below encode the exact bug that started this whole matching
- * investigation: a legal-counsel profile scoring nearly as high against an
- * unrelated programming job as a programmer profile scored against a
- * relevant one. If a future weight change regresses that, this harness
- * should catch it.
+ * The first two queries encode the exact bug that started this whole
+ * matching investigation: a legal-counsel profile scoring nearly as high
+ * against an unrelated programming job as a programmer profile scored
+ * against a relevant one. The third ('ai-pm-vocabulary-mismatch-de') encodes
+ * a second, later bug found live: titleSimilarity/skillOverlap are plain
+ * Jaccard token-set overlap, so a genuinely strong match scores near-zero on
+ * skillOverlap whenever the candidate's CV and the job's tags describe the
+ * same skills with different words (e.g. 'Stakeholder Management' vs
+ * 'Cross-functional Leadership'). This dataset only proves the harness can
+ * measure it - see the synonym-taxonomy fix in packages/market-de for the
+ * actual mitigation and the nDCG delta it should produce on this query.
  */
 const SMOKE_QUERIES: LabeledQuery[] = [
   {
@@ -107,6 +113,55 @@ const SMOKE_QUERIES: LabeledQuery[] = [
           jobId: 'eval-backend-senior-2',
           jobTitleNormalized: 'senior backend engineer',
           techStackTags: ['TypeScript', 'Node.js', 'PostgreSQL', 'AWS'],
+        }),
+      },
+    ],
+  },
+  {
+    id: 'ai-pm-vocabulary-mismatch-de',
+    labeledBy: 'human',
+    profile: buildEvalProfile({
+      targetRole: 'AI Product Manager',
+      skills: ['Stakeholder Management', 'A/B Testing', 'Roadmapping', 'Fintech'],
+      seniority: 'senior',
+    }),
+    jobs: [
+      {
+        relevance: 4,
+        rationale:
+          "Same seniority, same function, adjacent domain (fintech AI product) - and every one of the candidate's skills has a real counterpart on the job's tag list, just phrased differently: 'Stakeholder Management'/'Cross-functional Leadership', 'A/B Testing'/'Experimentation', 'Roadmapping'/'Product Roadmap'. This exact shape of pair (genuinely strong match, near-zero literal token overlap) scored ~35-40% live under plain Jaccard matching - a human evaluator would call this a 4, not a 2.",
+        job: buildEvalJob({
+          jobId: 'eval-ai-pm-synonym-job',
+          jobTitleNormalized: 'senior product manager ai platform',
+          seniority: 'senior',
+          techStackTags: ['Cross-functional Leadership', 'Experimentation', 'Product Roadmap', 'Fintech'],
+        }),
+      },
+      {
+        relevance: 2,
+        rationale: 'Same broad field (product/tech), but backend engineering day-to-day, not product management.',
+        job: buildEvalJob({
+          jobId: 'eval-backend-senior-3',
+          jobTitleNormalized: 'senior backend engineer',
+          techStackTags: ['TypeScript', 'Node.js', 'PostgreSQL', 'AWS'],
+        }),
+      },
+      {
+        relevance: 1,
+        rationale: 'Commercial, stakeholder-facing adjacency, but marketing is not product management.',
+        job: buildEvalJob({
+          jobId: 'eval-marketing-manager-3',
+          jobTitleNormalized: 'marketing manager',
+          techStackTags: ['Negotiation', 'Campaign Management', 'SEO'],
+        }),
+      },
+      {
+        relevance: 0,
+        rationale: 'Different field entirely, zero skill overlap.',
+        job: buildEvalJob({
+          jobId: 'eval-legal-counsel-3',
+          jobTitleNormalized: 'legal counsel',
+          techStackTags: ['Contract Law', 'Compliance', 'Negotiation'],
         }),
       },
     ],
