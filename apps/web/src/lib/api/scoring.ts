@@ -16,6 +16,8 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
 
   const locationFit = computeLocationFit(profile, job);
 
+  const eligible = !profile.targetCountryCode || profile.targetCountryCode === job.countryCode;
+
   const recencmyBoost = computeRecencyBoost(job.postedAt);
 
   const salaryFit = computeSalaryFit(profile, job);
@@ -38,10 +40,16 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
   // again without both call sites changing together.
   const weights = marketDe.rankingWeights;
 
+  // Same eligibilityPenalty convention as ranking.service.ts - a hard-constraint
+  // mismatch (currently just target country) discounts only the
+  // locationFit-weighted term, not the whole score. Kept in sync so the mock
+  // scorer can't silently diverge from the real backend on this again.
+  const eligibilityPenalty = eligible ? 1 : 0.5;
+
   const positive =
     titleSimilarity * weights.titleSimilarity +
     skillOverlap * weights.skillOverlap +
-    locationFit * weights.locationFit +
+    locationFit * weights.locationFit * eligibilityPenalty +
     recencmyBoost * weights.recency +
     salaryFit * weights.salaryFit +
     languageFit * weights.languageFit +
@@ -61,6 +69,7 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
     sourceTrust: round2(sourceTrust),
     duplicateConfidence,
     riskPenalty: round2(riskPenalty),
+    eligible,
   };
 }
 
