@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
+import type { CandidateProfile } from '@german-smart-apply/shared';
 import { DEMO_EMAIL, DEMO_PASSWORD, getApiClient, isMockApi } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 
@@ -33,7 +34,21 @@ export default function LoginPage() {
 
   const afterLogin = async () => {
     await refresh();
-    const profile = await getApiClient().profile.get();
+    // Login itself already succeeded by this point (refresh() set `user`) -
+    // a failure here is just "couldn't check the profile to route smartly",
+    // not an auth failure. Letting it throw would reach onSubmit's catch
+    // below, which sets submitting=false while `user` is already truthy -
+    // exactly the condition the bounce-guard effect above is watching for,
+    // so it would force a navigate to /dashboard right out from under a
+    // "login failed" message the user never actually earned. Falling back
+    // to /onboarding (the same destination a genuinely profile-less user
+    // gets) keeps this failure mode a routing fallback, not a fake login error.
+    let profile: CandidateProfile | null = null;
+    try {
+      profile = await getApiClient().profile.get();
+    } catch {
+      // Swallowed deliberately - see comment above.
+    }
     router.push(profile?.targetRole ? '/dashboard' : '/onboarding');
   };
 
