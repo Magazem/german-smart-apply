@@ -15,11 +15,21 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Bounces an already-authenticated visitor who lands directly on /login.
+  // Guarded by !submitting for the same reason as signup/page.tsx: logging
+  // in also authenticates (refresh() inside afterLogin sets `user`), and
+  // this effect re-running on that same state change would otherwise race
+  // afterLogin's own profile-aware router.push below - a returning user
+  // with an incomplete profile could get bounced straight to /dashboard
+  // instead of back to /onboarding. `submitting` stays true for the whole
+  // success path (only reset to false in the catch branches), so it
+  // reliably suppresses this guard until afterLogin's navigation has
+  // already been issued.
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && user && !submitting) {
       router.replace('/dashboard');
     }
-  }, [loading, user, router]);
+  }, [loading, user, submitting, router]);
 
   const afterLogin = async () => {
     await refresh();
