@@ -42,11 +42,19 @@ export default function SignupPage() {
 
   const strength = usePasswordStrength(password);
 
+  // Bounces an already-authenticated visitor who lands directly on /signup.
+  // Guarded by !submitting: registering also authenticates (refresh() sets
+  // `user`), and this effect re-running on that same state change would
+  // otherwise race the onSubmit handler's own router.push('/onboarding')
+  // below - whichever navigation resolved last decided where a fresh signup
+  // landed. `submitting` stays true for the whole success path (only reset
+  // to false in the catch branch), so it reliably suppresses this guard
+  // until onSubmit's own navigation has already been issued.
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && user && !submitting) {
       router.replace('/dashboard');
     }
-  }, [loading, user, router]);
+  }, [loading, user, submitting, router]);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
