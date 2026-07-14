@@ -109,5 +109,14 @@ export interface JobMatchScore {
   sourceTrust: number;
   duplicateConfidence: number;
   riskPenalty: number;
+  /**
+   * Whether the candidate meets hard constraints (currently: target country)
+   * for this job, as opposed to how well it fits their skills/role. Kept
+   * separate from the continuous fit dimensions above so a strong semantic
+   * match with a hard-constraint mismatch (e.g. a great marketing role in a
+   * country the candidate isn't targeting) is legible as two distinct facts,
+   * not blended into one number.
+   */
+  eligible: boolean;
   explanation?: string;
 }

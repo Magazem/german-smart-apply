@@ -81,6 +81,47 @@ describe('RankingService.score - salaryFit', () => {
   });
 });
 
+describe('RankingService.score - eligibility (hard constraints) vs. locationFit (soft fit)', () => {
+  const service = new RankingService();
+
+  it('reports eligible: true and an unpenalized locationFit when the job matches the target country', () => {
+    const job = buildJob({ countryCode: 'DE', remoteType: 'hybrid' });
+    const result = service.score(job, { profile: buildProfile({ targetCountryCode: 'DE', locationPreference: 'hybrid' }) });
+    expect(result.eligible).toBe(true);
+    expect(result.locationFit).toBe(1);
+  });
+
+  it('reports eligible: false on a country mismatch, but leaves locationFit reporting pure work-mode fit', () => {
+    const job = buildJob({ countryCode: 'ES', remoteType: 'hybrid' });
+    const result = service.score(job, { profile: buildProfile({ targetCountryCode: 'DE', locationPreference: 'hybrid' }) });
+    expect(result.eligible).toBe(false);
+    // locationFit no longer folds the country mismatch in - it's the same
+    // pure work-mode fit as the DE case above, not silently discounted.
+    expect(result.locationFit).toBe(1);
+  });
+
+  it('still discounts totalScore for a country mismatch, via the separate eligibilityPenalty', () => {
+    const jobMatch = buildJob({ countryCode: 'DE', remoteType: 'hybrid' });
+    const jobMismatch = buildJob({ countryCode: 'ES', remoteType: 'hybrid' });
+    const profile = buildProfile({ targetCountryCode: 'DE', locationPreference: 'hybrid' });
+    const eligible = service.score(jobMatch, { profile });
+    const ineligible = service.score(jobMismatch, { profile });
+    expect(ineligible.totalScore).toBeLessThan(eligible.totalScore);
+  });
+
+  it('treats an empty targetCountryCode as no hard constraint - always eligible', () => {
+    const job = buildJob({ countryCode: 'ES' });
+    const result = service.score(job, { profile: buildProfile({ targetCountryCode: '' }) });
+    expect(result.eligible).toBe(true);
+  });
+
+  it('defaults eligible to true when there is no profile to check against', () => {
+    const job = buildJob({ countryCode: 'ES' });
+    const result = service.score(job, { profile: null });
+    expect(result.eligible).toBe(true);
+  });
+});
+
 describe('RankingService.score - interactionBias', () => {
   const service = new RankingService();
 

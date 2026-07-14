@@ -72,6 +72,14 @@ export class RankingService {
       : 0.5;
 
     const locationFit = profile ? this.locationFit(profile, job) : 0.5;
+    const eligible = profile ? this.isEligible(profile, job) : true;
+    // Same magnitude as the old in-locationFit country discount (0.5x on the
+    // locationFit-weighted term only) - this PR separates the *signal* from
+    // the *scoring*, it doesn't retune how much a hard-constraint mismatch
+    // should cost. Whether it deserves its own weighted dimension (rather
+    // than riding on locationFit's weight) is a Phase 3 eval-harness decision,
+    // same as duplicateConfidence below.
+    const eligibilityPenalty = eligible ? 1 : 0.5;
 
     const recencmyBoost = this.recencyBoost(job.postedAt);
 
@@ -95,7 +103,7 @@ export class RankingService {
     let totalScore =
       weights.titleSimilarity * titleSimilarity +
       weights.skillOverlap * skillOverlap +
-      weights.locationFit * locationFit +
+      weights.locationFit * locationFit * eligibilityPenalty +
       weights.recency * recencmyBoost +
       weights.salaryFit * salaryFit +
       weights.languageFit * languageFit +
@@ -120,6 +128,7 @@ export class RankingService {
       sourceTrust,
       duplicateConfidence,
       riskPenalty,
+      eligible,
     };
   }
 
@@ -137,6 +146,13 @@ export class RankingService {
     return jaccard(skillSet, tagSet);
   }
 
+  /**
+   * Pure work-mode fit (onsite/hybrid/remote vs. preference) - deliberately
+   * ignores country, which is a hard-constraint concern handled by
+   * isEligible() instead. A job's locationFit shouldn't silently drop because
+   * it's in the wrong country; that's a different fact from "not my
+   * preferred work mode" and callers need to see them separately.
+   */
   private locationFit(profile: RankingProfileInput, job: CanonicalJob): number {
     let score = 0.5;
     if (profile.locationPreference === 'any') {
@@ -148,10 +164,6 @@ export class RankingService {
       score = 0.7;
     } else {
       score = 0.3;
-    }
-
-    if (profile.targetCountryCode && profile.targetCountryCode !== job.countryCode) {
-      score *= 0.5;
     }
 
     // Placeholder pending real geo-distance data (Phase 4): commutePreferenceKm
@@ -166,6 +178,22 @@ export class RankingService {
     }
 
     return score;
+  }
+
+  /**
+   * Hard constraint, not a fit signal: does this job even meet a condition
+   * the candidate can't compromise on? Today that's just target country -
+   * work authorization and companyBlacklist are collected on the profile
+   * (see plan.md's Phase 10 auto-apply groundwork) but not yet checked here.
+   * Deliberately returns a boolean, not a score, so it can't be silently
+   * blended into a continuous dimension the way the old locationFit discount
+   * was.
+   */
+  private isEligible(profile: RankingProfileInput, job: CanonicalJob): boolean {
+    if (profile.targetCountryCode && profile.targetCountryCode !== job.countryCode) {
+      return false;
+    }
+    return true;
   }
 
   private recencyBoost(postedAt: string | null): number {
