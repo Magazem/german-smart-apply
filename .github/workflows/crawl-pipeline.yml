@@ -66,16 +66,22 @@ jobs:
         run: |
           set -euo pipefail
           MACHINES=$(flyctl machine list --app german-smart-apply-workers --json)
+          MACHINE_COUNT=$(echo "$MACHINES" | jq -r 'length')
           PRIMARY_ID=$(echo "$MACHINES" | jq -r '
             [.[].config.standbys[]?] | unique | .[0] // empty
           ')
-          if [ -z "$PRIMARY_ID" ]; then
-            # No HA standby configured (or ever has been) - single-machine
-            # app, so that one machine is the primary.
+          if [ -z "$PRIMARY_ID" ] && [ "$MACHINE_COUNT" -eq 1 ]; then
+            # No HA standby link exists - only safe to assume "the one
+            # machine" is the primary when there IS only one. If a standby
+            # link is ever detached without also destroying the redundant
+            # machine, MACHINE_COUNT stays 2+ here and this fallback must
+            # NOT fire - guessing .[0] in that ambiguous state is exactly
+            # the kind of silent-wrong-guess this whole workflow fix exists
+            # to eliminate; the guard below fails loudly instead.
             PRIMARY_ID=$(echo "$MACHINES" | jq -r '.[0].id // empty')
           fi
           if [ -z "$PRIMARY_ID" ]; then
-            echo "::error::Could not identify a machine to start - check 'flyctl machine list --app german-smart-apply-workers'"
+            echo "::error::Could not identify a single unambiguous machine to start ($MACHINE_COUNT machine(s) found, none standby-linked) - check 'flyctl machine list --app german-smart-apply-workers' and either destroy the redundant machine or confirm the standby link"
             exit 1
           fi
           flyctl machine start "$PRIMARY_ID" --app german-smart-apply-workers
