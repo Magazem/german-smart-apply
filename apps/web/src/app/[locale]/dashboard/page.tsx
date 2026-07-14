@@ -131,6 +131,13 @@ export default function DashboardPage() {
                   {t('editInCvWorkspace')}
                 </Link>
               </div>
+            ) : loadError ? (
+              // Distinct from "haven't onboarded yet" below - profile.get()
+              // now re-throws a real fetch failure instead of collapsing it
+              // to null, so "no profile" and "couldn't check" are no longer
+              // the same case and shouldn't share the same "go finish
+              // onboarding" copy, which would be actively wrong here.
+              <p className="muted">{t('profileLoadErrorSummary')}</p>
             ) : (
               <p className="muted">{t('completeOnboardingSummary')}</p>
             )}

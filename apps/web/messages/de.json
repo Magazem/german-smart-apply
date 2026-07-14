@@ -356,6 +356,7 @@
     "noSummaryYet": "Noch keine Zusammenfassung.",
     "editInCvWorkspace": "Im Lebenslauf-Arbeitsbereich bearbeiten →",
     "completeOnboardingSummary": "Schließen Sie das Onboarding ab, um Ihre Zusammenfassung zu sehen.",
+    "profileLoadErrorSummary": "Ihr Profil konnte nicht geladen werden — bitte laden Sie die Seite neu.",
     "cvSuggestionsTitle": "Verbesserungsvorschläge für den Lebenslauf",
     "uploadCvForSuggestions": "Laden Sie einen Lebenslauf hoch, um maßgeschneiderte Vorschläge zu erhalten.",
     "applicationPipeline": "Bewerbungspipeline",

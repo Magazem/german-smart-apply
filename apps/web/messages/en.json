@@ -356,6 +356,7 @@
     "noSummaryYet": "No summary yet.",
     "editInCvWorkspace": "Edit in CV workspace →",
     "completeOnboardingSummary": "Complete onboarding to see your summary.",
+    "profileLoadErrorSummary": "Couldn't load your profile — try refreshing the page.",
     "cvSuggestionsTitle": "CV improvement suggestions",
     "uploadCvForSuggestions": "Upload a CV to get tailored suggestions.",
     "applicationPipeline": "Application pipeline",
