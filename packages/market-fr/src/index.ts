@@ -36,6 +36,7 @@ export const marketFr: MarketPack = {
     suspiciousContactPatterns: [],
   },
   companyAliases: {},
+  skillAliases: {},
   rankingWeights: {
     titleSimilarity: 0,
     skillOverlap: 0,

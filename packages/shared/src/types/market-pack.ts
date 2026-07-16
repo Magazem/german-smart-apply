@@ -39,6 +39,15 @@ export interface MarketPack {
     suspiciousContactPatterns: string[];
   };
   companyAliases: Record<string, string[]>;
+  /**
+   * Conservative, hand-curated skill/credential alias table: lowercase alias
+   * phrase -> lowercase canonical concept key. Every entry must be a true
+   * spelling/abbreviation/rebrand of the SAME underlying skill (e.g. 'k8s'
+   * -> 'kubernetes'), never a merely-related-but-distinct skill grouped
+   * together for convenience. See market-de's skillAliases for the full
+   * rationale and the boundary cases it deliberately excludes.
+   */
+  skillAliases: Record<string, string>;
   rankingWeights: {
     titleSimilarity: number;
     skillOverlap: number;

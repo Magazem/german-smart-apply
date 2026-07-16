@@ -166,6 +166,102 @@ export const marketDe: MarketPack = {
     'allianz se': ['Allianz', 'Allianz Deutschland'],
     'continental ag': ['Continental', 'Conti'],
   },
+  // Conservative, hand-curated alias table: every entry maps spellings,
+  // abbreviations, or rebrands of the SAME underlying skill/credential to
+  // one shared canonical key - it does NOT group merely related-but-distinct
+  // skills. E.g. 'Stakeholder Management' and 'Cross-functional Leadership'
+  // are adjacent PM competencies, not aliases of each other, and are
+  // deliberately absent - see ranking.service.ts's canonicalizeSkill() and
+  // eval/dataset/queries.ts's ai-pm-vocabulary-mismatch-de case for why this
+  // distinction matters and what it does/doesn't fix. A generous "umbrella"
+  // map would silently suppress real skill gaps - the same failure mode
+  // career-ops's own upskill.mjs CANONICAL map guards against ("'cloud' must
+  // never count as knowing AWS/GCP/Azure"). Applying that same discipline
+  // here: short abbreviations that collide with an unrelated meaning
+  // elsewhere on this platform (e.g. 'AR' = Augmented Reality in tech vs.
+  // Accounts Receivable in finance; 'GTM' = Go-to-Market vs. Google Tag
+  // Manager) are excluded entirely, or only aliased via their unambiguous
+  // full-phrase form. English-only for now - German-language skill synonyms
+  // are a natural follow-up, not folded in here to keep this reviewable.
+  skillAliases: {
+    // --- Tech ---
+    k8s: 'kubernetes',
+    golang: 'go',
+    postgres: 'postgresql',
+    nodejs: 'node.js',
+    'node js': 'node.js',
+    js: 'javascript',
+    reactjs: 'react',
+    vuejs: 'vue.js',
+    nextjs: 'next.js',
+    ml: 'machine learning',
+    nlp: 'natural language processing',
+    ai: 'artificial intelligence',
+    qa: 'quality assurance',
+    ux: 'user experience',
+    ui: 'user interface',
+    'continuous integration and deployment': 'ci/cd',
+
+    // --- Product management ---
+    'a/b testing': 'experimentation',
+    'split testing': 'experimentation',
+    roadmapping: 'product roadmap',
+    'roadmap planning': 'product roadmap',
+    'user research': 'ux research',
+    okrs: 'objectives and key results',
+    'gtm strategy': 'go-to-market strategy',
+    kpi: 'key performance indicators',
+    kpis: 'key performance indicators',
+    mvp: 'minimum viable product',
+    prd: 'product requirements document',
+
+    // --- Legal ---
+    'ip law': 'intellectual property law',
+    'm&a': 'mergers and acquisitions',
+    compliance: 'regulatory compliance',
+    kyc: 'know your customer',
+    aml: 'anti-money laundering',
+    gdpr: 'data protection',
+    'gdpr compliance': 'data protection compliance',
+
+    // --- Marketing ---
+    seo: 'search engine optimization',
+    sem: 'search engine marketing',
+    ppc: 'pay-per-click advertising',
+    'campaign management': 'marketing campaign management',
+    cro: 'conversion rate optimization',
+    ga4: 'google analytics',
+
+    // --- Sales ---
+    crm: 'customer relationship management',
+    'client management': 'account management',
+    'sales pipeline management': 'pipeline management',
+
+    // --- HR ---
+    'talent acquisition': 'recruiting',
+    recruitment: 'recruiting',
+    onboarding: 'employee onboarding',
+    hris: 'human resources information system',
+    dei: 'diversity, equity, and inclusion',
+
+    // --- Finance ---
+    'financial forecasting': 'forecasting',
+    'budget management': 'budgeting',
+    'p&l': 'profit and loss management',
+    'p&l management': 'profit and loss management',
+    'fp&a': 'financial planning and analysis',
+
+    // --- Healthcare ---
+    ehr: 'electronic health records',
+    emr: 'electronic health records',
+    'patient care coordination': 'care coordination',
+
+    // --- Customer support ---
+    'customer support': 'customer service',
+    'live chat support': 'chat support',
+    csat: 'customer satisfaction',
+    nps: 'net promoter score',
+  },
   // Rebalanced so domain fit (titleSimilarity + skillOverlap, the only two
   // signals that actually measure whether the job is in the candidate's
   // field) dominates the score - 64% combined, up from 50%. Before this, a

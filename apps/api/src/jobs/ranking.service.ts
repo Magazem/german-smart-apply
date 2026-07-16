@@ -141,9 +141,22 @@ export class RankingService {
     // counselor profile score within a few points of a genuinely relevant
     // programming job against a job with no tags at all.
     if (skills.length === 0 || stackTags.length === 0) return 0.1;
-    const skillSet = new Set(skills.map((s) => s.toLowerCase()));
-    const tagSet = new Set(stackTags.map((t) => t.toLowerCase()));
+    const skillSet = new Set(skills.map((s) => this.canonicalizeSkill(s)));
+    const tagSet = new Set(stackTags.map((t) => this.canonicalizeSkill(t)));
     return jaccard(skillSet, tagSet);
+  }
+
+  /**
+   * Collapses a skill/tag string to its canonical concept key via
+   * marketDe.skillAliases (identity if it isn't a known alias), so that
+   * skillOverlap's Jaccard set-intersection credits two phrases describing
+   * the same underlying skill (e.g. 'A/B Testing' and 'Experimentation')
+   * even though they share zero literal tokens. Deliberately conservative -
+   * see skillAliases' own comment for what it does and doesn't collapse.
+   */
+  private canonicalizeSkill(value: string): string {
+    const key = value.toLowerCase().trim();
+    return marketDe.skillAliases[key] ?? key;
   }
 
   /**
