@@ -183,6 +183,34 @@ export const marketDe: MarketPack = {
   // Manager) are excluded entirely, or only aliased via their unambiguous
   // full-phrase form. English-only for now - German-language skill synonyms
   // are a natural follow-up, not folded in here to keep this reviewable.
+  //
+  // Every entry below survived a 5-lens independent adversarial audit
+  // (strict same-concept / cross-category collision / neutral hiring
+  // manager / real-world job-posting usage / adversarial devil's advocate)
+  // run blind against the full table - each lens saw every entry and voted
+  // keep/drop with a reason; entries with a credible drop vote from any
+  // lens were removed unless the surviving reasoning clearly outweighed it.
+  // 19 originally-shipped entries were cut this way, including 'a/b
+  // testing' -> 'experimentation' (unanimous 5/0 drop: A/B testing is one
+  // specific technique, 'experimentation' is the broader discipline -
+  // multivariate tests, bandits, causal inference - the exact over-collapse
+  // pattern this table exists to avoid, caught in solo review for
+  // 'Stakeholder Management'/'Cross-functional Leadership' but missed here
+  // on first pass). Also cut for the same broader-vs-narrower reason:
+  // 'compliance' -> 'regulatory compliance' (bare 'compliance' spans IT/
+  // security, healthcare patient-compliance, and HR policy compliance -
+  // different work from legal regulatory compliance), 'gdpr' -> 'data
+  // protection' (one EU regulation vs. a field spanning other jurisdictions
+  // and unrelated IT backup/DR usage), and 'onboarding' -> 'employee
+  // onboarding' (bare 'onboarding' commonly means product/customer
+  // onboarding, a PM/CS skill, not HR's). Also cut for genuine
+  // cross-category abbreviation collisions this platform's own categories
+  // create: 'nlp' (also Neuro-Linguistic Programming, a sales/HR coaching
+  // credential), 'ui' (also Unemployment Insurance, an HR/benefits term),
+  // 'sem' (also Structural Equation Modeling, a data-analyst skill), 'cro'
+  // (also Contract Research Organization, a healthcare/pharma term, and
+  // Chief Revenue Officer). See the audit's full verdict log for every
+  // entry's reasoning if extending this table later.
   skillAliases: {
     // --- Tech ---
     k8s: 'kubernetes',
@@ -195,19 +223,12 @@ export const marketDe: MarketPack = {
     vuejs: 'vue.js',
     nextjs: 'next.js',
     ml: 'machine learning',
-    nlp: 'natural language processing',
-    ai: 'artificial intelligence',
-    qa: 'quality assurance',
     ux: 'user experience',
-    ui: 'user interface',
     'continuous integration and deployment': 'ci/cd',
 
     // --- Product management ---
-    'a/b testing': 'experimentation',
-    'split testing': 'experimentation',
     roadmapping: 'product roadmap',
     'roadmap planning': 'product roadmap',
-    'user research': 'ux research',
     okrs: 'objectives and key results',
     'gtm strategy': 'go-to-market strategy',
     kpi: 'key performance indicators',
@@ -218,48 +239,41 @@ export const marketDe: MarketPack = {
     // --- Legal ---
     'ip law': 'intellectual property law',
     'm&a': 'mergers and acquisitions',
-    compliance: 'regulatory compliance',
     kyc: 'know your customer',
     aml: 'anti-money laundering',
-    gdpr: 'data protection',
-    'gdpr compliance': 'data protection compliance',
 
     // --- Marketing ---
     seo: 'search engine optimization',
-    sem: 'search engine marketing',
     ppc: 'pay-per-click advertising',
-    'campaign management': 'marketing campaign management',
-    cro: 'conversion rate optimization',
     ga4: 'google analytics',
 
     // --- Sales ---
     crm: 'customer relationship management',
-    'client management': 'account management',
-    'sales pipeline management': 'pipeline management',
 
     // --- HR ---
     'talent acquisition': 'recruiting',
     recruitment: 'recruiting',
-    onboarding: 'employee onboarding',
     hris: 'human resources information system',
     dei: 'diversity, equity, and inclusion',
 
     // --- Finance ---
-    'financial forecasting': 'forecasting',
     'budget management': 'budgeting',
-    'p&l': 'profit and loss management',
     'p&l management': 'profit and loss management',
     'fp&a': 'financial planning and analysis',
 
     // --- Healthcare ---
     ehr: 'electronic health records',
-    emr: 'electronic health records',
     'patient care coordination': 'care coordination',
 
     // --- Customer support ---
     'customer support': 'customer service',
     'live chat support': 'chat support',
-    csat: 'customer satisfaction',
+    // Canonical is the metric's own name (matching nps's pattern below), not
+    // the bare outcome 'customer satisfaction' - the audit's one dissenting
+    // vote on this entry was that CSAT names a specific survey methodology
+    // while the broader outcome term could be claimed by anyone; naming the
+    // canonical after the metric itself removes that gap.
+    csat: 'customer satisfaction score',
     nps: 'net promoter score',
   },
   // Rebalanced so domain fit (titleSimilarity + skillOverlap, the only two
