@@ -187,15 +187,14 @@ describe('RankingService.score - conservative skill aliasing (skillAliases)', ()
   // not just a related skill. See market-de's skillAliases comment.
   const ALIAS_PAIRS: [string, string, string][] = [
     ['K8s', 'Kubernetes', 'tech'],
-    ['A/B Testing', 'Experimentation', 'product management'],
     ['Roadmapping', 'Product Roadmap', 'product management'],
+    ['IP Law', 'Intellectual Property Law', 'legal'],
     ['SEO', 'Search Engine Optimization', 'marketing'],
     ['CRM', 'Customer Relationship Management', 'sales'],
     ['Talent Acquisition', 'Recruiting', 'HR'],
     ['FP&A', 'Financial Planning and Analysis', 'finance'],
     ['EHR', 'Electronic Health Records', 'healthcare'],
     ['Customer Support', 'Customer Service', 'customer support'],
-    ['GDPR Compliance', 'Data Protection Compliance', 'legal'],
   ];
 
   it.each(ALIAS_PAIRS)('treats "%s" and "%s" (%s) as the same skill despite zero literal token overlap', (skill, tag) => {
@@ -213,17 +212,20 @@ describe('RankingService.score - conservative skill aliasing (skillAliases)', ()
     expect(result.skillOverlap).toBe(0);
   });
 
-  it('reproduces the ai-pm-vocabulary-mismatch-de eval case: 3 of 5 canonicalized concepts overlap', () => {
+  it('reproduces the ai-pm-vocabulary-mismatch-de eval case: 2 of 4 canonicalized concepts overlap', () => {
     const job = buildJob({
       techStackTags: ['Cross-functional Leadership', 'Experimentation', 'Product Roadmap', 'Fintech'],
     });
     const result = service.score(job, {
       profile: buildProfile({ skills: ['Stakeholder Management', 'A/B Testing', 'Roadmapping', 'Fintech'] }),
     });
-    // {stakeholder management, experimentation, product roadmap, fintech} vs
+    // {stakeholder management, a/b testing, product roadmap, fintech} vs
     // {cross-functional leadership, experimentation, product roadmap, fintech}
-    // -> intersection 3, union 5.
-    expect(result.skillOverlap).toBeCloseTo(0.6);
+    // -> intersection {product roadmap, fintech} = 2, union 6. 'A/B Testing'
+    // does NOT canonicalize to 'Experimentation' (removed after adversarial
+    // audit - see skillAliases' comment for why), so only the Roadmapping
+    // pair collapses here, not both.
+    expect(result.skillOverlap).toBeCloseTo(2 / 6);
   });
 
   it('is unaffected (no-op) for skills that are not in the alias table', () => {
