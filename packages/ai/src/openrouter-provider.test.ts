@@ -89,6 +89,7 @@ const testMarketPack: MarketPack = {
   scamHeuristics: { suspiciousDomainPatterns: [], suspiciousContactPatterns: [] },
   companyAliases: {},
   skillAliases: {},
+  titleAliases: {},
   rankingWeights: {
     titleSimilarity: 0.25,
     skillOverlap: 0.25,

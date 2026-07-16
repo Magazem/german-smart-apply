@@ -50,6 +50,18 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 }
 
 /**
+ * Same as tokenize(), plus canonicalizing each word via marketDe.titleAliases
+ * (identity if it isn't a known alias) - so titleSimilarity's Jaccard
+ * comparison credits e.g. 'Sr' and 'Senior' as the same token. Kept separate
+ * from tokenize() itself, which stays a generic word-splitter, because this
+ * canonicalization is calibrated specifically for job-title vocabulary - see
+ * titleAliases' own comment for what it deliberately does and doesn't cover.
+ */
+function tokenizeTitle(text: string): Set<string> {
+  return new Set(Array.from(tokenize(text)).map((t) => marketDe.titleAliases[t] ?? t));
+}
+
+/**
  * Structured scoring per plan.md's "Ranking approach": hard filters happen at
  * the query layer (JobsService); this computes the weighted score from
  * title similarity, skill overlap, location fit, recency, salary fit,
@@ -64,7 +76,7 @@ export class RankingService {
 
     const targetTitleText = profile?.targetRole ?? ctx.queryText ?? '';
     const titleSimilarity = targetTitleText
-      ? jaccard(tokenize(targetTitleText), tokenize(job.jobTitleNormalized))
+      ? jaccard(tokenizeTitle(targetTitleText), tokenizeTitle(job.jobTitleNormalized))
       : 0.5;
 
     const skillOverlap = profile

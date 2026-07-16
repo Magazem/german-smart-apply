@@ -78,8 +78,8 @@ function round2(n: number): number {
 }
 
 function tokenOverlapScore(a: string, b: string): number {
-  const ta = tokenize(a);
-  const tb = tokenize(b);
+  const ta = tokenizeTitle(a);
+  const tb = tokenizeTitle(b);
   if (ta.size === 0 || tb.size === 0) return 0.1;
   let hits = 0;
   for (const t of ta) if (tb.has(t)) hits += 1;
@@ -93,6 +93,11 @@ function tokenize(s: string): Set<string> {
       .split(/[^a-z0-9+#.]+/)
       .filter((t) => t.length > 1),
   );
+}
+
+/** Mirrors ranking.service.ts's tokenizeTitle() via the same marketDe.titleAliases table. */
+function tokenizeTitle(s: string): Set<string> {
+  return new Set(Array.from(tokenize(s)).map((t) => marketDe.titleAliases[t] ?? t));
 }
 
 function ratioOverlap(a: string[], b: string[]): number {

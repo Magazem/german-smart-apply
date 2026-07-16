@@ -48,6 +48,20 @@ export interface MarketPack {
    * rationale and the boundary cases it deliberately excludes.
    */
   skillAliases: Record<string, string>;
+  /**
+   * Conservative, hand-curated job-title WORD alias table: lowercase alias
+   * word -> lowercase canonical word, applied per-token before the Jaccard
+   * word-set comparison in titleSimilarity. Even narrower than skillAliases:
+   * an entry may only exist if the two words are interchangeable across
+   * EVERY common job-title context, not just the field that motivated it -
+   * a single overloaded word can inject a false title-token match between
+   * two otherwise-unrelated jobs. See market-de's titleAliases for the full
+   * rationale and the industry-collision cases it deliberately excludes
+   * (e.g. 'developer' was excluded despite being an obvious tech synonym
+   * for 'engineer', because 'Real Estate Developer' is a real, unrelated
+   * job title).
+   */
+  titleAliases: Record<string, string>;
   rankingWeights: {
     titleSimilarity: number;
     skillOverlap: number;
