@@ -19,10 +19,14 @@ import { BOOTSTRAP_QUERIES } from './bootstrap-queries.js';
  * a second, later bug found live: titleSimilarity/skillOverlap are plain
  * Jaccard token-set overlap, so a genuinely strong match scores near-zero on
  * skillOverlap whenever the candidate's CV and the job's tags describe the
- * same skills with different words (e.g. 'Stakeholder Management' vs
- * 'Cross-functional Leadership'). This dataset only proves the harness can
- * measure it - see the synonym-taxonomy fix in packages/market-de for the
- * actual mitigation and the nDCG delta it should produce on this query.
+ * same skills with different words (e.g. 'A/B Testing' vs 'Experimentation').
+ * The mitigation - packages/market-de's skillAliases, applied via
+ * RankingService.canonicalizeSkill() - is deliberately conservative: it only
+ * collapses true same-concept renames, never merely-related skills (this
+ * query's own 'Stakeholder Management'/'Cross-functional Leadership' pair is
+ * a worked example of a pair that stays distinct on purpose). See
+ * ranking.service.test.ts's skill-alias describe block for the positive and
+ * negative-control coverage behind that boundary.
  */
 const SMOKE_QUERIES: LabeledQuery[] = [
   {
@@ -129,7 +133,7 @@ const SMOKE_QUERIES: LabeledQuery[] = [
       {
         relevance: 4,
         rationale:
-          "Same seniority, same function, adjacent domain (fintech AI product) - and every one of the candidate's skills has a real counterpart on the job's tag list, just phrased differently: 'Stakeholder Management'/'Cross-functional Leadership', 'A/B Testing'/'Experimentation', 'Roadmapping'/'Product Roadmap'. This exact shape of pair (genuinely strong match, near-zero literal token overlap) scored ~35-40% live under plain Jaccard matching - a human evaluator would call this a 4, not a 2.",
+          "Same seniority, same function, adjacent domain (fintech AI product). Two of the candidate's four skills are the same activity phrased differently - 'A/B Testing'/'Experimentation' and 'Roadmapping'/'Product Roadmap' - plus an exact 'Fintech' match; 'Stakeholder Management' and 'Cross-functional Leadership' are adjacent PM competencies, not aliases of each other, and are deliberately NOT credited as a match (see market-de's skillAliases comment). Even with that conservative read, a majority-skill, same-seniority, same-function match scored ~35-40% live under plain Jaccard matching, with zero literal token overlap masking a genuinely strong candidate - a human evaluator would call this a 4, not a 2.",
         job: buildEvalJob({
           jobId: 'eval-ai-pm-synonym-job',
           jobTitleNormalized: 'senior product manager ai platform',

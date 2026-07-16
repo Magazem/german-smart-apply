@@ -97,9 +97,20 @@ function tokenize(s: string): Set<string> {
 
 function ratioOverlap(a: string[], b: string[]): number {
   if (a.length === 0 || b.length === 0) return 0.1;
-  const setB = new Set(b.map((s) => s.toLowerCase()));
-  const hits = a.filter((s) => setB.has(s.toLowerCase())).length;
+  const setB = new Set(b.map((s) => canonicalizeSkill(s)));
+  const hits = a.filter((s) => setB.has(canonicalizeSkill(s))).length;
   return Math.min(1, hits / Math.min(a.length, b.length, 5));
+}
+
+/**
+ * Mirrors ranking.service.ts's canonicalizeSkill() via the same
+ * marketDe.skillAliases table, so the mock/demo scorer can't silently
+ * diverge from the real backend on vocabulary-mismatch handling the way
+ * rankingWeights already used to (see the comment on `weights` above).
+ */
+function canonicalizeSkill(value: string): string {
+  const key = value.toLowerCase().trim();
+  return marketDe.skillAliases[key] ?? key;
 }
 
 function computeLocationFit(profile: CandidateProfile, job: CanonicalJob): number {

@@ -178,3 +178,57 @@ describe('RankingService.score - locationFit commutePreferenceKm placeholder', (
     expect(result.locationFit).toBe(1);
   });
 });
+
+describe('RankingService.score - conservative skill aliasing (skillAliases)', () => {
+  const service = new RankingService();
+
+  // One representative pair per category skillAliases covers - each is a
+  // genuine same-concept rename (abbreviation, spelling variant, rebrand),
+  // not just a related skill. See market-de's skillAliases comment.
+  const ALIAS_PAIRS: [string, string, string][] = [
+    ['K8s', 'Kubernetes', 'tech'],
+    ['A/B Testing', 'Experimentation', 'product management'],
+    ['Roadmapping', 'Product Roadmap', 'product management'],
+    ['SEO', 'Search Engine Optimization', 'marketing'],
+    ['CRM', 'Customer Relationship Management', 'sales'],
+    ['Talent Acquisition', 'Recruiting', 'HR'],
+    ['FP&A', 'Financial Planning and Analysis', 'finance'],
+    ['EHR', 'Electronic Health Records', 'healthcare'],
+    ['Customer Support', 'Customer Service', 'customer support'],
+    ['GDPR Compliance', 'Data Protection Compliance', 'legal'],
+  ];
+
+  it.each(ALIAS_PAIRS)('treats "%s" and "%s" (%s) as the same skill despite zero literal token overlap', (skill, tag) => {
+    const job = buildJob({ techStackTags: [tag] });
+    const result = service.score(job, { profile: buildProfile({ skills: [skill] }) });
+    expect(result.skillOverlap).toBe(1);
+  });
+
+  it('does NOT credit adjacent-but-distinct PM competencies as a skill match - the conservative boundary', () => {
+    // Stakeholder Management and Cross-functional Leadership are related PM
+    // competencies, not aliases of each other - deliberately absent from
+    // skillAliases. This is the guardrail the eval case's rationale documents.
+    const job = buildJob({ techStackTags: ['Cross-functional Leadership'] });
+    const result = service.score(job, { profile: buildProfile({ skills: ['Stakeholder Management'] }) });
+    expect(result.skillOverlap).toBe(0);
+  });
+
+  it('reproduces the ai-pm-vocabulary-mismatch-de eval case: 3 of 5 canonicalized concepts overlap', () => {
+    const job = buildJob({
+      techStackTags: ['Cross-functional Leadership', 'Experimentation', 'Product Roadmap', 'Fintech'],
+    });
+    const result = service.score(job, {
+      profile: buildProfile({ skills: ['Stakeholder Management', 'A/B Testing', 'Roadmapping', 'Fintech'] }),
+    });
+    // {stakeholder management, experimentation, product roadmap, fintech} vs
+    // {cross-functional leadership, experimentation, product roadmap, fintech}
+    // -> intersection 3, union 5.
+    expect(result.skillOverlap).toBeCloseTo(0.6);
+  });
+
+  it('is unaffected (no-op) for skills that are not in the alias table', () => {
+    const job = buildJob({ techStackTags: ['Underwater Basket Weaving'] });
+    const result = service.score(job, { profile: buildProfile({ skills: ['Underwater Basket Weaving'] }) });
+    expect(result.skillOverlap).toBe(1);
+  });
+});
