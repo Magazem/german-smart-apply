@@ -234,3 +234,61 @@ describe('RankingService.score - conservative skill aliasing (skillAliases)', ()
     expect(result.skillOverlap).toBe(1);
   });
 });
+
+describe('RankingService.score - conservative title word aliasing (titleAliases)', () => {
+  const service = new RankingService();
+
+  // Every surviving pair is a cross-industry-unambiguous seniority/role-suffix
+  // abbreviation - see market-de's titleAliases comment for what was tried
+  // and rejected (developer/dev/programmer/coder/eng -> engineer) and why.
+  const TITLE_ALIAS_PAIRS: [string, string][] = [
+    ['Sr', 'Senior'],
+    ['Jr', 'Junior'],
+    ['Mgr', 'Manager'],
+    ['Exec', 'Executive'],
+    ['Coord', 'Coordinator'],
+    ['Rep', 'Representative'],
+  ];
+
+  it.each(TITLE_ALIAS_PAIRS)('treats "%s" and "%s" as the same title token despite zero literal overlap', (alias, canonical) => {
+    const job = buildJob({ jobTitleNormalized: canonical });
+    const result = service.score(job, { profile: buildProfile({ targetRole: alias }) });
+    expect(result.titleSimilarity).toBe(1);
+  });
+
+  it('does NOT improve the Software Engineer / Full-Stack Developer case - this is a known, intentional gap', () => {
+    // plan.md Phase 4b's own named example. 'developer' -> 'engineer' was
+    // drafted and REJECTED by adversarial audit (Real Estate Developer,
+    // Business Developer are real, unrelated job titles that would falsely
+    // token-match any 'Engineer' candidate). This test documents that the
+    // gap is known and accepted, not an oversight - closing it needs a
+    // different mechanism than a flat word table (see titleAliases' comment).
+    const job = buildJob({ jobTitleNormalized: 'full-stack developer' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
+    expect(result.titleSimilarity).toBe(0);
+  });
+
+  it('does not let "Real Estate Developer" token-match a "Software Engineer" candidate', () => {
+    const job = buildJob({ jobTitleNormalized: 'real estate developer' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
+    expect(result.titleSimilarity).toBe(0);
+  });
+
+  it('does not let "Medical Coder" token-match a "Software Engineer" candidate', () => {
+    const job = buildJob({ jobTitleNormalized: 'medical coder' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
+    expect(result.titleSimilarity).toBe(0);
+  });
+
+  it('does not let "Film Programmer" token-match a "Software Engineer" candidate', () => {
+    const job = buildJob({ jobTitleNormalized: 'film programmer' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
+    expect(result.titleSimilarity).toBe(0);
+  });
+
+  it('is unaffected (no-op) for words that are not in the alias table', () => {
+    const job = buildJob({ jobTitleNormalized: 'Grommet Inspector' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Grommet Inspector' }) });
+    expect(result.titleSimilarity).toBe(1);
+  });
+});

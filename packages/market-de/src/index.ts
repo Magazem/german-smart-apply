@@ -276,6 +276,47 @@ export const marketDe: MarketPack = {
     csat: 'customer satisfaction score',
     nps: 'net promoter score',
   },
+  // Job-title WORD aliases, applied per-token before titleSimilarity's
+  // Jaccard comparison (see RankingService's tokenizeTitle()). Much
+  // narrower than skillAliases above: an alias here must be interchangeable
+  // with its canonical across EVERY common job-title context this platform
+  // sees, not just the field that motivated it - a bare word has no
+  // surrounding context to disambiguate it, unlike a multi-word skill
+  // phrase. Built and adversarially audited the same way as skillAliases
+  // (5 independent lenses: strict same-role-word / cross-industry collision
+  // hunter / seniority-scope check / real-world job-title usage /
+  // adversarial devil's advocate), and the audit rejected every tech-word
+  // candidate that was tried, including the obvious one:
+  // - 'developer' -> 'engineer': REJECTED. 'Real Estate Developer' and
+  //   'Property Developer' are standard, unrelated real-estate titles;
+  //   'Business Developer' is a real sales/BD title. This means
+  //   'Software Engineer' and 'Full-Stack Developer' - the exact example
+  //   plan.md's Phase 4b names - still score 0 titleSimilarity even after
+  //   this table. See ranking.service.test.ts's title-alias describe block
+  //   for that as an explicit, intentional regression test, not an
+  //   oversight - fixing it needs a genuinely different mechanism (semantic/
+  //   embedding-based matching, already tracked separately and deliberately
+  //   as unimplemented "Phase 3 Growth" scope in plan.md) than a flat word
+  //   table can safely provide.
+  // - 'dev'/'programmer'/'coder' -> 'engineer': also REJECTED for the same
+  //   reason plus their own field-specific collisions ('dev' with
+  //   nonprofit-fundraising 'Director of Development' and sales 'Business
+  //   Dev'; 'programmer' with arts/media 'Film Programmer'/'Festival
+  //   Programmer'; 'coder' with healthcare's 'Medical Coder').
+  // - 'eng' -> 'engineer': also REJECTED, on a different axis - 'eng' very
+  //   commonly abbreviates the department in leadership titles ('VP of
+  //   Eng', 'Head of Eng'), so aliasing it would let a senior org-leader
+  //   title token-match a junior individual-contributor posting.
+  // Only cross-industry, unambiguous seniority/role-suffix abbreviations
+  // survived unanimously.
+  titleAliases: {
+    sr: 'senior',
+    jr: 'junior',
+    mgr: 'manager',
+    exec: 'executive',
+    coord: 'coordinator',
+    rep: 'representative',
+  },
   // Rebalanced so domain fit (titleSimilarity + skillOverlap, the only two
   // signals that actually measure whether the job is in the candidate's
   // field) dominates the score - 64% combined, up from 50%. Before this, a

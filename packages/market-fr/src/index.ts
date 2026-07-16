@@ -37,6 +37,7 @@ export const marketFr: MarketPack = {
   },
   companyAliases: {},
   skillAliases: {},
+  titleAliases: {},
   rankingWeights: {
     titleSimilarity: 0,
     skillOverlap: 0,

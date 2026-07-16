@@ -31,7 +31,13 @@ import { BOOTSTRAP_QUERIES } from './bootstrap-queries.js';
  * standing in for the broader discipline) despite passing solo review - see
  * skillAliases' own comment for the audit's reasoning. See
  * ranking.service.test.ts's skill-alias describe block for the positive and
- * negative-control coverage behind that boundary.
+ * negative-control coverage behind that boundary. The fourth
+ * ('title-synonym-mismatch-de') isolates the sibling bug on the title side:
+ * titleSimilarity is plain Jaccard on word tokens over freeform text (not
+ * the discrete phrase arrays skillOverlap/skillAliases operate on), so
+ * 'Software Engineer' and 'Full-Stack Developer' - plan.md Phase 4b's own
+ * named example - share zero tokens and score 0 title similarity even with
+ * an identical skill set. See market-de's titleAliases for the mitigation.
  */
 const SMOKE_QUERIES: LabeledQuery[] = [
   {
@@ -169,6 +175,61 @@ const SMOKE_QUERIES: LabeledQuery[] = [
         rationale: 'Different field entirely, zero skill overlap.',
         job: buildEvalJob({
           jobId: 'eval-legal-counsel-3',
+          jobTitleNormalized: 'legal counsel',
+          techStackTags: ['Contract Law', 'Compliance', 'Negotiation'],
+        }),
+      },
+    ],
+  },
+  {
+    // plan.md Phase 4b's own named example: 'Software Engineer' and
+    // 'Full-Stack Developer' share zero word tokens, so titleSimilarity
+    // (32% of the score, same weight as skillOverlap) drops to 0 no matter
+    // how good the actual match is. The 'correct' job below deliberately
+    // reuses the profile's exact skill list, so skillOverlap is pinned at
+    // 1.0 - any score gap here is attributable to titleSimilarity alone,
+    // not skill-matching noise. See titleAliases in market-de for the
+    // (deliberately conservative, audited) mitigation.
+    id: 'title-synonym-mismatch-de',
+    labeledBy: 'human',
+    profile: buildEvalProfile({
+      targetRole: 'Software Engineer',
+      skills: ['TypeScript', 'Node.js', 'PostgreSQL', 'AWS'],
+    }),
+    jobs: [
+      {
+        relevance: 4,
+        rationale:
+          "Identical tech stack (skillOverlap = 1.0) and the same core engineering role, just a different title convention - many companies use 'Software Engineer' and 'Developer' as the literal same job. Zero shared title tokens ('software'/'engineer' vs 'full-stack'/'developer') should not be able to drag a job this close to a perfect skill match down anywhere near the bottom of the ranking - a human evaluator would call this a 4.",
+        job: buildEvalJob({
+          jobId: 'eval-fullstack-developer-synonym-job',
+          jobTitleNormalized: 'full-stack developer',
+          techStackTags: ['TypeScript', 'Node.js', 'PostgreSQL', 'AWS'],
+        }),
+      },
+      {
+        relevance: 3,
+        rationale: 'Adjacent engineering role, meaningful skill overlap (AWS), different day-to-day focus.',
+        job: buildEvalJob({
+          jobId: 'eval-devops-4',
+          jobTitleNormalized: 'devops engineer',
+          techStackTags: ['AWS', 'Kubernetes', 'Terraform'],
+        }),
+      },
+      {
+        relevance: 1,
+        rationale: 'Different field, only a glancing overlap (both roles touch technology, nothing else in common).',
+        job: buildEvalJob({
+          jobId: 'eval-marketing-manager-4',
+          jobTitleNormalized: 'marketing manager',
+          techStackTags: ['Negotiation', 'Campaign Management', 'SEO'],
+        }),
+      },
+      {
+        relevance: 0,
+        rationale: 'Different field entirely, zero skill overlap.',
+        job: buildEvalJob({
+          jobId: 'eval-legal-counsel-4',
           jobTitleNormalized: 'legal counsel',
           techStackTags: ['Contract Law', 'Compliance', 'Negotiation'],
         }),
