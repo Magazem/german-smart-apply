@@ -62,6 +62,45 @@ function tokenizeTitle(text: string): Set<string> {
 }
 
 /**
+ * Normalizes a FULL title string for titleEquivalenceClasses lookup - lower-
+ * cases, strips gender-neutral job-ad suffixes like "(m/w/d)", collapses
+ * hyphens/underscores/colons to spaces, drops remaining punctuation (keeping
+ * unicode letters so äöüß survive), and collapses whitespace. Deliberately
+ * separate from tokenize(): this produces one whole-phrase string, not a
+ * token set, because class membership is a full-phrase match, not a
+ * word-overlap one.
+ */
+function normalizeFullTitle(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\(\s*[mwdf]\s*\/\s*[mwdf]\s*\/\s*[mwdf]\s*\)/g, '')
+    .replace(/[-_:]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s/]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Resolves a title string to its titleEquivalenceClasses id, or null if it
+ * matches no class (abstain - the caller falls through to plain Jaccard).
+ * Also tries each slash-separated segment individually (not just the full
+ * normalized string) to handle the common German masculine/feminine pair
+ * convention ("Softwareentwickler/Softwareentwicklerin") without needing to
+ * enumerate every combined form as its own class member.
+ */
+function resolveTitleEquivalenceClassId(text: string): string | null {
+  const normalized = normalizeFullTitle(text);
+  if (!normalized) return null;
+  const candidates = new Set([normalized, ...normalized.split('/').map((s) => s.trim()).filter(Boolean)]);
+  for (const cls of marketDe.titleEquivalenceClasses) {
+    for (const candidate of candidates) {
+      if (cls.members.includes(candidate)) return cls.id;
+    }
+  }
+  return null;
+}
+
+/**
  * Structured scoring per plan.md's "Ranking approach": hard filters happen at
  * the query layer (JobsService); this computes the weighted score from
  * title similarity, skill overlap, location fit, recency, salary fit,
@@ -75,9 +114,7 @@ export class RankingService {
     const { profile } = ctx;
 
     const targetTitleText = profile?.targetRole ?? ctx.queryText ?? '';
-    const titleSimilarity = targetTitleText
-      ? jaccard(tokenizeTitle(targetTitleText), tokenizeTitle(job.jobTitleNormalized))
-      : 0.5;
+    const titleSimilarity = targetTitleText ? this.titleSimilarity(targetTitleText, job.jobTitleNormalized) : 0.5;
 
     const skillOverlap = profile
       ? this.skillOverlap(profile.skills, job.techStackTags)
@@ -142,6 +179,20 @@ export class RankingService {
       riskPenalty,
       eligible,
     };
+  }
+
+  /**
+   * Checks marketDe.titleEquivalenceClasses first (full-phrase match, see
+   * resolveTitleEquivalenceClassId) and takes the max against plain
+   * per-token Jaccard - the abstention rule: a class match can only raise
+   * this score to 1.0, never lower what Jaccard would have given anyway.
+   */
+  private titleSimilarity(targetTitleText: string, jobTitle: string): number {
+    const targetClassId = resolveTitleEquivalenceClassId(targetTitleText);
+    const jobClassId = resolveTitleEquivalenceClassId(jobTitle);
+    const classMatch = targetClassId !== null && targetClassId === jobClassId;
+    if (classMatch) return 1;
+    return jaccard(tokenizeTitle(targetTitleText), tokenizeTitle(jobTitle));
   }
 
   private skillOverlap(skills: string[], stackTags: string[]): number {

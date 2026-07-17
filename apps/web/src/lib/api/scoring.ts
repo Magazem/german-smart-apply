@@ -10,7 +10,7 @@ import type { CandidateProfile, CanonicalJob, JobMatchScore } from '@german-smar
  * is, not just the final number.
  */
 export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob): JobMatchScore {
-  const titleSimilarity = tokenOverlapScore(profile.targetRole, job.jobTitleNormalized);
+  const titleSimilarity = titleMatchScore(profile.targetRole, job.jobTitleNormalized);
 
   const skillOverlap = ratioOverlap(profile.skills, job.techStackTags);
 
@@ -75,6 +75,44 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/**
+ * Mirrors ranking.service.ts's titleSimilarity(): checks marketDe.
+ * titleEquivalenceClasses first (full-phrase match, see
+ * resolveTitleEquivalenceClassId) and only falls through to the
+ * token-overlap approximation below if neither title matches a class - same
+ * abstention principle, this can only raise the score, never lower it.
+ */
+function titleMatchScore(a: string, b: string): number {
+  const classA = resolveTitleEquivalenceClassId(a);
+  const classB = resolveTitleEquivalenceClassId(b);
+  if (classA !== null && classA === classB) return 1;
+  return tokenOverlapScore(a, b);
+}
+
+/** Mirrors ranking.service.ts's normalizeFullTitle(). */
+function normalizeFullTitle(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\(\s*[mwdf]\s*\/\s*[mwdf]\s*\/\s*[mwdf]\s*\)/g, '')
+    .replace(/[-_:]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s/]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Mirrors ranking.service.ts's resolveTitleEquivalenceClassId(). */
+function resolveTitleEquivalenceClassId(text: string): string | null {
+  const normalized = normalizeFullTitle(text);
+  if (!normalized) return null;
+  const candidates = new Set([normalized, ...normalized.split('/').map((s) => s.trim()).filter(Boolean)]);
+  for (const cls of marketDe.titleEquivalenceClasses) {
+    for (const candidate of candidates) {
+      if (cls.members.includes(candidate)) return cls.id;
+    }
+  }
+  return null;
 }
 
 function tokenOverlapScore(a: string, b: string): number {
