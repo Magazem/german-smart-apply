@@ -1,6 +1,7 @@
 import type { LabeledQuery } from '../types.js';
 import { buildEvalJob, buildEvalProfile } from './fixtures.js';
 import { BOOTSTRAP_QUERIES } from './bootstrap-queries.js';
+import { GATE1_QUERIES } from './gate1-queries.js';
 
 /**
  * Smoke dataset for Phase 3a (scaffolding the harness) - hand-written,
@@ -239,9 +240,11 @@ const SMOKE_QUERIES: LabeledQuery[] = [
 ];
 
 /**
- * The hand-written smoke queries above plus the Phase 3b LLM-judge-bootstrapped
- * corpus (bootstrap-queries.ts). Both are labeled the same way and scored by
- * the same harness (ranking-eval.test.ts); keeping them in one exported array
- * means the nDCG bar is enforced across the whole dataset.
+ * The hand-written smoke queries above, the Phase 3b LLM-judge-bootstrapped
+ * corpus (bootstrap-queries.ts), and Gate 1's adjudicated expansion
+ * (gate1-queries.ts - see its own header for provenance and the semantic-
+ * matching-cascade investigation this feeds). All three are labeled the same
+ * way and scored by the same harness (ranking-eval.test.ts); keeping them in
+ * one exported array means the nDCG bar is enforced across the whole dataset.
  */
-export const LABELED_QUERIES: LabeledQuery[] = [...SMOKE_QUERIES, ...BOOTSTRAP_QUERIES];
+export const LABELED_QUERIES: LabeledQuery[] = [...SMOKE_QUERIES, ...BOOTSTRAP_QUERIES, ...GATE1_QUERIES];
