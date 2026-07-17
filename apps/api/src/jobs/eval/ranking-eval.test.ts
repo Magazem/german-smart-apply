@@ -45,4 +45,55 @@ describe('Ranking quality eval harness', () => {
 
     expect(average).toBeGreaterThanOrEqual(MIN_AVERAGE_NDCG);
   });
+
+  it('reports hard-negative rank violations (visibility only, not yet a gate)', () => {
+    /*
+     * Invariant Gate 2's cascade must eventually satisfy: within a query, no
+     * isHardNegative job (a deliberately constructed collision/over-collapse
+     * risk case - see gate1-queries.ts) may predict a HIGHER score than any
+     * job the human labeler graded relevance >= 3 in the same query. Rank-
+     * based, not a fixed low-score threshold, because hard negatives span
+     * the full 0-4 grade range - some are genuine cap cases (a real
+     * seniority/scope gap, correctly graded 2), not "should always score
+     * near zero."
+     *
+     * NOT a hard-failing assertion yet: these cases were deliberately built
+     * to be adversarial for exactly the failure mode the current Tier-1-only
+     * matcher has no defense against - that is the entire point of Gate 1.
+     * Gating on it now would fail immediately with no actionable fix
+     * available, the same reasoning that kept topPredicted reporting-only
+     * when it was added. This becomes a real gate once Gate 2's cascade
+     * ships and is expected to satisfy it.
+     */
+    const violations: string[] = [];
+    let hardNegativeCount = 0;
+
+    for (const query of LABELED_QUERIES) {
+      const scored = query.jobs.map((labeledJob) => ({
+        relevance: labeledJob.relevance,
+        isHardNegative: labeledJob.isHardNegative ?? false,
+        jobId: labeledJob.job.jobId,
+        predicted: service.score(labeledJob.job, { profile: query.profile }).totalScore,
+      }));
+      hardNegativeCount += scored.filter((s) => s.isHardNegative).length;
+
+      const relevantScores = scored.filter((s) => s.relevance >= 3).map((s) => s.predicted);
+      if (relevantScores.length === 0) continue;
+      const minRelevantScore = Math.min(...relevantScores);
+
+      for (const s of scored) {
+        if (s.isHardNegative && s.predicted > minRelevantScore) {
+          violations.push(
+            `${query.id} / ${s.jobId}: hard-negative predicted ${s.predicted.toFixed(3)} outranks the query's own relevance>=3 floor of ${minRelevantScore.toFixed(3)}`,
+          );
+        }
+      }
+    }
+
+    console.log(`\nHard-negative rank check: ${violations.length}/${hardNegativeCount} hard negatives currently outrank a relevance>=3 job in their own query.`);
+    if (violations.length > 0) {
+      for (const v of violations) console.log(`  - ${v}`);
+    }
+    console.log('');
+  });
 });
