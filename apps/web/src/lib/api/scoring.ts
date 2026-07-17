@@ -102,11 +102,23 @@ function normalizeFullTitle(text: string): string {
     .trim();
 }
 
+/** Mirrors ranking.service.ts's genderPairSegments(). */
+function genderPairSegments(normalized: string): string[] {
+  const segments = normalized
+    .split('/')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (segments.length !== 2) return [];
+  const [a, b] = segments;
+  if (a.startsWith(b) || b.startsWith(a)) return segments;
+  return [];
+}
+
 /** Mirrors ranking.service.ts's resolveTitleEquivalenceClassId(). */
 function resolveTitleEquivalenceClassId(text: string): string | null {
   const normalized = normalizeFullTitle(text);
   if (!normalized) return null;
-  const candidates = new Set([normalized, ...normalized.split('/').map((s) => s.trim()).filter(Boolean)]);
+  const candidates = new Set([normalized, ...genderPairSegments(normalized)]);
   for (const cls of marketDe.titleEquivalenceClasses) {
     for (const candidate of candidates) {
       if (cls.members.includes(candidate)) return cls.id;

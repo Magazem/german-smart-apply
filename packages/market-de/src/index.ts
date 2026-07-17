@@ -349,6 +349,17 @@ export const marketDe: MarketPack = {
   // no class match falls through unchanged to the existing Jaccard score -
   // this table can only raise titleSimilarity, never lower it.
   //
+  // Full-phrase matching is deliberately exact, INCLUDING how the German
+  // masculine/feminine slash convention is handled
+  // ("Softwareentwickler/Softwareentwicklerin"): resolveTitleEquivalence-
+  // ClassId only splits a slash into segments when one segment is a prefix
+  // of the other (true of gender pairs, false for an unrelated hybrid title
+  // like "Business Developer / Software Developer"). A generic slash split
+  // would let that hybrid title reach this class through its "software
+  // developer" sibling - a real collision entering through a door the
+  // negative-pair suite below doesn't cover, and a direct violation of the
+  // point above (only an exact full-phrase hit should ever count).
+  //
   // escoConceptId is offline curation metadata only (lets a future curator
   // cross-reference a class against ESCO's own alt-label list by hand) -
   // never resolved at runtime. ESCO is not on the runtime path anywhere in

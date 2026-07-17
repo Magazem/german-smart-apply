@@ -335,6 +335,18 @@ describe('RankingService.score - phrase-level title-equivalence classes (Gate 2 
     expect(result.titleSimilarity).toBe(0);
   });
 
+  it('does not let an unrelated hybrid title reach a class through a generic slash split', () => {
+    // The gender-pair slash handling (below) must not become a generic
+    // slash-split - that would let "business developer" reach the
+    // software-engineer class merely by riding alongside "software
+    // developer" after a slash, through a door the negative-pair suite
+    // above doesn't cover. Guarded by requiring one segment to be a prefix
+    // of the other (true of gender pairs, false here).
+    const job = buildJob({ jobTitleNormalized: 'Business Developer / Software Developer' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Business Development Manager' }) });
+    expect(result.titleSimilarity).toBeLessThan(1);
+  });
+
   it('does not let "Real Estate Developer" join the software-engineer class', () => {
     const job = buildJob({ jobTitleNormalized: 'real estate developer' });
     const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });

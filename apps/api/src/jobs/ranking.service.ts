@@ -81,17 +81,34 @@ function normalizeFullTitle(text: string): string {
 }
 
 /**
+ * Splits a normalized title on '/' ONLY when it looks like the German
+ * masculine/feminine convention (one segment is a prefix of the other, e.g.
+ * "softwareentwickler" / "softwareentwicklerin") - deliberately NOT a
+ * generic slash split. A generic split would let an unrelated hybrid title
+ * like "business developer / software developer" reach a class through its
+ * slash sibling, widening the false-positive surface beyond the class's own
+ * enumerable member list - exactly the design law this mechanism exists to
+ * satisfy (see titleEquivalenceClasses' comment in market-de).
+ */
+function genderPairSegments(normalized: string): string[] {
+  const segments = normalized
+    .split('/')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (segments.length !== 2) return [];
+  const [a, b] = segments;
+  if (a.startsWith(b) || b.startsWith(a)) return segments;
+  return [];
+}
+
+/**
  * Resolves a title string to its titleEquivalenceClasses id, or null if it
  * matches no class (abstain - the caller falls through to plain Jaccard).
- * Also tries each slash-separated segment individually (not just the full
- * normalized string) to handle the common German masculine/feminine pair
- * convention ("Softwareentwickler/Softwareentwicklerin") without needing to
- * enumerate every combined form as its own class member.
  */
 function resolveTitleEquivalenceClassId(text: string): string | null {
   const normalized = normalizeFullTitle(text);
   if (!normalized) return null;
-  const candidates = new Set([normalized, ...normalized.split('/').map((s) => s.trim()).filter(Boolean)]);
+  const candidates = new Set([normalized, ...genderPairSegments(normalized)]);
   for (const cls of marketDe.titleEquivalenceClasses) {
     for (const candidate of candidates) {
       if (cls.members.includes(candidate)) return cls.id;
