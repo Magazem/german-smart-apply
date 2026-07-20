@@ -151,6 +151,14 @@ export const TITLE_NEGATIVE_PAIRS: TitleNegativePair[] = [
     b: 'Geschäftsführer Vertrieb',
     reason: 'Gate 1 sales-gate1-2: C-suite, full-P&L authority over the whole company vs. a department-head Vertriebsleiter role - same family as the VP of Engineering seniority-collapse case above.',
   },
+
+  // --- Curation-engine audit findings (post-PR2, first real curated batch) ---
+  {
+    a: 'Software Engineer',
+    b: 'Applikationsentwickler',
+    reason:
+      "5-lens audit of a live curation-queue proposal (0.8 confidence) split 3-2: two independent lenses (cross-category collision hunter, real-world usage) found 'Applikationsentwickler' also names a real, unrelated chemistry/materials-science role (adhesives/coatings/pharma 'Anwendungstechnik' formulation work, requiring a chemistry background, not coding) and disproportionately clusters in SAP/ERP-customization and support-hybrid postings when used in a software context - unlike its near-homograph 'anwendungsentwickler', which was added to the software-engineer class 5/0. Same shape as the Real Estate Developer/Medical Coder collisions: identical surface string, unconnected occupation.",
+  },
 ];
 
 /**
