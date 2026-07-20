@@ -285,6 +285,7 @@ describe('RankingService.score - phrase-level title-equivalence classes (Gate 2 
     'Full-Stack Developer',
     'Fullstack Developer',
     'Softwareentwickler',
+    'Anwendungsentwickler',
   ];
 
   it.each(SOFTWARE_ENGINEER_CLASS_MEMBERS)(
@@ -322,6 +323,18 @@ describe('RankingService.score - phrase-level title-equivalence classes (Gate 2 
 
   it('does not let "Real Estate Developer" join the software-engineer class', () => {
     const job = buildJob({ jobTitleNormalized: 'real estate developer' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
+    expect(result.titleSimilarity).toBe(0);
+  });
+
+  it('does not let "Applikationsentwickler" join the software-engineer class despite its near-homograph "Anwendungsentwickler" being a member', () => {
+    // A live curation-queue proposal suggested both terms at once (0.8
+    // confidence, same LLM call). The 5-lens audit split 3-2: two lenses
+    // independently found "Applikationsentwickler" also names a real,
+    // unrelated chemistry/materials-science role and clusters in SAP/ERP
+    // support-hybrid postings - see TITLE_NEGATIVE_PAIRS. Its near-homograph
+    // carries no such collision and was added above.
+    const job = buildJob({ jobTitleNormalized: 'Applikationsentwickler' });
     const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
     expect(result.titleSimilarity).toBe(0);
   });

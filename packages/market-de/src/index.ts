@@ -391,6 +391,21 @@ export const marketDe: MarketPack = {
         'fullstack developer',
         'softwareentwickler',
         'softwareentwicklerin',
+        // Added post-PR2: the platform's first real curated addition,
+        // sourced from a live curation run against 1,589 real crawled
+        // titles and passed through the full 5-lens audit. 5/5 lenses
+        // confirmed this is Germany's everyday synonym for
+        // Softwareentwickler (anchored in the official
+        // "Fachinformatiker/-in Fachrichtung Anwendungsentwicklung"
+        // apprenticeship) with no cross-field collision found. Its
+        // near-homograph "Applikationsentwickler" was proposed alongside it
+        // by the same live LLM call but is deliberately NOT added here -
+        // two independent lenses found it also names a real, unrelated
+        // chemistry/materials-science "Anwendungstechnik" role (adhesives/
+        // coatings/pharma formulation) plus a SAP/ERP-support-hybrid sense -
+        // see the TITLE_NEGATIVE_PAIRS entry below. Exactly the failure mode
+        // §0's design law exists to catch before it ships, not after.
+        'anwendungsentwickler',
       ],
     },
   ],
