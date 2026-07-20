@@ -20,3 +20,4 @@ test-results/
 .vercel/
 .railway/
 generated/
+curation-queue-*.json
