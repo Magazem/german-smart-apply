@@ -1,4 +1,5 @@
 ﻿import { describe, expect, it } from 'vitest';
+import { resolveTitleEquivalenceClassId, titleEquivalenceIndex, TITLE_NEGATIVE_PAIRS } from '@german-smart-apply/market-de';
 import type { CanonicalJob } from '@german-smart-apply/shared';
 import { RankingService, type RankingProfileInput } from './ranking.service.js';
 
@@ -256,23 +257,9 @@ describe('RankingService.score - conservative title word aliasing (titleAliases)
     expect(result.titleSimilarity).toBe(1);
   });
 
-  it('does not let "Real Estate Developer" token-match a "Software Engineer" candidate', () => {
-    const job = buildJob({ jobTitleNormalized: 'real estate developer' });
-    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
-    expect(result.titleSimilarity).toBe(0);
-  });
-
-  it('does not let "Medical Coder" token-match a "Software Engineer" candidate', () => {
-    const job = buildJob({ jobTitleNormalized: 'medical coder' });
-    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
-    expect(result.titleSimilarity).toBe(0);
-  });
-
-  it('does not let "Film Programmer" token-match a "Software Engineer" candidate', () => {
-    const job = buildJob({ jobTitleNormalized: 'film programmer' });
-    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
-    expect(result.titleSimilarity).toBe(0);
-  });
+  // Real Estate Developer/Medical Coder/Film Programmer vs Software Engineer
+  // are now covered once, exhaustively, by the TITLE_NEGATIVE_PAIRS-driven
+  // test in the describe block below, rather than duplicated here.
 
   it('is unaffected (no-op) for words that are not in the alias table', () => {
     const job = buildJob({ jobTitleNormalized: 'Grommet Inspector' });
@@ -321,17 +308,21 @@ describe('RankingService.score - phrase-level title-equivalence classes (Gate 2 
     expect(result.titleSimilarity).toBe(1);
   });
 
-  // Permanent negative-pair suite: every collision case the titleAliases
-  // word-level audit already rejected, re-asserted at the phrase-class layer
-  // so no future class addition can silently reproduce them. These pairs
-  // must NEVER end up in the same class, however tempting a raw word overlap
-  // might make it look.
+  // Two representative end-to-end checks (via the real score() pipeline,
+  // not just the pure resolver) - the exhaustive, corpus-driven safety net
+  // is the it.each below, in its own describe block.
   it('does not class-match "Business Development Manager" with the software-engineer class\'s "Full Stack Developer" collision job', () => {
     // Mirrors Gate 1's sales-gate1-1 two-sided "Developer" test: "full stack
     // developer" is a real collision against a Business Development
     // Manager candidate, not a synonym, despite the shared word "developer".
     const job = buildJob({ jobTitleNormalized: 'full stack developer' });
     const result = service.score(job, { profile: buildProfile({ targetRole: 'Business Development Manager' }) });
+    expect(result.titleSimilarity).toBe(0);
+  });
+
+  it('does not let "Real Estate Developer" join the software-engineer class', () => {
+    const job = buildJob({ jobTitleNormalized: 'real estate developer' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
     expect(result.titleSimilarity).toBe(0);
   });
 
@@ -347,28 +338,28 @@ describe('RankingService.score - phrase-level title-equivalence classes (Gate 2 
     expect(result.titleSimilarity).toBeLessThan(1);
   });
 
-  it('does not let "Real Estate Developer" join the software-engineer class', () => {
-    const job = buildJob({ jobTitleNormalized: 'real estate developer' });
-    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
-    expect(result.titleSimilarity).toBe(0);
-  });
-
-  it('does not let "Medical Coder" join the software-engineer class', () => {
-    const job = buildJob({ jobTitleNormalized: 'medical coder' });
-    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
-    expect(result.titleSimilarity).toBe(0);
-  });
-
-  it('does not let "Film Programmer" join the software-engineer class', () => {
-    const job = buildJob({ jobTitleNormalized: 'film programmer' });
-    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
-    expect(result.titleSimilarity).toBe(0);
-  });
-
   it('falls through unchanged to plain Jaccard when neither title matches any class', () => {
     const job = buildJob({ jobTitleNormalized: 'Grommet Inspector' });
     const result = service.score(job, { profile: buildProfile({ targetRole: 'Senior Grommet Inspector' }) });
     // {senior, grommet, inspector} vs {grommet, inspector} -> intersection 2, union 3.
     expect(result.titleSimilarity).toBeCloseTo(2 / 3);
+  });
+});
+
+describe('RankingService - TITLE_NEGATIVE_PAIRS corpus invariant', () => {
+  // The exhaustive, future-proof safety net the Gate 2 rev B design law (§0)
+  // requires: every pair this session's audits confirmed are DIFFERENT
+  // occupations must never resolve to the same titleEquivalenceClasses
+  // entry, no matter how many classes exist. Unlike the score()-level tests
+  // above, this operates on the pure resolver directly and automatically
+  // covers every class ever added, present or future - a new class that
+  // accidentally reunites a known collision fails here immediately, without
+  // needing a hand-written test for that specific class.
+  it.each(TITLE_NEGATIVE_PAIRS)('never places "$a" and "$b" in the same title-equivalence class ($reason)', ({ a, b }) => {
+    const classA = resolveTitleEquivalenceClassId(a, titleEquivalenceIndex);
+    const classB = resolveTitleEquivalenceClassId(b, titleEquivalenceIndex);
+    if (classA !== null && classB !== null) {
+      expect(classA).not.toBe(classB);
+    }
   });
 });

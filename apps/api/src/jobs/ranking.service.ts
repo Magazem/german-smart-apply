@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { marketDe } from '@german-smart-apply/market-de';
+import { marketDe, resolveTitleEquivalenceClassId, titleEquivalenceIndex } from '@german-smart-apply/market-de';
 import type { CanonicalJob, JobMatchScore } from '@german-smart-apply/shared';
 
 /**
@@ -59,62 +59,6 @@ function jaccard(a: Set<string>, b: Set<string>): number {
  */
 function tokenizeTitle(text: string): Set<string> {
   return new Set(Array.from(tokenize(text)).map((t) => marketDe.titleAliases[t] ?? t));
-}
-
-/**
- * Normalizes a FULL title string for titleEquivalenceClasses lookup - lower-
- * cases, strips gender-neutral job-ad suffixes like "(m/w/d)", collapses
- * hyphens/underscores/colons to spaces, drops remaining punctuation (keeping
- * unicode letters so äöüß survive), and collapses whitespace. Deliberately
- * separate from tokenize(): this produces one whole-phrase string, not a
- * token set, because class membership is a full-phrase match, not a
- * word-overlap one.
- */
-function normalizeFullTitle(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/\(\s*[mwdf]\s*\/\s*[mwdf]\s*\/\s*[mwdf]\s*\)/g, '')
-    .replace(/[-_:]/g, ' ')
-    .replace(/[^\p{L}\p{N}\s/]/gu, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
- * Splits a normalized title on '/' ONLY when it looks like the German
- * masculine/feminine convention (one segment is a prefix of the other, e.g.
- * "softwareentwickler" / "softwareentwicklerin") - deliberately NOT a
- * generic slash split. A generic split would let an unrelated hybrid title
- * like "business developer / software developer" reach a class through its
- * slash sibling, widening the false-positive surface beyond the class's own
- * enumerable member list - exactly the design law this mechanism exists to
- * satisfy (see titleEquivalenceClasses' comment in market-de).
- */
-function genderPairSegments(normalized: string): string[] {
-  const segments = normalized
-    .split('/')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (segments.length !== 2) return [];
-  const [a, b] = segments;
-  if (a.startsWith(b) || b.startsWith(a)) return segments;
-  return [];
-}
-
-/**
- * Resolves a title string to its titleEquivalenceClasses id, or null if it
- * matches no class (abstain - the caller falls through to plain Jaccard).
- */
-function resolveTitleEquivalenceClassId(text: string): string | null {
-  const normalized = normalizeFullTitle(text);
-  if (!normalized) return null;
-  const candidates = new Set([normalized, ...genderPairSegments(normalized)]);
-  for (const cls of marketDe.titleEquivalenceClasses) {
-    for (const candidate of candidates) {
-      if (cls.members.includes(candidate)) return cls.id;
-    }
-  }
-  return null;
 }
 
 /**
@@ -205,8 +149,8 @@ export class RankingService {
    * this score to 1.0, never lower what Jaccard would have given anyway.
    */
   private titleSimilarity(targetTitleText: string, jobTitle: string): number {
-    const targetClassId = resolveTitleEquivalenceClassId(targetTitleText);
-    const jobClassId = resolveTitleEquivalenceClassId(jobTitle);
+    const targetClassId = resolveTitleEquivalenceClassId(targetTitleText, titleEquivalenceIndex);
+    const jobClassId = resolveTitleEquivalenceClassId(jobTitle, titleEquivalenceIndex);
     const classMatch = targetClassId !== null && targetClassId === jobClassId;
     if (classMatch) return 1;
     return jaccard(tokenizeTitle(targetTitleText), tokenizeTitle(jobTitle));

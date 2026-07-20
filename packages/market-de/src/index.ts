@@ -1,4 +1,9 @@
 import type { MarketPack } from '@german-smart-apply/shared';
+import { buildTitleEquivalenceIndex } from './title-matching.js';
+
+export * from './title-matching.js';
+export * from './title-negative-pairs.js';
+export * from './curation-engine.js';
 
 export const marketDe: MarketPack = {
   countryCode: 'DE',
@@ -407,5 +412,12 @@ export const marketDe: MarketPack = {
     riskPenalty: 0.05,
   },
 };
+
+/**
+ * Precomputed once at module load - see buildTitleEquivalenceIndex's comment
+ * for why this is a normalized index rather than a repeated linear scan
+ * over titleEquivalenceClasses[].members on every call.
+ */
+export const titleEquivalenceIndex = buildTitleEquivalenceIndex(marketDe.titleEquivalenceClasses);
 
 export default marketDe;

@@ -1,4 +1,4 @@
-import { marketDe } from '@german-smart-apply/market-de';
+import { marketDe, resolveTitleEquivalenceClassId, titleEquivalenceIndex } from '@german-smart-apply/market-de';
 import type { CandidateProfile, CanonicalJob, JobMatchScore } from '@german-smart-apply/shared';
 
 /**
@@ -78,53 +78,18 @@ function round2(n: number): number {
 }
 
 /**
- * Mirrors ranking.service.ts's titleSimilarity(): checks marketDe.
- * titleEquivalenceClasses first (full-phrase match, see
- * resolveTitleEquivalenceClassId) and only falls through to the
+ * Mirrors ranking.service.ts's titleSimilarity(): checks marketDe's
+ * titleEquivalenceClasses first (full-phrase match, via the shared
+ * resolveTitleEquivalenceClassId/titleEquivalenceIndex from
+ * @german-smart-apply/market-de) and only falls through to the
  * token-overlap approximation below if neither title matches a class - same
  * abstention principle, this can only raise the score, never lower it.
  */
 function titleMatchScore(a: string, b: string): number {
-  const classA = resolveTitleEquivalenceClassId(a);
-  const classB = resolveTitleEquivalenceClassId(b);
+  const classA = resolveTitleEquivalenceClassId(a, titleEquivalenceIndex);
+  const classB = resolveTitleEquivalenceClassId(b, titleEquivalenceIndex);
   if (classA !== null && classA === classB) return 1;
   return tokenOverlapScore(a, b);
-}
-
-/** Mirrors ranking.service.ts's normalizeFullTitle(). */
-function normalizeFullTitle(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/\(\s*[mwdf]\s*\/\s*[mwdf]\s*\/\s*[mwdf]\s*\)/g, '')
-    .replace(/[-_:]/g, ' ')
-    .replace(/[^\p{L}\p{N}\s/]/gu, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/** Mirrors ranking.service.ts's genderPairSegments(). */
-function genderPairSegments(normalized: string): string[] {
-  const segments = normalized
-    .split('/')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (segments.length !== 2) return [];
-  const [a, b] = segments;
-  if (a.startsWith(b) || b.startsWith(a)) return segments;
-  return [];
-}
-
-/** Mirrors ranking.service.ts's resolveTitleEquivalenceClassId(). */
-function resolveTitleEquivalenceClassId(text: string): string | null {
-  const normalized = normalizeFullTitle(text);
-  if (!normalized) return null;
-  const candidates = new Set([normalized, ...genderPairSegments(normalized)]);
-  for (const cls of marketDe.titleEquivalenceClasses) {
-    for (const candidate of candidates) {
-      if (cls.members.includes(candidate)) return cls.id;
-    }
-  }
-  return null;
 }
 
 function tokenOverlapScore(a: string, b: string): number {
