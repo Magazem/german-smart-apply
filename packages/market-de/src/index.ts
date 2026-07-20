@@ -317,6 +317,78 @@ export const marketDe: MarketPack = {
     coord: 'coordinator',
     rep: 'representative',
   },
+  // Phrase-level title-equivalence classes (Gate 2 rev B) - the mechanism
+  // that replaced ESCO-based Tier 2 title resolution. Measurement (live
+  // ESCO API, against Gate 1's labeled queries) showed the occupations
+  // pillar both (a) doesn't catalog this platform's actual title vocabulary
+  // - "full-stack developer" is absent from the COMPLETE alternative-label
+  // list of ESCO's own "software developer" concept, and "Personalreferent"
+  // returns zero results outright - and (b) any ranked-search-plus-filter
+  // workaround to get coverage back gave false collision-credit on 5/10
+  // genuine hard negatives, which is disqualifying under this system's
+  // abstention rule (a false positive here silently and permanently inflates
+  // a score that should stay low). See the investigation writeup for the
+  // full evidence trail.
+  //
+  // This table is a DIFFERENT, safer mechanism than titleAliases above, not
+  // a reapplication of it. titleAliases maps bare WORDS and was rightly kept
+  // narrow because a bare word has no context - 'developer' -> 'engineer'
+  // was rejected there specifically because 'Real Estate Developer' and
+  // 'Business Developer' are real, unrelated titles that share that one
+  // word. A class below matches the FULL, exact normalized title string, so
+  // a class containing 'full stack developer' can never fire on 'real
+  // estate developer' or 'business developer' - neither is a member, and
+  // partial/substring credit is never given. This is what makes phrase-level
+  // safe where word-level wasn't: only an exact full-phrase hit can trigger
+  // a match, never a shared bare word.
+  //
+  // Each class answers ONLY "same occupation, interchangeable wording?" -
+  // seniority and stack/domain specifics are deliberately out of scope here
+  // (the seniority-fit and skillOverlap dimensions' job respectively - same
+  // calibration principle as the Gate 2 spec's seniority note). A title with
+  // no class match falls through unchanged to the existing Jaccard score -
+  // this table can only raise titleSimilarity, never lower it.
+  //
+  // Full-phrase matching is deliberately exact, INCLUDING how the German
+  // masculine/feminine slash convention is handled
+  // ("Softwareentwickler/Softwareentwicklerin"): resolveTitleEquivalence-
+  // ClassId only splits a slash into segments when one segment is a prefix
+  // of the other (true of gender pairs, false for an unrelated hybrid title
+  // like "Business Developer / Software Developer"). A generic slash split
+  // would let that hybrid title reach this class through its "software
+  // developer" sibling - a real collision entering through a door the
+  // negative-pair suite below doesn't cover, and a direct violation of the
+  // point above (only an exact full-phrase hit should ever count).
+  //
+  // escoConceptId is offline curation metadata only (lets a future curator
+  // cross-reference a class against ESCO's own alt-label list by hand) -
+  // never resolved at runtime. ESCO is not on the runtime path anywhere in
+  // this mechanism.
+  //
+  // Audited the same way as skillAliases/titleAliases: every class and every
+  // known collision case goes through the same 5-lens adversarial review
+  // (strict same-occupation / cross-industry collision hunter / neutral
+  // hiring-manager review / real-world usage / adversarial devil's advocate)
+  // before shipping. See ranking.service.test.ts's title-equivalence-class
+  // describe block for the flagship regression test and the permanent
+  // negative-pair suite (every collision case titleAliases' own audit
+  // already found - Real Estate Developer, Business Developer, Film
+  // Programmer, Medical Coder - re-asserted here so no future class can
+  // silently reproduce them).
+  titleEquivalenceClasses: [
+    {
+      id: 'software-engineer',
+      escoConceptId: 'http://data.europa.eu/esco/occupation/f2b15a0e-e65a-438a-affb-29b9d50b77d1',
+      members: [
+        'software engineer',
+        'software developer',
+        'full stack developer',
+        'fullstack developer',
+        'softwareentwickler',
+        'softwareentwicklerin',
+      ],
+    },
+  ],
   // Rebalanced so domain fit (titleSimilarity + skillOverlap, the only two
   // signals that actually measure whether the job is in the candidate's
   // field) dominates the score - 64% combined, up from 50%. Before this, a

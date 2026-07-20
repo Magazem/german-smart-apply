@@ -256,18 +256,6 @@ describe('RankingService.score - conservative title word aliasing (titleAliases)
     expect(result.titleSimilarity).toBe(1);
   });
 
-  it('does NOT improve the Software Engineer / Full-Stack Developer case - this is a known, intentional gap', () => {
-    // plan.md Phase 4b's own named example. 'developer' -> 'engineer' was
-    // drafted and REJECTED by adversarial audit (Real Estate Developer,
-    // Business Developer are real, unrelated job titles that would falsely
-    // token-match any 'Engineer' candidate). This test documents that the
-    // gap is known and accepted, not an oversight - closing it needs a
-    // different mechanism than a flat word table (see titleAliases' comment).
-    const job = buildJob({ jobTitleNormalized: 'full-stack developer' });
-    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
-    expect(result.titleSimilarity).toBe(0);
-  });
-
   it('does not let "Real Estate Developer" token-match a "Software Engineer" candidate', () => {
     const job = buildJob({ jobTitleNormalized: 'real estate developer' });
     const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
@@ -290,5 +278,97 @@ describe('RankingService.score - conservative title word aliasing (titleAliases)
     const job = buildJob({ jobTitleNormalized: 'Grommet Inspector' });
     const result = service.score(job, { profile: buildProfile({ targetRole: 'Grommet Inspector' }) });
     expect(result.titleSimilarity).toBe(1);
+  });
+});
+
+describe('RankingService.score - phrase-level title-equivalence classes (Gate 2 rev B)', () => {
+  const service = new RankingService();
+
+  // The gap the titleAliases describe block above documents as "known and
+  // intentional" (bare-word aliasing can't safely close it) is closed here
+  // by a different mechanism: a class matches the FULL phrase, so it can
+  // never fire on 'Real Estate Developer' or 'Business Developer' the way a
+  // 'developer' -> 'engineer' word alias would have. See market-de's
+  // titleEquivalenceClasses comment for the full rationale (this replaced an
+  // ESCO-based Tier 2 resolution mechanism that measurement showed doesn't
+  // catalog this platform's actual title vocabulary).
+  const SOFTWARE_ENGINEER_CLASS_MEMBERS = [
+    'Software Engineer',
+    'Software Developer',
+    'Full-Stack Developer',
+    'Fullstack Developer',
+    'Softwareentwickler',
+  ];
+
+  it.each(SOFTWARE_ENGINEER_CLASS_MEMBERS)(
+    'plan.md Phase 4b\'s named example is now closed: "%s" scores a perfect title match against "Software Engineer"',
+    (member) => {
+      const job = buildJob({ jobTitleNormalized: member });
+      const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
+      expect(result.titleSimilarity).toBe(1);
+    },
+  );
+
+  it('matches the German masculine/feminine slash convention without a dedicated combined-form entry', () => {
+    const job = buildJob({ jobTitleNormalized: 'Softwareentwickler/Softwareentwicklerin' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
+    expect(result.titleSimilarity).toBe(1);
+  });
+
+  it('matches regardless of hyphenation/case/whitespace variation in the input', () => {
+    const job = buildJob({ jobTitleNormalized: '  FULL-STACK   Developer ' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'software engineer' }) });
+    expect(result.titleSimilarity).toBe(1);
+  });
+
+  // Permanent negative-pair suite: every collision case the titleAliases
+  // word-level audit already rejected, re-asserted at the phrase-class layer
+  // so no future class addition can silently reproduce them. These pairs
+  // must NEVER end up in the same class, however tempting a raw word overlap
+  // might make it look.
+  it('does not class-match "Business Development Manager" with the software-engineer class\'s "Full Stack Developer" collision job', () => {
+    // Mirrors Gate 1's sales-gate1-1 two-sided "Developer" test: "full stack
+    // developer" is a real collision against a Business Development
+    // Manager candidate, not a synonym, despite the shared word "developer".
+    const job = buildJob({ jobTitleNormalized: 'full stack developer' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Business Development Manager' }) });
+    expect(result.titleSimilarity).toBe(0);
+  });
+
+  it('does not let an unrelated hybrid title reach a class through a generic slash split', () => {
+    // The gender-pair slash handling (below) must not become a generic
+    // slash-split - that would let "business developer" reach the
+    // software-engineer class merely by riding alongside "software
+    // developer" after a slash, through a door the negative-pair suite
+    // above doesn't cover. Guarded by requiring one segment to be a prefix
+    // of the other (true of gender pairs, false here).
+    const job = buildJob({ jobTitleNormalized: 'Business Developer / Software Developer' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Business Development Manager' }) });
+    expect(result.titleSimilarity).toBeLessThan(1);
+  });
+
+  it('does not let "Real Estate Developer" join the software-engineer class', () => {
+    const job = buildJob({ jobTitleNormalized: 'real estate developer' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
+    expect(result.titleSimilarity).toBe(0);
+  });
+
+  it('does not let "Medical Coder" join the software-engineer class', () => {
+    const job = buildJob({ jobTitleNormalized: 'medical coder' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
+    expect(result.titleSimilarity).toBe(0);
+  });
+
+  it('does not let "Film Programmer" join the software-engineer class', () => {
+    const job = buildJob({ jobTitleNormalized: 'film programmer' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Software Engineer' }) });
+    expect(result.titleSimilarity).toBe(0);
+  });
+
+  it('falls through unchanged to plain Jaccard when neither title matches any class', () => {
+    const job = buildJob({ jobTitleNormalized: 'Grommet Inspector' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Senior Grommet Inspector' }) });
+    // {senior, grommet, inspector} vs {grommet, inspector} -> intersection 2, union 3.
+    expect(result.titleSimilarity).toBeCloseTo(2 / 3);
   });
 });
