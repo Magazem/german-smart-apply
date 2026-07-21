@@ -156,6 +156,7 @@ export class JobsService {
           toSharedCandidateProfile(profile),
           job,
           profile.preferredLanguage,
+          score.totalScore,
         );
         score.explanation = explanationResult.text;
         await this.tokenUsage.record(

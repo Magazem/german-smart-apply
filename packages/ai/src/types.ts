@@ -95,6 +95,15 @@ export interface AiProvider {
     profile: CandidateProfile,
     job: CanonicalJob,
     language: string,
+    /**
+     * The already-computed ranking match score (RankingService's
+     * totalScore, 0-1) for this profile+job pair, when the caller has one
+     * available. Threaded through so the prompt can calibrate its tone to
+     * the actual fit instead of presupposing every job is a good one -
+     * optional so existing/test callers that don't have a score handy
+     * still compile and behave sensibly.
+     */
+    matchScore?: number,
   ): Promise<AiGenerationResult>;
 
   generateFollowUpEmail(

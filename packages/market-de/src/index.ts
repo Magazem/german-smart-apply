@@ -95,8 +95,15 @@ export const marketDe: MarketPack = {
       'Summarize this CV for a German job market audience in {{language}}. Be concise, factual, and highlight measurable achievements.',
     coverLetter:
       'Write a professional, ATS-friendly cover letter in {{language}} for the role of {{jobTitle}} at {{companyName}}, tailored to the candidate profile provided. Follow German business-letter conventions (formal register, Sehr geehrte/r for German text).',
+    // Deliberately neutral, not "explain why this is a good fit" - that
+    // framing structurally presupposed a good fit exists and left the model
+    // no room to say a job doesn't fit, so it manufactured sycophantic
+    // justifications even for jobs that plainly didn't match. {{matchScore}}
+    // is optional (see AiProvider.generateMatchExplanation) - when the
+    // caller supplies the already-computed ranking score, calibrate on it
+    // instead of guessing tone from the text alone.
     matchExplanation:
-      'Explain in {{language}} why this candidate is a good fit for {{jobTitle}}, in 2-3 short sentences, referencing concrete overlap between the candidate skills and the job requirements.',
+      "Assess in {{language}} how well this candidate's profile genuinely fits {{jobTitle}}, in 2-3 short sentences. The computed match score for this pairing is {{matchScore}} - calibrate your tone to it: a high score should read as genuine enthusiasm grounded in concrete overlap, while a low score should read as an honest, low-key note of a weak fit, not manufactured enthusiasm. State the concrete overlap between the candidate's skills and the job requirements where it truly exists, and just as plainly name the real gaps or mismatches where they exist - never invent a connection the evidence does not support.",
     followUpEmail:
       'Write a brief, polite follow-up email in {{language}} from the candidate to the hiring team for {{jobTitle}} at {{companyName}}, referencing that it has been {{daysSinceApplied}} days since they applied. Reaffirm interest and ask for a status update. Follow German business-email conventions (formal register, Sehr geehrte/r for German text). Keep it short - a few sentences, not a full letter.',
     interviewPrep:
