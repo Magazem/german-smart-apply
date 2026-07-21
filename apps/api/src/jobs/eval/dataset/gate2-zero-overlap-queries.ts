@@ -283,7 +283,7 @@ export const GATE2_ZERO_OVERLAP_QUERIES: LabeledQuery[] = [
         relevance: 4,
         rationale:
           "Same occupation as 'Sales Representative' under its German legal/market name. §84 HGB defines 'Handelsvertreter' as a commercial agent brokering/concluding deals for a principal (EU Directive 86/653/EEC transposition) - the same task content ISCO 3322 groups under one occupation. Verified real dual-titled req: Fisher Investments Germany posts the identical role externally as 'Senior Sales Representative (m/w/d) Deutschland' while framing it internally as 'Handelsvertreter nach §84 HGB'. Note: §84 HGB legally requires self-employed status - a real employment-status difference from a salaried rep role, but out of scope for title-equivalence relevance, which measures occupation/task identity only (employment status/contract type is a different dimension's job, same as seniority).",
-        job: buildEvalJob({ jobId: 'gate2-sales-1-a', jobTitleNormalized: 'handelsvertreter konsumgüter', seniority: 'mid', language: 'de', techStackTags: ['Gebietsverantwortung', 'Provisionsmodell', 'Kaltakquise', 'CRM-Pflege (Salesforce)'] }),
+        job: buildEvalJob({ jobId: 'gate2-sales-1-a', jobTitleNormalized: 'handelsvertreter', seniority: 'mid', language: 'de', techStackTags: ['Gebietsverantwortung', 'Provisionsmodell', 'Kaltakquise', 'CRM-Pflege (Salesforce)'] }),
       },
       {
         relevance: 2,

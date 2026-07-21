@@ -359,6 +359,58 @@ describe('RankingService.score - phrase-level title-equivalence classes (Gate 2 
   });
 });
 
+describe('RankingService.score - PR3 zero-overlap-query candidate classes (7 added, 2 rejected after a second 5-lens audit)', () => {
+  const service = new RankingService();
+
+  // Each pair below is the exact zero-token-overlap pair that motivated the
+  // class, per-class - a real regression pin, not a generic smoke test.
+  const CLASS_PAIRS: Array<[string, string]> = [
+    ['Unternehmensjurist', 'Justiziar'],
+    ['Copywriter', 'Werbetexter'],
+    ['Sales Representative', 'Handelsvertreter'],
+    ['Personalreferent', 'HR Generalist'],
+    ['Bilanzbuchhalter', 'General Ledger Accountant'],
+    ['Gesundheits- und Krankenpfleger', 'Pflegefachkraft Akutstation'],
+    ['Kundenservice-Mitarbeiter', 'Servicefachkraft für Dialogmarketing'],
+  ];
+
+  it.each(CLASS_PAIRS)('scores a perfect title match between "%s" and "%s"', (targetRole, jobTitle) => {
+    const job = buildJob({ jobTitleNormalized: jobTitle.toLowerCase() });
+    const result = service.score(job, { profile: buildProfile({ targetRole }) });
+    expect(result.titleSimilarity).toBe(1);
+  });
+
+  it('does not let bare "Texter" reach the copywriter class - only "Werbetexter" was audited safe', () => {
+    // 5/5 drop on bare "Texter" (real Liedtexter/Videotexter collision) -
+    // this must keep falling through to plain Jaccard, not silently start
+    // matching once "Werbetexter" exists in the same class.
+    const job = buildJob({ jobTitleNormalized: 'texter' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Copywriter' }) });
+    expect(result.titleSimilarity).toBe(0);
+  });
+
+  it('does not let bare "Pflegefachkraft" reach the registered-nurse class - only the qualified "Akutstation" form was audited safe', () => {
+    // 4/5 drop on the bare umbrella term (real acute-vs-geriatric-care
+    // over-collapse risk) - the qualified member must not accidentally
+    // widen to match the bare form too.
+    const job = buildJob({ jobTitleNormalized: 'pflegefachkraft' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Gesundheits- und Krankenpfleger' }) });
+    expect(result.titleSimilarity).toBe(0);
+  });
+
+  it('does not add a qa-engineer class - bare "QA Engineer" failed its own audit (real aerospace/automotive QA collision)', () => {
+    const job = buildJob({ jobTitleNormalized: 'softwaretester' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'QA Engineer' }) });
+    expect(result.titleSimilarity).toBeLessThan(1);
+  });
+
+  it('does not add a product-owner class - the qualified "Produktmanager - Digitale Kundenprodukte" phrase still failed its audit (disambiguates industry, not Scrum-vs-strategic function)', () => {
+    const job = buildJob({ jobTitleNormalized: 'produktmanager - digitale kundenprodukte' });
+    const result = service.score(job, { profile: buildProfile({ targetRole: 'Product Owner' }) });
+    expect(result.titleSimilarity).toBeLessThan(1);
+  });
+});
+
 describe('RankingService - TITLE_NEGATIVE_PAIRS corpus invariant', () => {
   // The exhaustive, future-proof safety net the Gate 2 rev B design law (§0)
   // requires: every pair this session's audits confirmed are DIFFERENT

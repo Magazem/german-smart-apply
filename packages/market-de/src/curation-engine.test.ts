@@ -111,11 +111,15 @@ describe('curation-engine pipeline against real, live-crawled job titles', () =>
   });
 
   it('surfaces real unresolved multi-industry titles ranked by genuine frequency', () => {
+    // "Personalreferent" and "Kundenservice-Mitarbeiter" moved out of this
+    // list post-PR3 (hr-generalist and customer-service-representative
+    // classes now resolve them) - "Account Manager" has no class covering
+    // it and stays a genuine unresolved example.
     const frequencies = aggregateTitleFrequencies(REAL_TITLES_SAMPLE);
     const unresolved = filterUnresolvedCandidates(frequencies, titleEquivalenceIndex);
     expect(unresolved.map((f) => f.normalized)).toContain('controller');
     expect(unresolved.map((f) => f.normalized)).toContain('rechtsanwalt');
-    expect(unresolved.map((f) => f.normalized)).toContain('personalreferent');
+    expect(unresolved.map((f) => f.normalized)).toContain('account manager');
   });
 
   it('every existing titleEquivalenceClasses member is well-formed (rebuild the same index the real run used)', () => {

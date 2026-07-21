@@ -158,6 +158,26 @@ export const TITLE_NEGATIVE_PAIRS: TitleNegativePair[] = [
       "5-lens audit (post-PR2, prompted by real dual-titled job postings that looked like a curation candidate): 5/5 drop, converging independently on the same finding Gate 1's own HR-gate1-1 already encoded (relevance 3, 'angrenzende Rolle mit strategischerem Fokus', not 4/identical) - Personalreferent is operational/administrative HR execution, HR Business Partner is a strategic-advisory-to-leadership mandate, and multiple lenses confirmed via independent research that this split holds even at matched seniority bands (a Junior HR Business Partner posting still centers advising Fuehrungskraefte, not just less experience). Same broader-vs-narrower shape as the Growth Product Manager/Experimentation Platform Manager and Finanzanalyst/Bereichsleiter-P&L pairs above - real skill overlap, but the strategic side is a materially different mandate, not just a seniority label.",
   },
 
+  // --- PR3 zero-overlap-query candidate class audit findings (9-candidate batch) ---
+  {
+    a: 'Copywriter',
+    b: 'Liedtexter',
+    reason:
+      "5/5 drop on admitting bare 'Texter' to the copywriter class specifically because of this collision: bare 'Texter' is standard German shorthand for both the advertising copywriter role AND 'Liedtexter' (song lyricist), a wholly unrelated music-industry occupation. The class uses 'Werbetexter' (BERUFENET's own disambiguated official title) instead - this pair exists so a future curator can't re-propose bare 'Texter' without re-discovering the same collision.",
+  },
+  {
+    a: 'QA Engineer',
+    b: 'QA Engineer (Aerospace/Automotive Manufacturing)',
+    reason:
+      "Rejected as a titleEquivalenceClasses candidate entirely (not just this pair) - a 5-lens audit split 3-2 on whether bare 'QA Engineer' is safe, and a live search confirmed the dissenting lens's concern: bare 'QA Engineer'/'QA/QC Engineer' is genuinely common in English-language aerospace, automotive, and electronics-manufacturing job postings for a physical quality-control role with no software-testing content, distinct from the software-testing 'QA Engineer' sense 'Softwaretester' would otherwise anchor. This pair exists so a future curator can't re-propose bare 'QA Engineer' into any class without re-discovering this.",
+  },
+  {
+    a: 'Gesundheits- und Krankenpfleger',
+    b: 'Altenpfleger',
+    reason:
+      "4/5 drop on admitting bare 'Pflegefachkraft' to the registered-nurse class specifically because of this collision: the 2020 Pflegeberufegesetz folded acute-hospital, pediatric, and geriatric/elder-care nursing into one generalist 'Pflegefachkraft' qualification, so the bare umbrella term genuinely spans both settings in real postings. The class uses the qualified 'Pflegefachkraft Akutstation' instead, matching this session's own eval-query precedent (Altenpfleger/Seniorenzentrum graded relevance 2, a real cross-setting specialization gap, not identity).",
+  },
+
   // --- Curation-engine audit findings (post-PR2, first real curated batch) ---
   {
     a: 'Software Engineer',
