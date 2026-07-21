@@ -407,3 +407,43 @@ p {
   font-size: 0.78rem;
   color: var(--color-text-muted);
 }
+
+/* Scoped default spacing for job.jobDescriptionHtml, the raw (sanitized)
+   HTML from the source ATS rendered via dangerouslySetInnerHTML. The global
+   `h1, h2, h3, h4, p { margin: 0 }` reset above would otherwise smash this
+   content's own paragraphs/headings/lists back together, so this class
+   restores just enough spacing to keep them legible -- not a full
+   typography system. */
+.job-description-html p,
+.job-description-html ul,
+.job-description-html ol,
+.job-description-html blockquote {
+  margin: 0 0 12px;
+}
+
+.job-description-html h1,
+.job-description-html h2,
+.job-description-html h3,
+.job-description-html h4,
+.job-description-html h5,
+.job-description-html h6 {
+  margin: 16px 0 8px;
+  font-weight: 700;
+}
+
+.job-description-html > :first-child {
+  margin-top: 0;
+}
+
+.job-description-html > :last-child {
+  margin-bottom: 0;
+}
+
+.job-description-html li {
+  margin-bottom: 4px;
+}
+
+.job-description-html ul,
+.job-description-html ol {
+  padding-left: 1.4em;
+}

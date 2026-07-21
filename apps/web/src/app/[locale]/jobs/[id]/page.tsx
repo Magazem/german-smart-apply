@@ -1,5 +1,6 @@
 'use client';
 
+import DOMPurify from 'isomorphic-dompurify';
 import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -386,7 +387,15 @@ export default function JobDetailPage() {
 
         <div className="stack gap-8">
           <h2 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{t('fullDescriptionHeading')}</h2>
-          <p style={{ fontSize: '0.92rem', whiteSpace: 'pre-wrap' }}>{job.jobDescriptionText}</p>
+          {job.jobDescriptionHtml && job.jobDescriptionHtml.trim() ? (
+            <div
+              className="job-description-html"
+              style={{ fontSize: '0.92rem' }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(job.jobDescriptionHtml) }}
+            />
+          ) : (
+            <p style={{ fontSize: '0.92rem', whiteSpace: 'pre-wrap' }}>{job.jobDescriptionText}</p>
+          )}
         </div>
 
         <div className="row row-wrap gap-8">

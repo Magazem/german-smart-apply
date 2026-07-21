@@ -25,13 +25,39 @@ regardless of source".
 """
 from __future__ import annotations
 
+import html
 import re
 from datetime import datetime, timezone
 
+# Block-level tags whose opening/closing boundaries mark a paragraph, line, or
+# list-item break. Matched case-insensitively and replaced with a newline
+# BEFORE remaining (inline) tags are stripped to spaces, so the structure
+# these tags encode survives into the plain-text fallback instead of every
+# tag boundary collapsing into a single run-on string.
+_BLOCK_TAG_RE = re.compile(
+    r"</?(?:p|div|br|li|h[1-6]|ul|ol|blockquote)\b[^>]*>",
+    re.IGNORECASE,
+)
 
-def _strip_html(html: str) -> str:
-    text = re.sub(r"<[^>]+>", " ", html or "")
-    text = re.sub(r"\s+", " ", text)
+
+def _strip_html(raw_html: str) -> str:
+    text = raw_html or ""
+    text = _BLOCK_TAG_RE.sub("\n", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    # Decode entities (e.g. "&amp;", or an already-escaped "&lt;/h2&gt;")
+    # after tag removal, so escaped text renders as real characters instead
+    # of passing through untouched to the page.
+    text = html.unescape(text)
+    # Collapse only repeated horizontal whitespace -- newlines inserted above
+    # are the paragraph/line-break structure and must survive, unlike the
+    # old blanket "\s+" collapse which erased them entirely.
+    text = re.sub(r"[ \t]+", " ", text)
+    # Trim horizontal whitespace hugging a newline (left behind e.g. between
+    # a stripped inline tag and an adjacent block-tag newline).
+    text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
+    # Cap blank-line runs at a single blank line between paragraphs so it
+    # doesn't look excessively spaced.
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
