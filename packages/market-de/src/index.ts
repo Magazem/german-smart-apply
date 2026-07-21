@@ -408,6 +408,147 @@ export const marketDe: MarketPack = {
         'anwendungsentwickler',
       ],
     },
+    // The seven classes below all came from the same source: PR3's
+    // zero-token-overlap eval queries surfaced 9 real, evidence-backed
+    // candidate pairs (each already independently adversarially verified
+    // while drafting those queries). Every one of the 9 went through a
+    // SECOND, full 5-lens audit before being considered for
+    // titleEquivalenceClasses membership - eval-query relevance grading and
+    // permanent class membership are different bars (a labeled query judges
+    // one specific documented job; a class fires unconditionally on every
+    // future job matching the phrase, forever), so passing the former does
+    // not exempt a pair from the latter. Two of the 9 (qa-engineer,
+    // product-owner) failed this second audit outright and are NOT added -
+    // see the PR commit message / spec for the full reasoning. Two more
+    // (copywriter, registered-nurse) shipped with a MODIFIED member: the
+    // audit found the originally-proposed bare term unsafe and converged
+    // unanimously on a specific safe substitute, the same shape as
+    // Anwendungsentwickler's own audit above.
+    {
+      id: 'in-house-counsel',
+      members: [
+        // 5/5 keep on both members. Confirmed in-house-counsel occupation
+        // identity (Duden's Justiziar definition; a real StepStone posting
+        // "Legal Counsel / Justiziar (m/w/d)" requiring the Volljurist
+        // qualification this class targets). Syndikusrechtsanwalt (a
+        // separately bar-regulated credential) and Justizvollzugsbeamter (a
+        // corrections officer, "Justiz-" root collision only) were both
+        // explicitly checked and correctly stay excluded.
+        'unternehmensjurist',
+        'justiziar',
+      ],
+    },
+    {
+      id: 'copywriter',
+      members: [
+        // Copywriter: 5/5 keep. Texter (bare): 5/5 DROP - every lens
+        // independently found the same real collision: bare "Texter" is
+        // also standard shorthand for "Liedtexter" (song lyricist, a
+        // wholly unrelated music-industry occupation) and is a literal
+        // substring of "Videotexter" (broadcast Teletext editor). All 5
+        // lenses converged on the same fix: BERUFENET's own official,
+        // already-disambiguated occupation title "Werbetexter/in" carries
+        // none of that risk (the "Werbe-" prefix is exactly what Liedtexter
+        // and Videotexter lack) and is not itself the anchor of any known
+        // collision. Used here instead of bare "Texter".
+        'copywriter',
+        'werbetexter',
+      ],
+    },
+    {
+      id: 'sales-representative',
+      members: [
+        // Sales Representative: 5/5 keep. Handelsvertreter: 3/5 keep - two
+        // lenses raised a credible-looking risk (insurance agents are
+        // legally a species of Handelsvertreter under §92 HGB, so bare
+        // "Handelsvertreter" could bridge to ISCO 3321 Insurance
+        // Representatives, a different occupation than this class's ISCO
+        // 3322 anchor) but a live search of real recruiting titles (StepStone
+        // + a direct DVAG/OVB check) found insurance/Strukturvertrieb firms
+        // recruit under their own distinct titles ("Vermögensberater",
+        // "Versicherungsvertreter" under §34d/§34f GewO), never bare
+        // "Handelsvertreter" - the theoretical legal-taxonomy risk doesn't
+        // materialize in real posting titles. §84 HGB's self-employed-status
+        // requirement is a separate, already-adjudicated non-issue (out of
+        // scope for title-equivalence, which measures task/occupation
+        // identity only).
+        'sales representative',
+        'handelsvertreter',
+      ],
+    },
+    {
+      id: 'hr-generalist',
+      members: [
+        // 5/5 keep on both members. Multiple real DACH employers (ADAC,
+        // SieMatic, BVG Berlin, Spraying Systems Europa) advertise this
+        // exact role as "Personalreferent / HR-Generalist (m/w/d)" for one
+        // requisition. HR Business Partner (a distinct, more senior/
+        // strategic rung - already confirmed via a dedicated 5-lens audit,
+        // 5/5 drop, see TITLE_NEGATIVE_PAIRS) and Personalsachbearbeiter (a
+        // narrower administrative tier) were both explicitly checked and
+        // correctly stay excluded.
+        'personalreferent',
+        'hr generalist',
+      ],
+    },
+    {
+      id: 'general-ledger-accountant',
+      members: [
+        // 5/5 keep on both members. Three real DACH employers (ECE Hamburg,
+        // Salzgitter AG, HAPEKO) dual-title this exact role -
+        // "Bilanzbuchhalter - General Ledger Accountant (m/w/d)" and
+        // similar. Finanzbuchhalter (a one-step-more-junior sibling, no IHK
+        // Bilanzbuchhalter certification) and Leiter Rechnungswesen
+        // (accounting-department leadership, not hands-on ledger work) were
+        // both explicitly checked and correctly stay excluded.
+        'bilanzbuchhalter',
+        'general ledger accountant',
+      ],
+    },
+    {
+      id: 'registered-nurse',
+      members: [
+        // Gesundheits- und Krankenpfleger: 5/5 keep - the precise, unambiguous
+        // pre-2020 legal title for hospital/acute-care nursing, still in
+        // active real-world use (e.g. DRK Kliniken Berlin). Bare
+        // "Pflegefachkraft": 4/5 DROP - the 2020 Pflegeberufegesetz folded
+        // acute-hospital, pediatric, AND geriatric/elder-care (Altenpflege)
+        // nursing into one generalist qualification, so the bare umbrella
+        // term genuinely spans both settings in real postings (confirmed:
+        // hundreds of live Altenheim/Pflegeheim listings use the identical
+        // bare string). Admitting it here would reproduce exactly the
+        // acute-vs-geriatric over-collapse this session's own eval query
+        // already treats as a real, distinct specialization gap (its
+        // Altenpfleger/Seniorenzentrum job is graded relevance 2, not
+        // identical) - the eval query's own flagship job used an explicit
+        // "- Akutstation" qualifier for the same reason, and that qualified
+        // form is what's used here instead of the bare umbrella term.
+        'gesundheits- und krankenpfleger',
+        'pflegefachkraft akutstation',
+      ],
+    },
+    {
+      id: 'customer-service-representative',
+      members: [
+        // 5/5 keep, 4/5 keep. Kundenservice-Mitarbeiter is the generic,
+        // unregulated umbrella title for frontline customer support across
+        // German industries. Servicefachkraft für Dialogmarketing (BERUFENET
+        // occupation 35309, a real 2-year BIBB/IHK apprenticeship) has a
+        // defined core - Kundenbetreuung/Kundenbindung/Kundengewinnung,
+        // handling orders/inquiries/complaints by phone/e-mail/digital
+        // channels - that matches directly; one lens raised an
+        // outbound/telemarketing concern but the occupation's own official
+        // definition centers inbound service work, and real non-apprenticeship
+        // postings (e.g. Sparkasse) confirm inbound-weighted day-to-day duties
+        // in practice. Kaufmann für Dialogmarketing (the real, broader 3-year
+        // sibling occupation - adds personnel/controlling scope), Teamleiter
+        // Kundenservice (seniority/scope gap), and Kaufmann im Einzelhandel
+        // (unrelated retail sales) were all explicitly checked and correctly
+        // stay excluded.
+        'kundenservice-mitarbeiter',
+        'servicefachkraft für dialogmarketing',
+      ],
+    },
   ],
   // Rebalanced so domain fit (titleSimilarity + skillOverlap, the only two
   // signals that actually measure whether the job is in the candidate's
