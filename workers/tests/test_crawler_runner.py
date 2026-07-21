@@ -39,6 +39,13 @@ def test_run_crawl_records_run_and_snapshots(seeded_sources):
     cur.execute('SELECT COUNT(*) FROM "raw_job_snapshots" WHERE "sourceId" = %s', (source_id,))
     assert cur.fetchone()[0] == 2
 
+    # snapshotIds must be exactly the rows this call inserted, not "every
+    # snapshot for this source" - run_pipeline.py relies on this list to
+    # avoid re-fetching/re-normalizing the source's whole history every run.
+    assert len(result["snapshotIds"]) == 2
+    cur.execute('SELECT "id" FROM "raw_job_snapshots" WHERE "sourceId" = %s', (source_id,))
+    assert {row[0] for row in cur.fetchall()} == set(result["snapshotIds"])
+
     cur.execute(
         'SELECT "status", "jobsFetched", "jobsNew", "jobsUpdated", "retryCount" FROM "source_crawl_runs" WHERE "id" = %s',
         (result["run_id"],),
@@ -73,6 +80,12 @@ def test_run_crawl_second_run_marks_existing_jobs_as_updated(seeded_sources):
 
     cur.execute('SELECT COUNT(*) FROM "raw_job_snapshots" WHERE "sourceId" = %s', (source_id,))
     assert cur.fetchone()[0] == 4  # both crawl runs persisted their own snapshot rows
+
+    # The second run's snapshotIds must be its OWN new rows, disjoint from
+    # the first run's - this is exactly what lets run_pipeline.py normalize
+    # only what's new each time instead of replaying the whole history.
+    assert len(second["snapshotIds"]) == 2
+    assert set(first["snapshotIds"]).isdisjoint(second["snapshotIds"])
 
 
 def test_run_crawl_records_failure_on_domain_violation(seeded_sources):
