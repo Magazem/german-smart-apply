@@ -100,6 +100,7 @@ const testMarketPack: MarketPack = {
   companyAliases: {},
   skillAliases: {},
   titleAliases: {},
+  titleEquivalenceClasses: [],
   rankingWeights: {
     titleSimilarity: 0.25,
     skillOverlap: 0.25,
