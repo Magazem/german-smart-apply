@@ -64,6 +64,19 @@ function toAiProviderError(err: unknown, context: string): AiProviderError {
   return new AiProviderError(`${context}: ${message}`, 'api_error', err);
 }
 
+/**
+ * Appended to every free-text (non-tool-call) prompt below. The existing
+ * "no preamble" lines are a soft style instruction a model can quietly
+ * ignore; this is a much more explicit backstop against the model leaking
+ * chain-of-thought / meta-commentary ("the user asked us to...") into
+ * user-facing output. Anthropic's extractText() below already structurally
+ * excludes non-"text" content blocks (e.g. any "thinking" blocks), so this
+ * is lower-risk here than for OpenRouterAiProvider, but kept identical
+ * across both providers for consistency and defense in depth.
+ */
+const NO_META_COMMENTARY_INSTRUCTION =
+  'Output ONLY the final answer text. Do not include any reasoning, meta-commentary, restated instructions, or references to this prompt. If you notice yourself writing about what you were asked to do, stop and output only the actual final answer.';
+
 function totalTokens(usage: Anthropic.Usage): number {
   return (
     usage.input_tokens +
@@ -415,6 +428,7 @@ export class AnthropicAiProvider implements AiProvider {
       "Write in third person / resume-style phrasing (avoid 'I', 'my') throughout, consistent with standard CV conventions.",
       CV_VARIANT_STYLE_INSTRUCTIONS[variantStyle],
       'Return only the CV content, with no preamble or commentary.',
+      NO_META_COMMENTARY_INSTRUCTION,
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -452,6 +466,7 @@ export class AnthropicAiProvider implements AiProvider {
       }),
       CV_VARIANT_STYLE_INSTRUCTIONS[variantStyle],
       `Target length: approximately ${preferredLengthWords} words (roughly one page). Do not pad — a shorter, sharper letter is better than a longer, padded one. Return only the letter text, with no preamble or commentary.`,
+      NO_META_COMMENTARY_INSTRUCTION,
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -484,6 +499,7 @@ export class AnthropicAiProvider implements AiProvider {
         companyName: job.companyNameNormalized,
       }),
       'Return only the explanation (2-3 sentences), with no preamble.',
+      NO_META_COMMENTARY_INSTRUCTION,
     ].join('\n\n');
 
     const user = [formatProfileForPrompt(profile), 'Job details:', formatJobForPrompt(job)].join('\n\n');

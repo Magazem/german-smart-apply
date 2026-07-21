@@ -304,6 +304,38 @@ describe('OpenRouterAiProvider', () => {
       const result = await provider.generateMatchExplanation(profile, job, 'en');
       expect(result.text).toBe('Strong match on TypeScript and PostgreSQL.');
     });
+
+    it('passes a clean response through completely unchanged', async () => {
+      const clean = 'Strong match on TypeScript and PostgreSQL, with 4 years of hands-on backend experience.';
+      const { client } = fakeClient(() => textCompletion(clean));
+      const provider = new OpenRouterAiProvider(testMarketPack, { client });
+
+      const result = await provider.generateMatchExplanation(profile, job, 'en');
+      expect(result.text).toBe(clean);
+    });
+
+    it('reduces a harmony-channel-wrapped response to just the final-channel content', async () => {
+      const leaked =
+        '<|start|>assistant<|channel|>analysis<|message|>The user asked us to explain the match; ' +
+        'let me think about the overlap in skills.<|end|>' +
+        '<|start|>assistant<|channel|>final<|message|>Strong match on TypeScript and PostgreSQL.<|end|>';
+      const { client } = fakeClient(() => textCompletion(leaked));
+      const provider = new OpenRouterAiProvider(testMarketPack, { client });
+
+      const result = await provider.generateMatchExplanation(profile, job, 'en');
+      expect(result.text).toBe('Strong match on TypeScript and PostgreSQL.');
+    });
+
+    it('strips a <think>...</think> block and returns only the remainder', async () => {
+      const wrapped =
+        '<think>\nThe user asked us to explain the match. Let me consider the skill overlap.\n</think>\n' +
+        'Strong match on TypeScript and PostgreSQL.';
+      const { client } = fakeClient(() => textCompletion(wrapped));
+      const provider = new OpenRouterAiProvider(testMarketPack, { client });
+
+      const result = await provider.generateMatchExplanation(profile, job, 'en');
+      expect(result.text).toBe('Strong match on TypeScript and PostgreSQL.');
+    });
   });
 
   describe('generateFollowUpEmail', () => {
