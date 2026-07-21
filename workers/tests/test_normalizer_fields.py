@@ -146,6 +146,38 @@ def test_parse_salary_empty_text():
     assert fields.parse_salary("") == (None, None, None)
 
 
+def test_parse_salary_prefers_keyword_adjacent_range_over_earlier_bonus_figure():
+    """A plausible-looking Euro figure with no salary-context keyword nearby
+    (a signing/joining bonus) must lose out to the real range, which sits
+    next to an explicit keyword ("Jahresgehalt"). If the keyword-preference
+    logic were broken (e.g. plain first-match-wins), this would incorrectly
+    return the bonus (25000, 25000, "EUR") instead of the real range.
+    """
+    text = (
+        "Wir zahlen Ihnen eine attraktive Antrittspraemie von 25.000 EUR bei Vertragsbeginn, "
+        "unabhaengig von allen weiteren Konditionen dieser Position. "
+        "Zusaetzlich attraktiv ist unser Jahresgehalt: 60.000 - 75.000 EUR."
+    )
+    assert fields.parse_salary(text) == (60000, 75000, "EUR")
+
+
+def test_parse_salary_annualizes_monthly_figure_detected_via_period_language():
+    """A monthly figure near explicit monthly-period language ("pro Monat")
+    must be normalized to its annual equivalent (x12) before being returned,
+    since the schema/frontend only ever store and display a single
+    implicitly-annual figure with no period field.
+    """
+    assert fields.parse_salary("Gehalt: 4.500 EUR pro Monat.") == (54000, 54000, "EUR")
+
+
+def test_parse_salary_rejects_implausible_outlier_and_returns_none():
+    """A number that, after normalization, falls well outside a plausible
+    German-market annual salary range must be rejected outright (None)
+    rather than stored -- no salary shown is better than a wrong one.
+    """
+    assert fields.parse_salary("Gehalt: 12.000 EUR pro Jahr.") == (None, None, None)
+
+
 def test_parse_salary_with_mismatched_separator_args_skips_the_unparsable_number():
     """thousands_separator/decimal_separator are per-call configuration, not
     baked into the regex itself (which always captures the German "."
