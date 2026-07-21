@@ -2,6 +2,7 @@ import type { LabeledQuery } from '../types.js';
 import { buildEvalJob, buildEvalProfile } from './fixtures.js';
 import { BOOTSTRAP_QUERIES } from './bootstrap-queries.js';
 import { GATE1_QUERIES } from './gate1-queries.js';
+import { GATE2_ZERO_OVERLAP_QUERIES } from './gate2-zero-overlap-queries.js';
 
 /**
  * Smoke dataset for Phase 3a (scaffolding the harness) - hand-written,
@@ -247,4 +248,4 @@ const SMOKE_QUERIES: LabeledQuery[] = [
  * way and scored by the same harness (ranking-eval.test.ts); keeping them in
  * one exported array means the nDCG bar is enforced across the whole dataset.
  */
-export const LABELED_QUERIES: LabeledQuery[] = [...SMOKE_QUERIES, ...BOOTSTRAP_QUERIES, ...GATE1_QUERIES];
+export const LABELED_QUERIES: LabeledQuery[] = [...SMOKE_QUERIES, ...BOOTSTRAP_QUERIES, ...GATE1_QUERIES, ...GATE2_ZERO_OVERLAP_QUERIES];
