@@ -151,6 +151,12 @@ export const TITLE_NEGATIVE_PAIRS: TitleNegativePair[] = [
     b: 'Geschäftsführer Vertrieb',
     reason: 'Gate 1 sales-gate1-2: C-suite, full-P&L authority over the whole company vs. a department-head Vertriebsleiter role - same family as the VP of Engineering seniority-collapse case above.',
   },
+  {
+    a: 'Personalreferent',
+    b: 'HR Business Partner',
+    reason:
+      "5-lens audit (post-PR2, prompted by real dual-titled job postings that looked like a curation candidate): 5/5 drop, converging independently on the same finding Gate 1's own HR-gate1-1 already encoded (relevance 3, 'angrenzende Rolle mit strategischerem Fokus', not 4/identical) - Personalreferent is operational/administrative HR execution, HR Business Partner is a strategic-advisory-to-leadership mandate, and multiple lenses confirmed via independent research that this split holds even at matched seniority bands (a Junior HR Business Partner posting still centers advising Fuehrungskraefte, not just less experience). Same broader-vs-narrower shape as the Growth Product Manager/Experimentation Platform Manager and Finanzanalyst/Bereichsleiter-P&L pairs above - real skill overlap, but the strategic side is a materially different mandate, not just a seniority label.",
+  },
 
   // --- Curation-engine audit findings (post-PR2, first real curated batch) ---
   {
