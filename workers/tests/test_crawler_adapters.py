@@ -184,7 +184,7 @@ def test_arbeitsagentur_detail_url_base64_encodes_the_refnr():
 def test_arbeitsagentur_fetch_returns_raw_payloads():
     fixture = load_fixture("arbeitsagentur_jobs.json")
     base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
-    url = arbeitsagentur._search_url(base_url, was="DevOps Engineer", wo="Deutschland", size=50, page=1)
+    url = arbeitsagentur._search_url(base_url, was="DevOps Engineer", wo="Deutschland", size=20, page=1)
     detail_url = arbeitsagentur._detail_url(base_url, "10000-1234567890-S")
     client = FakeClient(
         {
@@ -220,7 +220,7 @@ def test_arbeitsagentur_fetch_rejects_disallowed_host():
 
 def test_arbeitsagentur_raises_after_exhausting_retries_on_repeated_5xx():
     base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
-    url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=50, page=1)
+    url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=20, page=1)
     client = FakeClient({url: FakeResponse({"error": "boom"}, status_code=503)})
     with pytest.raises(TransientFetchError):
         arbeitsagentur.fetch(client, {"baseUrl": base_url}, ARBEITSAGENTUR_ALLOWLIST, search_terms=["DevOps"])
@@ -240,7 +240,7 @@ def test_arbeitsagentur_wraps_a_raw_client_exception_as_transient_and_retries():
 
 def test_arbeitsagentur_raises_runtime_error_for_non_5xx_non_200_status():
     base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
-    url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=50, page=1)
+    url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=20, page=1)
     client = FakeClient({url: FakeResponse({"error": "bad request"}, status_code=400)})
     with pytest.raises(RuntimeError):
         arbeitsagentur.fetch(client, {"baseUrl": base_url}, ARBEITSAGENTUR_ALLOWLIST, search_terms=["DevOps"])
@@ -252,7 +252,7 @@ def test_arbeitsagentur_skips_listings_without_a_reference_number():
     than crash the batch or get stored with a made-up id.
     """
     base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
-    url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=50, page=1)
+    url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=20, page=1)
     detail_url = arbeitsagentur._detail_url(base_url, "10000-1")
     fixture = {
         "stellenangebote": [
@@ -276,7 +276,7 @@ def test_arbeitsagentur_detail_fetch_failure_degrades_to_empty_description_not_a
     detail-call failure shouldn't drop the listing or abort the whole batch.
     """
     base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
-    url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=50, page=1)
+    url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=20, page=1)
     detail_url = arbeitsagentur._detail_url(base_url, "10000-1")
     fixture = {"stellenangebote": [{"refnr": "10000-1", "titel": "DevOps Engineer", "arbeitgeber": "Acme GmbH"}]}
     client = FakeClient(
@@ -291,7 +291,7 @@ def test_arbeitsagentur_detail_fetch_failure_degrades_to_empty_description_not_a
 
 def test_arbeitsagentur_detail_fetch_fetches_a_separate_url_per_listing():
     base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
-    url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=50, page=1)
+    url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=20, page=1)
     detail_url_1 = arbeitsagentur._detail_url(base_url, "10000-1")
     detail_url_2 = arbeitsagentur._detail_url(base_url, "10000-2")
     fixture = {
@@ -313,6 +313,169 @@ def test_arbeitsagentur_detail_fetch_fetches_a_separate_url_per_listing():
     assert len(payloads) == 2
     assert payloads[0].payload["stellenangebotsBeschreibung"] == "First listing."
     assert payloads[1].payload["stellenangebotsBeschreibung"] == "Second listing."
+
+
+def test_arbeitsagentur_fetch_paginates_when_a_page_is_full():
+    """A full page (== size) signals there may be more results; fetch() must
+    request the next page rather than stopping after page 1. A page shorter
+    than size is the real end-of-results signal (see the next test).
+    """
+    base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+    page1_url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=2, page=1)
+    page2_url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=2, page=2)
+    detail_url_1 = arbeitsagentur._detail_url(base_url, "10000-1")
+    detail_url_2 = arbeitsagentur._detail_url(base_url, "10000-2")
+    detail_url_3 = arbeitsagentur._detail_url(base_url, "10000-3")
+    page1_fixture = {
+        "stellenangebote": [
+            {"refnr": "10000-1", "titel": "DevOps Engineer", "arbeitgeber": "Acme GmbH"},
+            {"refnr": "10000-2", "titel": "SRE", "arbeitgeber": "Beispiel GmbH"},
+        ]
+    }
+    page2_fixture = {"stellenangebote": [{"refnr": "10000-3", "titel": "Platform Engineer", "arbeitgeber": "Foo GmbH"}]}
+    client = FakeClient(
+        {
+            page1_url: FakeResponse(page1_fixture),
+            page2_url: FakeResponse(page2_fixture),
+            detail_url_1: FakeResponse({"stellenangebotsBeschreibung": "..."}),
+            detail_url_2: FakeResponse({"stellenangebotsBeschreibung": "..."}),
+            detail_url_3: FakeResponse({"stellenangebotsBeschreibung": "..."}),
+        }
+    )
+
+    payloads = arbeitsagentur.fetch(
+        client, {"baseUrl": base_url}, ARBEITSAGENTUR_ALLOWLIST, search_terms=["DevOps"], size=2, max_pages_per_term=2
+    )
+
+    assert [p.original_job_id for p in payloads] == ["10000-1", "10000-2", "10000-3"]
+    assert page1_url in client.calls
+    assert page2_url in client.calls
+
+
+def test_arbeitsagentur_stops_pagination_when_a_page_is_short():
+    base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+    page1_url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=2, page=1)
+    page2_url = arbeitsagentur._search_url(base_url, was="DevOps", wo="Deutschland", size=2, page=2)
+    detail_url_1 = arbeitsagentur._detail_url(base_url, "10000-1")
+    page1_fixture = {"stellenangebote": [{"refnr": "10000-1", "titel": "DevOps Engineer", "arbeitgeber": "Acme GmbH"}]}
+    client = FakeClient(
+        {page1_url: FakeResponse(page1_fixture), detail_url_1: FakeResponse({"stellenangebotsBeschreibung": "..."})}
+    )
+
+    payloads = arbeitsagentur.fetch(
+        client, {"baseUrl": base_url}, ARBEITSAGENTUR_ALLOWLIST, search_terms=["DevOps"], size=2, max_pages_per_term=3
+    )
+
+    assert len(payloads) == 1
+    assert page2_url not in client.calls  # a short page means no more results -- don't fetch page 2
+
+
+def test_arbeitsagentur_dedupes_the_same_job_seen_under_multiple_search_terms():
+    """Overlapping search terms (e.g. 'Softwareentwickler' and 'Software
+    Engineer') commonly surface the same real posting twice. fetch() must
+    collapse that to one payload and one detail-endpoint call per unique
+    refnr, not one per (term, listing) occurrence -- otherwise every crawl
+    run doubles up detail-endpoint traffic and appends duplicate rows into
+    the append-only raw_job_snapshots history for the exact same job.
+    """
+    base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+    url_a = arbeitsagentur._search_url(base_url, was="Softwareentwickler", wo="Deutschland", size=20, page=1)
+    url_b = arbeitsagentur._search_url(base_url, was="Software Engineer", wo="Deutschland", size=20, page=1)
+    detail_url = arbeitsagentur._detail_url(base_url, "10000-1")
+    fixture = {"stellenangebote": [{"refnr": "10000-1", "titel": "Software Engineer", "arbeitgeber": "Acme GmbH"}]}
+    client = FakeClient(
+        {
+            url_a: FakeResponse(fixture),
+            url_b: FakeResponse(fixture),
+            detail_url: FakeResponse({"stellenangebotsBeschreibung": "..."}),
+        }
+    )
+
+    payloads = arbeitsagentur.fetch(
+        client,
+        {"baseUrl": base_url},
+        ARBEITSAGENTUR_ALLOWLIST,
+        search_terms=["Softwareentwickler", "Software Engineer"],
+    )
+
+    assert len(payloads) == 1
+    assert client.calls.count(detail_url) == 1
+
+
+def test_arbeitsagentur_fetch_stops_once_max_total_jobs_reached():
+    base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+    url_a = arbeitsagentur._search_url(base_url, was="A", wo="Deutschland", size=20, page=1)
+    url_b = arbeitsagentur._search_url(base_url, was="B", wo="Deutschland", size=20, page=1)
+    detail_url_1 = arbeitsagentur._detail_url(base_url, "10000-1")
+    detail_url_2 = arbeitsagentur._detail_url(base_url, "10000-2")
+    fixture_a = {"stellenangebote": [{"refnr": "10000-1", "titel": "A", "arbeitgeber": "Acme"}]}
+    fixture_b = {"stellenangebote": [{"refnr": "10000-2", "titel": "B", "arbeitgeber": "Acme"}]}
+    client = FakeClient(
+        {
+            url_a: FakeResponse(fixture_a),
+            url_b: FakeResponse(fixture_b),
+            detail_url_1: FakeResponse({"stellenangebotsBeschreibung": "..."}),
+            detail_url_2: FakeResponse({"stellenangebotsBeschreibung": "..."}),
+        }
+    )
+
+    payloads = arbeitsagentur.fetch(
+        client, {"baseUrl": base_url}, ARBEITSAGENTUR_ALLOWLIST, search_terms=["A", "B"], max_total_jobs=1
+    )
+
+    assert len(payloads) == 1
+    assert url_b not in client.calls  # cap reached after term "A" -- term "B" is never even queried
+
+
+def test_arbeitsagentur_fetch_round_robins_pages_across_terms_before_going_deeper():
+    """With many terms and a tight cap, fetch() must give every term a shot
+    at page 1 before any term gets a page 2 -- exhausting one term's full
+    depth before moving to the next would silently starve every term later
+    in the list once the cap is reached (this is exactly what broke
+    DEFAULT_SEARCH_TERMS' non-tech breadth before this was fixed: real runs
+    would spend the whole cap on the first few tech/sales terms and never
+    even query healthcare/logistics/admin terms further down the list).
+    """
+    base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+    page1_a = arbeitsagentur._search_url(base_url, was="A", wo="Deutschland", size=2, page=1)
+    page1_b = arbeitsagentur._search_url(base_url, was="B", wo="Deutschland", size=2, page=1)
+    page2_a = arbeitsagentur._search_url(base_url, was="A", wo="Deutschland", size=2, page=2)
+    fixture_1_2 = {"stellenangebote": [{"refnr": "1", "titel": "x", "arbeitgeber": "Acme"}, {"refnr": "2", "titel": "y", "arbeitgeber": "Acme"}]}
+    fixture_3_4 = {"stellenangebote": [{"refnr": "3", "titel": "z", "arbeitgeber": "Acme"}, {"refnr": "4", "titel": "w", "arbeitgeber": "Acme"}]}
+    client = FakeClient(
+        {
+            page1_a: FakeResponse(fixture_1_2),
+            page1_b: FakeResponse(fixture_1_2),  # same refnrs as page1_a -- exercises dedup too
+            page2_a: FakeResponse(fixture_3_4),
+            **{arbeitsagentur._detail_url(base_url, r): FakeResponse({"stellenangebotsBeschreibung": "..."}) for r in "1234"},
+        }
+    )
+
+    arbeitsagentur.fetch(
+        client,
+        {"baseUrl": base_url},
+        ARBEITSAGENTUR_ALLOWLIST,
+        search_terms=["A", "B"],
+        size=2,
+        max_pages_per_term=2,
+        max_total_jobs=4,
+    )
+
+    # Both terms' page 1 must be requested before term "A" is ever given a
+    # page 2 -- proves round-robin ordering, not depth-first per term.
+    assert client.calls.index(page1_b) < client.calls.index(page2_a)
+
+
+def test_arbeitsagentur_fetch_defaults_to_a_broad_multi_category_term_list():
+    """DEFAULT_SEARCH_TERMS replaced the old single hardcoded 'Software
+    Engineer' term specifically so non-tech candidate profiles (sales, HR,
+    finance, healthcare, ...) have real jobs to match against -- assert the
+    breadth survives rather than silently regressing back to a tech-only list.
+    """
+    assert len(arbeitsagentur.DEFAULT_SEARCH_TERMS) >= 20
+    assert "Software Engineer" in arbeitsagentur.DEFAULT_SEARCH_TERMS
+    assert "Vertriebsmitarbeiter" in arbeitsagentur.DEFAULT_SEARCH_TERMS
+    assert "Buchhalter" in arbeitsagentur.DEFAULT_SEARCH_TERMS
 
 
 # ---------------------------------------------------------------------------
@@ -516,3 +679,47 @@ def test_smartrecruiters_wraps_a_raw_client_exception_as_transient_and_retries()
     with pytest.raises(TransientFetchError):
         smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST)
     assert len(client.calls) == 3
+
+
+def test_smartrecruiters_fetch_paginates_across_offsets():
+    """A full page (== limit) with more totalFound remaining means there IS a
+    next page; fetch() must keep paging via offset until it catches up with
+    totalFound, not just take the first page -- this is exactly what silently
+    capped a real 947-posting company at only 100 fetched jobs before this
+    fix (see the module docstring).
+    """
+    url_page1 = smartrecruiters._postings_url("acme", offset=0, limit=2)
+    url_page2 = smartrecruiters._postings_url("acme", offset=2, limit=2)
+    page1 = {
+        "totalFound": 3,
+        "content": [
+            {"id": "1", "name": "A", "company": {"identifier": "acme"}},
+            {"id": "2", "name": "B", "company": {"identifier": "acme"}},
+        ],
+    }
+    page2 = {"totalFound": 3, "content": [{"id": "3", "name": "C", "company": {"identifier": "acme"}}]}
+    client = FakeClient({url_page1: FakeResponse(page1), url_page2: FakeResponse(page2)})
+
+    payloads = smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST, limit=2)
+
+    assert [p.original_job_id for p in payloads] == ["1", "2", "3"]
+    assert client.calls == [url_page1, url_page2]
+
+
+def test_smartrecruiters_fetch_stops_at_max_jobs_per_company_safety_cap():
+    url_page1 = smartrecruiters._postings_url("acme", offset=0, limit=2)
+    page1 = {
+        "totalFound": 1000,
+        "content": [
+            {"id": "1", "name": "A", "company": {"identifier": "acme"}},
+            {"id": "2", "name": "B", "company": {"identifier": "acme"}},
+        ],
+    }
+    client = FakeClient({url_page1: FakeResponse(page1)})
+
+    payloads = smartrecruiters.fetch(
+        client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST, limit=2, max_jobs_per_company=2
+    )
+
+    assert len(payloads) == 2
+    assert client.calls == [url_page1]  # cap reached after page 1 -- never requests offset=2
