@@ -52,6 +52,19 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 // *before* changing this default again, not the other way around.
 const DEFAULT_MODEL = 'openai/gpt-oss-120b:free';
 
+/**
+ * Appended to every free-text (non-tool-call) prompt below. The existing
+ * "no preamble" lines are a soft style instruction a model can quietly
+ * ignore; this is a much more explicit backstop against the model leaking
+ * chain-of-thought / meta-commentary ("the user asked us to...") into
+ * user-facing output - real production traffic has hit this. Not a
+ * substitute for the code-level stripping in extractText() below, which is
+ * the actual enforcement; this just gives the model a clearer chance to
+ * self-correct first.
+ */
+const NO_META_COMMENTARY_INSTRUCTION =
+  'Output ONLY the final answer text. Do not include any reasoning, meta-commentary, restated instructions, or references to this prompt. If you notice yourself writing about what you were asked to do, stop and output only the actual final answer.';
+
 function toAiProviderError(err: unknown, context: string): AiProviderError {
   if (err instanceof AiProviderError) {
     return err;
@@ -124,14 +137,95 @@ function extractStructuredOutput(
   );
 }
 
+/**
+ * Some free/open-weight models routed through OpenRouter (e.g. gpt-oss)
+ * speak the "harmony" response format internally - multiple channels
+ * (analysis/commentary/final) delimited by special tokens - and occasionally
+ * that raw formatting (or the non-final channels, which can contain
+ * reasoning like "the user asked us to...") leaks into `message.content`
+ * instead of being cleaned up by the API layer. See
+ * https://cookbook.openai.com/articles/openai-harmony for the token set.
+ */
+const HARMONY_TOKEN_RE = /<\|(?:start|end|message|channel|constrain)\|>/;
+const HARMONY_FINAL_MARKER = '<|channel|>final<|message|>';
+const HARMONY_END_TOKEN = '<|end|>';
+
+/**
+ * If the text contains harmony special tokens AND an explicit final-channel
+ * marker, keep only the content between the LAST such marker and the next
+ * end token, discarding everything before it (system/analysis/commentary
+ * channels, which are never meant to be user-facing). If harmony tokens are
+ * present but no final-channel marker is found, the format isn't what we
+ * expect - leave the text untouched rather than guessing, and let the
+ * suspicious-content check below flag it.
+ */
+function stripHarmonyChannels(text: string): string {
+  if (!HARMONY_TOKEN_RE.test(text)) {
+    return text;
+  }
+  const markerIdx = text.lastIndexOf(HARMONY_FINAL_MARKER);
+  if (markerIdx === -1) {
+    return text;
+  }
+  const afterMarker = text.slice(markerIdx + HARMONY_FINAL_MARKER.length);
+  const endIdx = afterMarker.indexOf(HARMONY_END_TOKEN);
+  return endIdx === -1 ? afterMarker : afterMarker.slice(0, endIdx);
+}
+
+/**
+ * Some models wrap chain-of-thought in a `<think>...</think>` block ahead of
+ * the real answer despite instructions not to. Keep only what follows the
+ * LAST closing tag (case-insensitive) - i.e. discard the think block(s) and
+ * anything before them, keeping just the final answer.
+ */
+function stripThinkBlock(text: string): string {
+  const closeTag = '</think>';
+  const lastIdx = text.toLowerCase().lastIndexOf(closeTag);
+  if (lastIdx === -1) {
+    return text;
+  }
+  return text.slice(lastIdx + closeTag.length);
+}
+
+/**
+ * Heuristic last-resort detector for leaked reasoning/meta-commentary that
+ * survived the structural stripping above. Deliberately narrow and
+ * conservative - this only logs, it never strips further, since a fragile
+ * ad hoc heuristic risks corrupting legitimate answer text instead of
+ * fixing the real bug.
+ */
+function looksLikeLeakedMetaCommentary(text: string): boolean {
+  if (/the user asked/i.test(text)) {
+    return true;
+  }
+  return /^(i should|i need to|let me)\b/i.test(text.trim());
+}
+
 function extractText(completion: OpenAI.ChatCompletion, context: string): string {
-  const text = completion.choices[0]?.message?.content?.trim();
-  if (!text) {
+  const raw = completion.choices[0]?.message?.content?.trim();
+  if (!raw) {
     throw new AiProviderError(
       `${context}: model returned no text content (finish_reason=${completion.choices[0]?.finish_reason ?? 'unknown'})`,
       'malformed_response',
     );
   }
+
+  const text = stripThinkBlock(stripHarmonyChannels(raw)).trim();
+  if (!text) {
+    throw new AiProviderError(
+      `${context}: model response contained only reasoning/meta-commentary and no final answer text ` +
+        `(finish_reason=${completion.choices[0]?.finish_reason ?? 'unknown'})`,
+      'malformed_response',
+    );
+  }
+
+  if (looksLikeLeakedMetaCommentary(text)) {
+    console.warn(
+      `[ai] ${context}: OpenRouter response still looks like it may contain leaked reasoning/meta-commentary ` +
+        `after stripping known harmony/<think> artifacts - context: ${JSON.stringify(text.slice(0, 500))}`,
+    );
+  }
+
   return text;
 }
 
@@ -446,6 +540,7 @@ export class OpenRouterAiProvider implements AiProvider {
       "Write in third person / resume-style phrasing (avoid 'I', 'my') throughout, consistent with standard CV conventions.",
       CV_VARIANT_STYLE_INSTRUCTIONS[variantStyle],
       'Return only the CV content, with no preamble or commentary.',
+      NO_META_COMMENTARY_INSTRUCTION,
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -488,6 +583,7 @@ export class OpenRouterAiProvider implements AiProvider {
       }),
       CV_VARIANT_STYLE_INSTRUCTIONS[variantStyle],
       `Target length: approximately ${preferredLengthWords} words (roughly one page). Do not pad — a shorter, sharper letter is better than a longer, padded one. Return only the letter text, with no preamble or commentary.`,
+      NO_META_COMMENTARY_INSTRUCTION,
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -527,6 +623,7 @@ export class OpenRouterAiProvider implements AiProvider {
         matchScore: formatMatchScoreForPrompt(matchScore),
       }),
       'Return only the explanation (2-3 sentences), with no preamble.',
+      NO_META_COMMENTARY_INSTRUCTION,
     ].join('\n\n');
 
     const user = [formatProfileForPrompt(profile), 'Job details:', formatJobForPrompt(job)].join('\n\n');
