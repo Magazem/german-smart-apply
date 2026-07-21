@@ -15,6 +15,7 @@ import { AiProviderError, type AiProviderErrorCode } from './errors.js';
 import {
   asStringArray,
   formatJobForPrompt,
+  formatMatchScoreForPrompt,
   formatProfileForPrompt,
   formatRoleGapAnalysisInput,
   interpolate,
@@ -474,6 +475,7 @@ export class AnthropicAiProvider implements AiProvider {
     profile: CandidateProfile,
     job: CanonicalJob,
     language: string,
+    matchScore?: number,
   ): Promise<AiGenerationResult> {
     const context = 'generateMatchExplanation';
     const model = MODEL_ROUTING[TASK_MODEL_TIER.matchExplanation];
@@ -482,6 +484,7 @@ export class AnthropicAiProvider implements AiProvider {
         language,
         jobTitle: job.jobTitleNormalized,
         companyName: job.companyNameNormalized,
+        matchScore: formatMatchScoreForPrompt(matchScore),
       }),
       'Return only the explanation (2-3 sentences), with no preamble.',
     ].join('\n\n');

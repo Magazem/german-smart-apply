@@ -12,6 +12,20 @@ export function interpolate(template: string, vars: Record<string, string>): str
   return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, key: string) => vars[key] ?? '');
 }
 
+/**
+ * Renders the ranking match score (RankingService's totalScore, 0-1) for
+ * substitution into market-de's matchExplanation template's {{matchScore}}
+ * placeholder. Callers that don't have a score handy (older call sites,
+ * tests using a market pack without this placeholder) still get sane text
+ * rather than an empty gap in the prompt.
+ */
+export function formatMatchScoreForPrompt(matchScore: number | undefined): string {
+  if (typeof matchScore !== 'number' || !Number.isFinite(matchScore)) {
+    return 'not available';
+  }
+  return `${Math.round(matchScore * 100)}/100`;
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
