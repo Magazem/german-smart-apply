@@ -65,9 +65,23 @@ def main() -> int:
             if crawl_result["status"] != "success":
                 continue
 
+            # Scoped to exactly the snapshot rows this run's own crawl just
+            # inserted (crawl_result["snapshotIds"]), not "every snapshot
+            # ever recorded for this source" -- raw_job_snapshots is an
+            # intentional append-only history log that keeps every past
+            # crawl's rows forever (see runner.run_crawl), so re-fetching
+            # and re-normalizing the whole history on every 4-hourly
+            # invocation grows unbounded with total crawl count and was
+            # the main driver of the worker machine's OOM. Re-normalizing
+            # the same job repeatedly is otherwise harmless (upsert keyed
+            # on sourceId+originalJobId), but doing it for the entire
+            # history every run is pure waste.
+            if not crawl_result["snapshotIds"]:
+                continue
+
             snap_cur = db.dict_cursor(conn)
             snap_cur.execute(
-                'SELECT * FROM "raw_job_snapshots" WHERE "sourceId" = %s', (source_row["id"],)
+                'SELECT * FROM "raw_job_snapshots" WHERE "id" = ANY(%s)', (crawl_result["snapshotIds"],)
             )
             snapshots = snap_cur.fetchall()
             normalize_result = run_normalizer(conn, source_row, snapshots)

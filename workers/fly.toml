@@ -23,7 +23,13 @@ primary_region = 'fra'
   dockerfile = 'Dockerfile'
 
 [[vm]]
+  # Bumped from 512mb: run_pipeline.py loads canonical_jobs' full
+  # descriptions for the whole country into memory once per run in
+  # near_duplicates.py (see that module's docstring - it's O(all visible
+  # jobs), by design, not a bug fixed here), and that pool only grows as
+  # more real jobs get crawled. 512mb was already tight for that; this is
+  # a safety margin, not a substitute for bounding the query itself.
   size = 'shared-cpu-1x'
-  memory = '512mb'
+  memory = '1024mb'
   cpus = 1
-  memory_mb = 512
+  memory_mb = 1024

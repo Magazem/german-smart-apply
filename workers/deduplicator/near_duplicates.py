@@ -108,13 +108,24 @@ def run_near_duplicate_clustering(conn, country_code: str = "DE") -> dict[str, A
     dict_cur = db_module.dict_cursor(conn)
     dict_cur.execute(
         """
-        SELECT cj.*, rj."jobDescriptionText" AS "jobDescriptionText"
+        SELECT cj."id", cj."rawJobId", cj."companyNameNormalized", cj."jobTitleNormalized",
+               cj."locationNormalized", cj."sourceTrustScore", cj."postedAt", cj."crawledAt",
+               rj."jobDescriptionText" AS "jobDescriptionText"
         FROM "canonical_jobs" cj
         JOIN "raw_jobs" rj ON rj."id" = cj."rawJobId"
         WHERE cj."isVisible" = true AND cj."countryCode" = %s
         """,
         (country_code,),
     )
+    # Column list trimmed to exactly what similarity()/_canonical_sort_key/
+    # bucketing below actually read -- cj.* previously carried every
+    # canonical_jobs column (techStackTags array, salary fields, scam/dup
+    # scores, timestamps, ...) for every visible job in the whole country
+    # into memory at once, on top of the full joined description text. This
+    # is still an O(all visible jobs) fetch every run (see the module
+    # docstring's "known simplification" note - an incremental rescan would
+    # need a schema change), but the per-row footprint is now just what's
+    # needed instead of the whole row.
     candidates = dict_cur.fetchall()
 
     buckets: dict[tuple[str, str], list[dict]] = {}

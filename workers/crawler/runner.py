@@ -129,12 +129,13 @@ def run_crawl(conn, client: HttpClient, source_row: dict) -> dict[str, Any]:
 
     jobs_new = 0
     jobs_updated = 0
+    snapshot_ids: list[str] = []
     for payload in payloads:
         if _existing_snapshot_count(cur, source_id, payload.original_job_id) == 0:
             jobs_new += 1
         else:
             jobs_updated += 1
-        _insert_snapshot(cur, source_id, payload)
+        snapshot_ids.append(_insert_snapshot(cur, source_id, payload))
 
     # Reaching this point means fetch_source succeeded (possibly with zero
     # results, e.g. a source configured with no board tokens/feed URLs yet).
@@ -157,4 +158,13 @@ def run_crawl(conn, client: HttpClient, source_row: dict) -> dict[str, Any]:
         "jobsNew": jobs_new,
         "jobsUpdated": jobs_updated,
         "retryCount": max(retry_count, 0),
+        # The exact raw_job_snapshots rows this call just inserted -- NOT a
+        # query for "all snapshots for this source", which would keep
+        # growing forever (raw_job_snapshots is an intentional append-only
+        # history log, see its @@map comment in schema.prisma / the "both
+        # crawl runs persisted their own snapshot rows" test above). The
+        # normalizer only ever needs to process what THIS run just fetched;
+        # run_pipeline.py uses this list instead of re-selecting the whole
+        # source's history on every invocation.
+        "snapshotIds": snapshot_ids,
     }
