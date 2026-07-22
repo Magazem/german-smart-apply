@@ -91,6 +91,10 @@ export interface SourceHealth {
   recentRunCount: number;
   // null (not 0) when no run has completed yet for this source.
   successRate: number | null;
+  // false when the adapter has no fetch targets configured (e.g. Stepstone
+  // has no public feed API) - runs can show 100% success while always
+  // fetching 0 jobs, so this is surfaced separately from successRate.
+  configured: boolean;
 }
 
 export interface SavedSearch {

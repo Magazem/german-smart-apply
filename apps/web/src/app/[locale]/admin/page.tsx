@@ -370,6 +370,11 @@ export default function AdminPage() {
                       <span className={source.isActive ? 'badge badge-success' : 'badge badge-neutral'}>
                         {source.isActive ? t('statusActive') : t('statusPaused')}
                       </span>
+                      {!source.configured && (
+                        <span className="badge badge-warning" data-testid={`admin-source-unconfigured-${source.sourceType}`}>
+                          {t('statusUnconfigured')}
+                        </span>
+                      )}
                       <span className="muted">{t('crawlFrequency', { minutes: source.crawlFrequencyMinutes })}</span>
                     </div>
                   </div>

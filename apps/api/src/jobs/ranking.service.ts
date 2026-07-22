@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { marketDe, resolveTitleEquivalenceClassId, titleEquivalenceIndex } from '@german-smart-apply/market-de';
-import type { CanonicalJob, JobMatchScore } from '@german-smart-apply/shared';
+import type { CanonicalJob, JobMatchScore, SalaryFitUnavailableReason } from '@german-smart-apply/shared';
 
 /**
  * Only the profile fields the ranking formula actually reads. Decoupled from
@@ -93,7 +93,21 @@ export class RankingService {
 
     const recencmyBoost = this.recencyBoost(job.postedAt);
 
+    // null (not 0.5) when there's nothing to compare - see salaryFit()'s
+    // comment. Excluded entirely from totalScore below (weight redistributed
+    // across the dimensions that were actually measured) rather than assumed
+    // neutral, so a candidate/job pair with no salary data to compare isn't
+    // silently scored as if salary were a mediocre-but-real match.
     const salaryFit = profile ? this.salaryFit(profile, job) : 0.5;
+    // Mirrors salaryFit()'s own two guard clauses (without duplicating them)
+    // so the UI can say *which* side of the gap is missing - see
+    // SalaryFitUnavailableReason's comment.
+    const salaryFitUnavailableReason: SalaryFitUnavailableReason | undefined =
+      salaryFit != null
+        ? undefined
+        : profile && (profile.salaryTargetMin != null || profile.salaryTargetMax != null)
+          ? 'no_job_salary'
+          : 'no_candidate_target';
 
     const languageFit = profile
       ? this.languagesMatch(profile.preferredLanguage, job.language)
@@ -110,15 +124,31 @@ export class RankingService {
     const duplicateConfidence = job.duplicateConfidence;
     const riskPenalty = job.scamRiskScore;
 
-    let totalScore =
+    // Weighted average over the dimensions that were actually measured, then
+    // projected back onto the full weight budget (totalPositiveWeight) so a
+    // job with unknown salary data lands on the same 0..totalPositiveWeight
+    // scale as one with known salary data, rather than being scored out of a
+    // shrunken max. When salaryFit is available this is identical to the old
+    // fixed-weights formula (availableWeight === totalPositiveWeight).
+    const totalPositiveWeight =
+      weights.titleSimilarity +
+      weights.skillOverlap +
+      weights.locationFit +
+      weights.recency +
+      weights.salaryFit +
+      weights.languageFit +
+      weights.sourceTrust;
+    const availableWeight = salaryFit == null ? totalPositiveWeight - weights.salaryFit : totalPositiveWeight;
+    const weightedPositive =
       weights.titleSimilarity * titleSimilarity +
       weights.skillOverlap * skillOverlap +
       weights.locationFit * locationFit * eligibilityPenalty +
       weights.recency * recencmyBoost +
-      weights.salaryFit * salaryFit +
+      (salaryFit == null ? 0 : weights.salaryFit * salaryFit) +
       weights.languageFit * languageFit +
-      weights.sourceTrust * sourceTrust -
-      weights.riskPenalty * riskPenalty;
+      weights.sourceTrust * sourceTrust;
+
+    let totalScore = (weightedPositive * totalPositiveWeight) / availableWeight - weights.riskPenalty * riskPenalty;
 
     if (ctx.interactionBias) {
       totalScore += ctx.interactionBias * 0.05;
@@ -134,6 +164,7 @@ export class RankingService {
       locationFit,
       recencmyBoost,
       salaryFit,
+      salaryFitUnavailableReason,
       languageFit,
       sourceTrust,
       duplicateConfidence,
@@ -241,11 +272,21 @@ export class RankingService {
     return Math.pow(0.5, ageDays / RECENCY_HALF_LIFE_DAYS);
   }
 
-  private salaryFit(profile: RankingProfileInput, job: CanonicalJob): number {
+  /**
+   * Returns null - not a neutral 0.5 - when there's nothing to compare: no
+   * salary target on the profile (salaryTarget* is a pro-only field, so this
+   * is the common case for free-tier users) or no salary range disclosed on
+   * the job. Unlike titleSimilarity/skillOverlap/locationFit/languageFit's
+   * 0.5 fallbacks above (which only fire for the rare fully-anonymous,
+   * no-profile query path), this branch fires routinely for logged-in users
+   * with real profiles, so silently reporting it as a measured "50% fit" was
+   * actively misleading in the breakdown UI - see match-score.tsx.
+   */
+  private salaryFit(profile: RankingProfileInput, job: CanonicalJob): number | null {
     // Explicit null checks, not falsy checks: salaryTargetMin/Max of 0 is a
     // real, meaningful preference ("no floor/ceiling"), not "unset".
-    if (profile.salaryTargetMin == null && profile.salaryTargetMax == null) return 0.5;
-    if (job.salaryMin == null && job.salaryMax == null) return 0.5;
+    if (profile.salaryTargetMin == null && profile.salaryTargetMax == null) return null;
+    if (job.salaryMin == null && job.salaryMax == null) return null;
 
     const jobMin = job.salaryMin ?? job.salaryMax ?? 0;
     const jobMax = job.salaryMax ?? job.salaryMin ?? 0;

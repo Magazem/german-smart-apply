@@ -1,5 +1,5 @@
 import { marketDe, resolveTitleEquivalenceClassId, titleEquivalenceIndex } from '@german-smart-apply/market-de';
-import type { CandidateProfile, CanonicalJob, JobMatchScore } from '@german-smart-apply/shared';
+import type { CandidateProfile, CanonicalJob, JobMatchScore, SalaryFitUnavailableReason } from '@german-smart-apply/shared';
 
 /**
  * Deterministic structured-scoring approximation of plan.md's Search and
@@ -21,6 +21,10 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
   const recencmyBoost = computeRecencyBoost(job.postedAt);
 
   const salaryFit = computeSalaryFit(profile, job);
+  // Mirrors ranking.service.ts's reason derivation without duplicating
+  // computeSalaryFit()'s own guard clauses.
+  const salaryFitUnavailableReason: SalaryFitUnavailableReason | undefined =
+    salaryFit != null ? undefined : profile.salaryTargetMin != null ? 'no_job_salary' : 'no_candidate_target';
 
   const languageFit = normalizeLang(profile.preferredLanguage) === normalizeLang(job.language) ? 1 : 0.5;
 
@@ -46,14 +50,30 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
   // scorer can't silently diverge from the real backend on this again.
   const eligibilityPenalty = eligible ? 1 : 0.5;
 
-  const positive =
+  // Mirrors ranking.service.ts: when salaryFit is null, it's excluded
+  // entirely (weight redistributed across the measured dimensions) rather
+  // than assumed neutral - see the totalScore comment there for the full
+  // rationale.
+  const totalPositiveWeight =
+    weights.titleSimilarity +
+    weights.skillOverlap +
+    weights.locationFit +
+    weights.recency +
+    weights.salaryFit +
+    weights.languageFit +
+    weights.sourceTrust;
+  const availableWeight = salaryFit == null ? totalPositiveWeight - weights.salaryFit : totalPositiveWeight;
+
+  const weightedPositive =
     titleSimilarity * weights.titleSimilarity +
     skillOverlap * weights.skillOverlap +
     locationFit * weights.locationFit * eligibilityPenalty +
     recencmyBoost * weights.recency +
-    salaryFit * weights.salaryFit +
+    (salaryFit == null ? 0 : salaryFit * weights.salaryFit) +
     languageFit * weights.languageFit +
     sourceTrust * weights.sourceTrust;
+
+  const positive = (weightedPositive * totalPositiveWeight) / availableWeight;
 
   const totalScore = Math.max(0, Math.min(1, positive - riskPenalty * weights.riskPenalty));
 
@@ -64,7 +84,8 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
     skillOverlap: round2(skillOverlap),
     locationFit: round2(locationFit),
     recencmyBoost: round2(recencmyBoost),
-    salaryFit: round2(salaryFit),
+    salaryFit: salaryFit == null ? null : round2(salaryFit),
+    salaryFitUnavailableReason,
     languageFit: round2(languageFit),
     sourceTrust: round2(sourceTrust),
     duplicateConfidence,
@@ -162,8 +183,16 @@ function computeRecencyBoost(postedAt: string | null): number {
   return 0.2;
 }
 
-function computeSalaryFit(profile: CandidateProfile, job: CanonicalJob): number {
-  if (profile.salaryTargetMin == null || job.salaryMax == null) return 0.6;
+/**
+ * Mirrors ranking.service.ts's salaryFit(): null (not a placeholder number)
+ * when there's nothing to compare - no salary target on the profile (a
+ * pro-only field) or no salary range disclosed on the job - so the mock/demo
+ * scorer can't silently diverge from the real backend and report a "no data"
+ * case as a measured fit either.
+ */
+function computeSalaryFit(profile: CandidateProfile, job: CanonicalJob): number | null {
+  if (profile.salaryTargetMin == null) return null;
+  if (job.salaryMax == null) return null;
   if (job.salaryMax >= profile.salaryTargetMin) return 1;
   const gap = (profile.salaryTargetMin - job.salaryMax) / profile.salaryTargetMin;
   return Math.max(0, 1 - gap * 2);

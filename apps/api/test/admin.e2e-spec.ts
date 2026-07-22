@@ -85,6 +85,51 @@ describe('Admin source health (e2e)', () => {
     expect(testSource.recentRunCount).toBe(3);
     expect(testSource.lastRun.status).toBe('success');
     expect(testSource.lastRun.startedAt).toContain('2026-07-10');
+    // 'test-source' has no known list-config key, so it's always configured.
+    expect(testSource.configured).toBe(true);
+  });
+
+  it('flags a source as unconfigured when its adapter has no fetch targets set (e.g. stepstone with no feedUrls)', async () => {
+    const unconfigured = await prisma.client.source.create({
+      data: { sourceType: 'stepstone', displayName: 'Stepstone (no feed)', countryCode: 'DE', trustTier: 'medium', config: {} },
+    });
+    await prisma.client.sourceCrawlRun.create({
+      data: {
+        sourceId: unconfigured.id,
+        status: 'success',
+        startedAt: new Date(),
+        finishedAt: new Date(),
+        jobsFetched: 0,
+        jobsNew: 0,
+        jobsUpdated: 0,
+      },
+    });
+    const configured = await prisma.client.source.create({
+      data: {
+        sourceType: 'stepstone',
+        displayName: 'Stepstone (with feed)',
+        countryCode: 'DE',
+        trustTier: 'medium',
+        config: { feedUrls: ['https://example.com/feed.json'] },
+      },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get('/admin/sources')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    const unconfiguredResult = res.body.find((s: { id: string }) => s.id === unconfigured.id);
+    const configuredResult = res.body.find((s: { id: string }) => s.id === configured.id);
+    // Run trivially "succeeds" with 0 jobs - configured is a separate signal
+    // from successRate precisely so this doesn't read as healthy.
+    expect(unconfiguredResult.successRate).toBe(1);
+    expect(unconfiguredResult.configured).toBe(false);
+    expect(configuredResult.configured).toBe(true);
+
+    await prisma.client.sourceCrawlRun.deleteMany({ where: { sourceId: unconfigured.id } });
+    await prisma.client.source.delete({ where: { id: unconfigured.id } });
+    await prisma.client.source.delete({ where: { id: configured.id } });
   });
 
   it('returns null successRate for a source with no completed runs', async () => {

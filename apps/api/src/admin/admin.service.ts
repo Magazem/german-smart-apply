@@ -13,6 +13,30 @@ const SIGNUP_TREND_WINDOW_DAYS = 30;
 const RECENT_RUN_WINDOW = 20;
 const RUN_HISTORY_LIMIT = 50;
 
+// Each list-shaped crawler adapter (workers/crawler/*.py) reads exactly one
+// config key naming its fetch targets and treats an empty list as "nothing
+// to do" - a legitimate empty result, not an error (e.g. stepstone.py has
+// no documented public feed API, so market-de ships it with no feedUrls at
+// all; every run trivially "succeeds" with 0 jobs forever). That makes
+// successRate alone misleading: a source can show 100% healthy while never
+// having fetched anything. Source types not listed here (e.g.
+// arbeitsagentur, which falls back to a real default search-term list) are
+// always considered configured.
+const LIST_CONFIG_KEY_BY_SOURCE_TYPE: Record<string, string> = {
+  stepstone: 'feedUrls',
+  greenhouse: 'boardTokens',
+  lever: 'siteSlugs',
+  personio: 'companySubdomains',
+  smartrecruiters: 'companyIdentifiers',
+};
+
+export function isSourceConfigured(source: { sourceType: string; config: unknown }): boolean {
+  const listKey = LIST_CONFIG_KEY_BY_SOURCE_TYPE[source.sourceType];
+  if (!listKey) return true;
+  const value = (source.config as Record<string, unknown> | null)?.[listKey];
+  return Array.isArray(value) && value.length > 0;
+}
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -112,7 +136,7 @@ export class AdminService {
     };
   }
 
-  private async withHealth(source: { id: string; [key: string]: unknown }) {
+  private async withHealth(source: { id: string; sourceType: string; config: unknown; [key: string]: unknown }) {
     const recentRuns = await this.prisma.client.sourceCrawlRun.findMany({
       where: { sourceId: source.id },
       orderBy: { startedAt: 'desc' },
@@ -130,6 +154,7 @@ export class AdminService {
       // null (not 0) when nothing has completed yet - "no data" and "0%
       // success" are different states and the UI renders them differently.
       successRate: completedRuns.length > 0 ? successCount / completedRuns.length : null,
+      configured: isSourceConfigured(source),
     };
   }
 }

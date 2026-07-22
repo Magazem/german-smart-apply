@@ -379,7 +379,7 @@ export default function JobDetailPage() {
           <details>
             <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: '0.88rem' }}>{t('matchBreakdownSummary')}</summary>
             <div style={{ marginTop: 12 }}>
-              <MatchBreakdown match={match} />
+              <MatchBreakdown match={match} isPro={isPro} />
             </div>
           </details>
         )}
