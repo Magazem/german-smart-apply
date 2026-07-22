@@ -124,7 +124,12 @@
     "salaryFit": "Salary fit",
     "languageFit": "Language fit",
     "sourceTrust": "Source trust",
-    "riskPenalty": "Risk penalty"
+    "riskPenalty": "Risk penalty",
+    "noData": "No data",
+    "salaryNotCountedFree": "Not counted — salary targets are a Pro feature.",
+    "salaryNotCountedSetTarget": "Not counted — add a salary target in your profile to include this.",
+    "salaryNotCountedNoJobRange": "Not counted — this listing doesn't disclose a salary range.",
+    "upgradeCta": "Upgrade to Pro"
   },
   "RiskBadge": {
     "riskLow": "Low scam risk",
@@ -606,6 +611,7 @@
     "trustTier": "{tier} trust",
     "statusActive": "Active",
     "statusPaused": "Paused",
+    "statusUnconfigured": "No feed configured — always fetches 0",
     "crawlFrequency": "every {minutes} min",
     "neverRun": "Never run",
     "hideHistory": "Hide history",

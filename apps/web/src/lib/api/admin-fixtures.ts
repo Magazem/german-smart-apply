@@ -26,17 +26,19 @@ function runAt(hoursAgo: number, status: SourceCrawlRun['status'], overrides: Pa
 }
 
 function buildSource(
-  base: Omit<SourceHealth, 'lastRun' | 'recentRunCount' | 'successRate'>,
+  base: Omit<SourceHealth, 'lastRun' | 'recentRunCount' | 'successRate' | 'configured'> & { configured?: boolean },
   runs: SourceCrawlRun[],
 ): { health: SourceHealth; runs: SourceCrawlRun[] } {
   const completed = runs.filter((r) => r.status !== 'running');
   const successCount = completed.filter((r) => r.status === 'success').length;
+  const { configured = true, ...rest } = base;
   return {
     health: {
-      ...base,
+      ...rest,
       lastRun: runs[0] ?? null,
       recentRunCount: runs.length,
       successRate: completed.length > 0 ? successCount / completed.length : null,
+      configured,
     },
     runs,
   };
@@ -81,6 +83,11 @@ const LEVER = buildSource(
   [runAt(3, 'success'), runAt(7, 'success'), runAt(11, 'success')],
 );
 
+// Stepstone has no documented public feed API, so market-de ships it with
+// no feedUrls configured at all - fetch() has nothing to call and returns
+// an empty result without erroring. That makes every run genuinely
+// "succeed" with 0 jobs, not fail, which is exactly why configured: false
+// exists separately from successRate/run status.
 const STEPSTONE = buildSource(
   {
     id: 'src-stepstone',
@@ -90,11 +97,12 @@ const STEPSTONE = buildSource(
     trustTier: 'medium',
     isActive: true,
     crawlFrequencyMinutes: 360,
+    configured: false,
   },
   [
-    runAt(4, 'failure', { errorLog: 'No documented public structured-feed API — placeholder endpoint returned HTTP 404.' }),
-    runAt(10, 'failure', { errorLog: 'No documented public structured-feed API — placeholder endpoint returned HTTP 404.' }),
-    runAt(16, 'failure', { errorLog: 'No documented public structured-feed API — placeholder endpoint returned HTTP 404.' }),
+    runAt(4, 'success', { jobsFetched: 0, jobsNew: 0, jobsUpdated: 0 }),
+    runAt(10, 'success', { jobsFetched: 0, jobsNew: 0, jobsUpdated: 0 }),
+    runAt(16, 'success', { jobsFetched: 0, jobsNew: 0, jobsUpdated: 0 }),
   ],
 );
 

@@ -97,6 +97,15 @@ export interface JobSearchFilters {
   offset?: number;
 }
 
+/**
+ * Why salaryFit is null - distinguishes "you haven't set a salary target"
+ * (actionable by the candidate; salaryTarget* is a pro-only field) from
+ * "this job doesn't disclose a salary range" (a fact about the listing, not
+ * the candidate) - so the UI can point at the right side of the gap instead
+ * of one generic "no data" message.
+ */
+export type SalaryFitUnavailableReason = 'no_candidate_target' | 'no_job_salary';
+
 export interface JobMatchScore {
   jobId: string;
   totalScore: number;
@@ -104,7 +113,16 @@ export interface JobMatchScore {
   skillOverlap: number;
   locationFit: number;
   recencmyBoost: number;
-  salaryFit: number;
+  /**
+   * null when there's nothing to compare - no salary target set on the
+   * profile (a pro-only field) or no salary range disclosed on the job. When
+   * null, this dimension is excluded from totalScore entirely (weight
+   * redistributed across the dimensions that were actually measured) rather
+   * than assumed neutral - see salaryFitUnavailableReason for why.
+   */
+  salaryFit: number | null;
+  /** Set only when salaryFit is null. */
+  salaryFitUnavailableReason?: SalaryFitUnavailableReason;
   languageFit: number;
   sourceTrust: number;
   duplicateConfidence: number;

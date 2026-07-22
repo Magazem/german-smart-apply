@@ -1,5 +1,5 @@
 ﻿import { describe, expect, it } from 'vitest';
-import { resolveTitleEquivalenceClassId, titleEquivalenceIndex, TITLE_NEGATIVE_PAIRS } from '@german-smart-apply/market-de';
+import { marketDe, resolveTitleEquivalenceClassId, titleEquivalenceIndex, TITLE_NEGATIVE_PAIRS } from '@german-smart-apply/market-de';
 import type { CanonicalJob } from '@german-smart-apply/shared';
 import { RankingService, type RankingProfileInput } from './ranking.service.js';
 
@@ -55,9 +55,67 @@ function buildProfile(overrides: Partial<RankingProfileInput> = {}): RankingProf
 describe('RankingService.score - salaryFit', () => {
   const service = new RankingService();
 
-  it('gives a neutral 0.5 salaryFit when the candidate genuinely has no salary preference', () => {
+  it('reports salaryFit as null and flags no_candidate_target when the candidate has no salary target', () => {
     const result = service.score(buildJob(), { profile: buildProfile() });
-    expect(result.salaryFit).toBe(0.5);
+    expect(result.salaryFit).toBeNull();
+    expect(result.salaryFitUnavailableReason).toBe('no_candidate_target');
+  });
+
+  it('reports salaryFit as null and flags no_job_salary when the candidate has a target but the job discloses no salary', () => {
+    const result = service.score(buildJob({ salaryMin: null, salaryMax: null }), {
+      profile: buildProfile({ salaryTargetMin: 50000 }),
+    });
+    expect(result.salaryFit).toBeNull();
+    expect(result.salaryFitUnavailableReason).toBe('no_job_salary');
+  });
+
+  it('excludes salary from totalScore entirely when unavailable, rather than assuming a neutral 0.5', () => {
+    const profile = buildProfile({
+      targetRole: 'Backend Engineer',
+      skills: ['typescript'],
+      locationPreference: 'hybrid',
+      targetCountryCode: 'DE',
+      preferredLanguage: 'en',
+      salaryTargetMin: null,
+      salaryTargetMax: null,
+    });
+    const job = buildJob({
+      jobTitleNormalized: 'backend engineer',
+      techStackTags: ['typescript'],
+      remoteType: 'hybrid',
+      countryCode: 'DE',
+      language: 'en',
+      salaryMin: null,
+      salaryMax: null,
+      sourceTrustScore: 1,
+      scamRiskScore: 0,
+      // Forces recencyBoost's ageDays < 0 branch, which returns exactly 1 -
+      // every other dimension above is also engineered to be exactly 1, so
+      // this job is a perfect match on everything measurable.
+      postedAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const result = service.score(job, { profile });
+    const weights = marketDe.rankingWeights;
+    const totalPositiveWeight =
+      weights.titleSimilarity +
+      weights.skillOverlap +
+      weights.locationFit +
+      weights.recency +
+      weights.salaryFit +
+      weights.languageFit +
+      weights.sourceTrust;
+
+    expect(result.salaryFit).toBeNull();
+    // Renormalized weighted average over the measured dimensions, projected
+    // back onto the full weight budget - a perfect match on everything else
+    // reaches the same ceiling it would if salary were also known and
+    // perfect, instead of being capped below it by an assumed 0.5.
+    expect(result.totalScore).toBeCloseTo(totalPositiveWeight, 5);
+    // Strictly above what the old "fold in a neutral 0.5" formula would have
+    // produced for this exact scenario - proof salary is genuinely excluded
+    // from the calculation now, not just hidden from the breakdown UI.
+    expect(result.totalScore).toBeGreaterThan(totalPositiveWeight - weights.salaryFit * 0.5);
   });
 
   it('treats an explicit salaryTargetMin of 0 as "no floor", not "unset" - job clearing it scores a perfect fit', () => {
@@ -141,7 +199,11 @@ describe('RankingService.score - interactionBias', () => {
   });
 
   it('leaves totalScore unchanged when interactionBias is undefined (no feedback recorded)', () => {
-    const job = buildJob();
+    // postedAt: null (not the default new Date()) pins recencyBoost to an
+    // exact constant (0.4) - otherwise this exact-equality assertion is
+    // flaky, since the two score() calls below each read Date.now()
+    // independently and can straddle a millisecond tick.
+    const job = buildJob({ postedAt: null });
     const withUndefined = service.score(job, { profile: buildProfile(), interactionBias: undefined });
     const withoutField = service.score(job, { profile: buildProfile() });
     expect(withUndefined.totalScore).toBe(withoutField.totalScore);

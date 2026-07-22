@@ -124,7 +124,12 @@
     "salaryFit": "Gehaltsübereinstimmung",
     "languageFit": "Sprachübereinstimmung",
     "sourceTrust": "Vertrauenswürdigkeit der Quelle",
-    "riskPenalty": "Risikoabzug"
+    "riskPenalty": "Risikoabzug",
+    "noData": "Keine Daten",
+    "salaryNotCountedFree": "Nicht berücksichtigt — Gehaltsvorstellungen sind eine Pro-Funktion.",
+    "salaryNotCountedSetTarget": "Nicht berücksichtigt — hinterlege eine Gehaltsvorstellung in deinem Profil, um dies einzubeziehen.",
+    "salaryNotCountedNoJobRange": "Nicht berücksichtigt — diese Stelle gibt keine Gehaltsspanne an.",
+    "upgradeCta": "Auf Pro upgraden"
   },
   "RiskBadge": {
     "riskLow": "Geringes Betrugsrisiko",
@@ -606,6 +611,7 @@
     "trustTier": "Vertrauen: {tier}",
     "statusActive": "Aktiv",
     "statusPaused": "Pausiert",
+    "statusUnconfigured": "Kein Feed konfiguriert — liefert immer 0",
     "crawlFrequency": "alle {minutes} Min.",
     "neverRun": "Nie ausgeführt",
     "hideHistory": "Verlauf ausblenden",
