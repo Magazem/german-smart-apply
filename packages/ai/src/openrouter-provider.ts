@@ -687,7 +687,14 @@ export class OpenRouterAiProvider implements AiProvider {
 
     const completion = await this.createCompletion(
       {
-        max_tokens: 256,
+        // 2048, not the 256 this shipped with: free/small OpenRouter reasoning
+        // models spend a large, variable number of tokens on hidden reasoning
+        // before ever emitting the tool call, regardless of how small the
+        // actual output is. 256 was sized for the 5-number output alone and
+        // got cut off mid-reasoning (finish_reason=length) on
+        // nvidia/nemotron-3-ultra, matching every other tool-calling call in
+        // this file (1024-4096).
+        max_tokens: 2048,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user },
