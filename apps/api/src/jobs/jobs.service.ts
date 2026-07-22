@@ -19,6 +19,23 @@ export interface RankedJobResult {
 // MVP scale (Postgres FTS/pgvector-backed search is a Phase 3 upgrade per
 // plan.md); revisit if canonical_jobs grows large enough that this misses
 // good matches outside the top `CANDIDATE_POOL_SIZE` most recent postings.
+/** The ranking-relevant slice of a CandidateProfile row. Pure - no I/O, so callers that already hold the row don't re-query for it. */
+function toRankingProfile(
+  profile: NonNullable<Awaited<ReturnType<PrismaService['client']['candidateProfile']['findUnique']>>>,
+): RankingProfileInput {
+  return {
+    skills: profile.skills,
+    targetRole: profile.targetRole,
+    targetCountryCode: profile.targetCountryCode,
+    preferredLanguage: profile.preferredLanguage,
+    seniority: profile.seniority,
+    locationPreference: profile.locationPreference,
+    salaryTargetMin: profile.salaryTargetMin,
+    salaryTargetMax: profile.salaryTargetMax,
+    commutePreferenceKm: profile.commutePreferenceKm,
+  };
+}
+
 const CANDIDATE_POOL_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 20;
 const ALERT_MATCH_LIMIT = 20;
@@ -130,19 +147,7 @@ export class JobsService {
       }
     }
 
-    const rankingProfile: RankingProfileInput | null = profile
-      ? {
-          skills: profile.skills,
-          targetRole: profile.targetRole,
-          targetCountryCode: profile.targetCountryCode,
-          preferredLanguage: profile.preferredLanguage,
-          seniority: profile.seniority,
-          locationPreference: profile.locationPreference,
-          salaryTargetMin: profile.salaryTargetMin,
-          salaryTargetMax: profile.salaryTargetMax,
-          commutePreferenceKm: profile.commutePreferenceKm,
-        }
-      : null;
+    const rankingProfile = profile ? toRankingProfile(profile) : null;
 
     const score = this.ranking.score(job, { profile: rankingProfile });
 
@@ -182,7 +187,7 @@ export class JobsService {
     // Recomputed rather than passed in from the client: ranking.score is a
     // pure local calculation (no I/O), and trusting a client-supplied score
     // would let the caller steer what the model is told about the match.
-    const score = this.ranking.score(job, { profile: await this.loadRankingProfile(userId) });
+    const score = this.ranking.score(job, { profile: toRankingProfile(profile) });
 
     let explanation: string | null = null;
     try {
@@ -351,18 +356,7 @@ export class JobsService {
   private async loadRankingProfile(userId?: string): Promise<RankingProfileInput | null> {
     if (!userId) return null;
     const profile = await this.prisma.client.candidateProfile.findUnique({ where: { userId } });
-    if (!profile) return null;
-    return {
-      skills: profile.skills,
-      targetRole: profile.targetRole,
-      targetCountryCode: profile.targetCountryCode,
-      preferredLanguage: profile.preferredLanguage,
-      seniority: profile.seniority,
-      locationPreference: profile.locationPreference,
-      salaryTargetMin: profile.salaryTargetMin,
-      salaryTargetMax: profile.salaryTargetMax,
-      commutePreferenceKm: profile.commutePreferenceKm,
-    };
+    return profile ? toRankingProfile(profile) : null;
   }
 
   private async loadInteractionBias(
