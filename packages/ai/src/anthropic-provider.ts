@@ -559,7 +559,15 @@ export class AnthropicAiProvider implements AiProvider {
     const message = await this.createMessage(
       {
         model,
-        max_tokens: 256,
+        // 2048, not the 256 this shipped with: free/small OpenRouter reasoning
+        // models (this call routes through OpenRouterAiProvider whenever
+        // OPENROUTER_API_KEY is set - see createAiProvider()'s priority order)
+        // spend a large, variable number of tokens on hidden reasoning before
+        // ever emitting the tool call, regardless of how small the actual
+        // output is. 256 was sized for the 5-number output alone and got cut
+        // off mid-reasoning (finish_reason=length) on nvidia/nemotron-3-ultra,
+        // matching every other tool-calling call in this file (1024-4096).
+        max_tokens: 2048,
         system,
         messages: [{ role: 'user', content: user }],
         tools: [buildMatchScoreEstimateTool()],
