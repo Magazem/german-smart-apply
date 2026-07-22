@@ -16,10 +16,14 @@ export const marketDe: MarketPack = {
       displayName: 'Greenhouse (DE companies)',
       trustTier: 'high',
       crawlFrequencyMinutes: 240,
-      // Live-verified via workers/scripts/verify_source_tokens.py (each
-      // token returned a nonzero job count against the real Greenhouse
-      // API) -- do not add further tokens here without the same live
-      // check first. Mirrored in workers/common/market_de.py.
+      // Live-verified 2026-07-21: original 10 via
+      // workers/scripts/verify_source_tokens.py; the 25 below via a
+      // live-network discovery pass, each screened against its real,
+      // complete Greenhouse job list and kept only if >=30% of current
+      // listings are Germany-located -- large global boards with only a
+      // thin DE presence (e.g. Stripe, Airbnb, Databricks) were deliberately
+      // excluded despite resolving. See workers/common/market_de.py's fuller
+      // comment for the full reasoning; keep the two lists in lockstep.
       config: {
         boardTokens: [
           'n26',
@@ -32,6 +36,31 @@ export const marketDe: MarketPack = {
           'solarisbank',
           'traderepublic',
           'raisin',
+          'airup',
+          'alpineeagle',
+          'anydesk',
+          'avimedical',
+          'blackforestlabs',
+          'commercetools',
+          'doctolib',
+          'flaconi',
+          'freenow',
+          'helsing',
+          'isaraerospace',
+          'konux',
+          'marvelfusion',
+          'moia',
+          'moonfare',
+          'parloa',
+          'scout24',
+          'staffbase',
+          'strato',
+          'typeform',
+          'urbansportsclub',
+          'vay',
+          'wooga',
+          'wunderflats',
+          'zattoo',
         ],
       },
     },
@@ -41,11 +70,16 @@ export const marketDe: MarketPack = {
       displayName: 'Lever (DE companies)',
       trustTier: 'high',
       crawlFrequencyMinutes: 240,
-      // 20 candidate German/European tech companies were live-checked and
-      // every one returned zero jobs / not found -- none of the tried
-      // candidates actually use Lever (or use an unguessed slug spelling).
-      // Left empty rather than guessing further.
-      config: { siteSlugs: [] },
+      // The original 20 candidates all returned zero jobs. A second
+      // live-network discovery pass (2026-07-21) found 43 genuinely working
+      // Lever slugs, screened down to 6 the same way as the Greenhouse list
+      // above (>=30% of current postings Germany-located) -- most
+      // candidates were non-German companies with only a thin German-office
+      // presence, or evident job-aggregator/staffing platforms rather than
+      // single employers. See workers/common/market_de.py's fuller comment.
+      config: {
+        siteSlugs: ['kolibrigames', 'crytek', 'finn', 'vivenu', 'netlight', 'agicap'],
+      },
     },
     {
       sourceId: 'arbeitsagentur',
@@ -72,13 +106,122 @@ export const marketDe: MarketPack = {
       displayName: 'Personio (DE companies)',
       trustTier: 'high',
       crawlFrequencyMinutes: 240,
-      // companySubdomains starts empty, same bootstrapping pattern as
-      // greenhouse-de/lever-de above. Mirrored in workers/common/market_de.py,
-      // which also carries the domainAllowlist note: unlike Greenhouse/Lever,
-      // each Personio company has its own subdomain host, so that allowlist
-      // must be kept in lockstep with whatever gets added here.
-      // Live-verified via workers/scripts/verify_source_tokens.py.
-      config: { companySubdomains: ['candis', 'clark'] },
+      // Mirrored in workers/common/market_de.py, which also carries the
+      // domainAllowlist note: unlike Greenhouse/Lever, each Personio company
+      // has its own subdomain host, so that allowlist must be kept in
+      // lockstep with whatever gets added here.
+      // Live-verified 2026-07-21: candis/clark via
+      // workers/scripts/verify_source_tokens.py; the other 98 via a
+      // live-network WebSearch-grounded discovery pass (real German
+      // SME/Mittelstand companies found through their actual careers pages)
+      // -- every one returned a nonzero job count against the real Personio
+      // XML feed. See workers/common/market_de.py's fuller comment for why
+      // this list skews toward smaller/mid-size companies rather than
+      // consumer unicorns (Personio's real adoption pattern in Germany).
+      config: {
+        companySubdomains: [
+          'candis',
+          'clark',
+          '1komma5grad',
+          '4401',
+          'agenturennetz',
+          'agt-bus-eventlogistik-gmbh',
+          'aktiv-apotheken-ohg',
+          'algol-consulting',
+          'anqa-itsecurity-de',
+          'appliedai',
+          'asb-berlin',
+          'asg',
+          'autohaus-bleker-gmbh',
+          'autohaus-kahle-gmbh-co-kg',
+          'autohaus-timmermanns',
+          'autohaus-unterberger-gmbh',
+          'autohaus-zemke',
+          'banxware',
+          'brix-consult-gmbh',
+          'canal-control',
+          'capmo',
+          'cloover',
+          'compipower-gmbh',
+          'constanta-treuhand-gmbh',
+          'cps-group',
+          'cyber-wear',
+          'cycle',
+          'dci',
+          'dedicom',
+          'dgnb',
+          'digital-loop',
+          'dpa',
+          'egym',
+          'einhundert-energie-gmbh',
+          'en-software',
+          'entrix',
+          'eqs-group',
+          'eraneos',
+          'erste-hausverwaltung-gmbh',
+          'everreal',
+          'falstaff',
+          'filu-gmbh',
+          'findiq-gmbh',
+          'friedrich-zufall-gmbh',
+          'frommer-legal',
+          'gastro-soul',
+          'gel-express-logistik',
+          'gross-und-partner',
+          'hafencity-hamburg',
+          'hochfrequenz-unternehmensberatung-gmbh',
+          'home-of-mobility',
+          'hwp',
+          'hws',
+          'iits',
+          'insglueck',
+          'isg-express-logistik-gmbh',
+          'its-gruppe',
+          'jcb-deutschland-gmbh',
+          'jobleads',
+          'kabs-service-logistik-gmbh',
+          'kcx',
+          'kita-kinderzimmer',
+          'lahrlogistics-gmbh',
+          'laura-seiler-life-coaching-gmbh',
+          'lautsprecherteufel',
+          'legalhero',
+          'lytd',
+          'marketconsultive',
+          'meyerpartner',
+          'miles-mobility',
+          'mobilityconcept',
+          'munich-private-equity-ag',
+          'neoom',
+          'neumeier-ag',
+          'nexum-ag',
+          'pflege-de',
+          'piabo',
+          'pitch',
+          'pm-team',
+          'prenode',
+          'raceon',
+          'rebike-mobility',
+          'ritterwald-unternehmensberatung-gmbh',
+          'seek-development',
+          'spedition-kruse',
+          'stark',
+          'startup-insider',
+          'super-ai',
+          'synvert',
+          'syseleven',
+          'taxy-io-gmbh',
+          'teamative',
+          'tierarztpluspartner',
+          'tmh',
+          'tngtech',
+          'von-der-weppen',
+          'wwp',
+          'xitaso',
+          'zeo-solar',
+          'zollsoft',
+        ],
+      },
     },
     {
       sourceId: 'smartrecruiters-de',
@@ -86,8 +229,39 @@ export const marketDe: MarketPack = {
       displayName: 'SmartRecruiters (DE companies)',
       trustTier: 'high',
       crawlFrequencyMinutes: 240,
-      // Live-verified via workers/scripts/verify_source_tokens.py.
-      config: { companyIdentifiers: ['Continental'] },
+      // Live-verified 2026-07-21: Continental via
+      // workers/scripts/verify_source_tokens.py; the 18 below via a
+      // live-network discovery pass, screened by SmartRecruiters' structured
+      // location.country field rather than a text heuristic -- each sampled
+      // either 100% Germany-located (small/fully-sampled boards) or >=90% of
+      // a 100-posting sample of a larger one. Large boards with only a thin,
+      // unreliably-sampled DE fraction (e.g. BoschGroup) were deliberately
+      // excluded. See workers/common/market_de.py's fuller comment,
+      // including why Continental itself (~16% DE of 949 postings) stays as
+      // configured rather than being retroactively curated out.
+      config: {
+        companyIdentifiers: [
+          'Continental',
+          'RVAllgemeineVersicherungenAG',
+          'BayWaAG',
+          'ATUAuto-Teile-Unger',
+          'ArtemedSE',
+          'BarmeniaGothaerAG',
+          'burgerme',
+          'VitosgGmbH',
+          'Contilia1',
+          'StrerSECoKGaAStrerGruppe',
+          'ABOUTYOUGmbH',
+          'EBreuningerGmbHCo',
+          'ScalableGmbH',
+          'ThaliaBcherGmbH1',
+          'Tipico',
+          'DreesSommerSE',
+          'Redcare-Pharmacy',
+          'Gerresheimer',
+          'StepStoneGroup',
+        ],
+      },
     },
   ],
   languagePrompts: {

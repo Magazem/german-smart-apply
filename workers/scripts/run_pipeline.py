@@ -15,9 +15,10 @@ cron job or a scheduler. Run it with:
 Requires DATABASE_URL to point at a real Postgres instance (see common/db.py
 for the default used by local dev), and real network access for whichever
 sources have non-empty board tokens / site slugs / feed URLs configured.
-As shipped, market-de's Greenhouse/Lever board tokens and Stepstone feed URLs
-are empty lists (see common/market_de.py) -- only the Arbeitsagentur adapter
-will fetch anything out of the box.
+As shipped, every adapter except Stepstone has real, live-verified tokens
+configured and will fetch actual jobs out of the box -- Stepstone's
+feedUrls stays empty (see common/market_de.py's own comment for why: it's
+a business/partnership blocker, not an engineering gap).
 """
 from __future__ import annotations
 

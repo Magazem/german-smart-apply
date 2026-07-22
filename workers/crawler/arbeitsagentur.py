@@ -46,9 +46,15 @@ doubles the request count for this source; a failed detail call degrades to
 an empty description for that one listing rather than dropping it or
 aborting the whole batch.
 
-TODO: rate limits for both endpoints are still not covered by an official
-public OpenAPI spec at the time of writing. Add pagination beyond a single
-page if `maxErgebnisse` exceeds the page size.
+Rate limits for both endpoints are still not covered by an official public
+OpenAPI spec, so `fetch()` below deliberately bounds its own worst case
+(DEFAULT_MAX_PAGES_PER_TERM, DEFAULT_MAX_TOTAL_JOBS) rather than paginating
+every search term to exhaustion -- this is a real government API with
+undocumented throttling, crawled 4x/day (see market_de.py's
+crawlFrequencyMinutes), and every listing costs a second detail-endpoint
+request on top of the search request. Start conservative; the caps are
+plain function parameters (or config.maxTotalJobs/config.searchTerms) that
+can be raised once real crawl-run behavior against the live API is observed.
 """
 from __future__ import annotations
 
@@ -58,6 +64,106 @@ from crawler.base import HttpClient, RawPayload, TransientFetchError, enforce_do
 
 BASE_HOST = "rest.arbeitsagentur.de"
 API_KEY_HEADER = {"X-API-Key": "jobboerse-jobsuche"}
+
+# Page size for the search endpoint. Live-verified against the real API:
+# size=20/100/200/300/500 all returned exactly the requested count, size=1000
+# silently returned 0 results (an undocumented cap somewhere above 500).
+#
+# Deliberately kept small (not the largest safe value) for a second reason
+# beyond request cost: fetch() below visits search terms in round-robin order
+# (page 1 of every term before page 2 of any term) specifically so
+# DEFAULT_MAX_TOTAL_JOBS gets spread across every occupation category in
+# DEFAULT_SEARCH_TERMS rather than exhausted by the first few. That guarantee
+# only holds if len(DEFAULT_SEARCH_TERMS) * DEFAULT_PAGE_SIZE stays
+# comfortably under DEFAULT_MAX_TOTAL_JOBS -- at size=100 with today's ~40
+# terms, the first ~10 high-volume terms alone (all tech/sales) would each
+# fill a full 100-result page and exhaust the entire 1000 cap before
+# healthcare/logistics/admin/retail/education/consulting ever got a single
+# request, silently reproducing the exact narrow-coverage bug this file was
+# changed to fix. Keep this relationship in mind (len(terms) * size well
+# under DEFAULT_MAX_TOTAL_JOBS) when editing any of the three.
+DEFAULT_PAGE_SIZE = 20
+
+# How many pages deep to go per search term before moving to the next term
+# (in round-robin order -- see DEFAULT_PAGE_SIZE's comment). Terms that are
+# still short of DEFAULT_MAX_TOTAL_JOBS after every term's first page get a
+# second, deeper pass; low-volume terms drop out of rotation earlier (see
+# fetch()'s exhausted_terms tracking).
+DEFAULT_MAX_PAGES_PER_TERM = 2
+
+# Hard ceiling on unique jobs fetched per fetch() call, across every search
+# term combined -- see the module docstring for why this exists. Every job
+# beyond this cap costs a real detail-endpoint request against an API with
+# unknown rate limits, and every job fetched appends a permanent row to the
+# append-only raw_job_snapshots history table (no unique constraint there --
+# see runner.run_crawl), so this is not just a latency knob.
+DEFAULT_MAX_TOTAL_JOBS = 1000
+
+# Search terms spanning the occupation categories this platform actually
+# ranks/matches against (see packages/market-de's titleEquivalenceClasses
+# and rankingWeights), not just tech -- the previous default of a single
+# "Software Engineer" term meant every non-tech candidate profile had
+# essentially no Arbeitsagentur jobs to match against. Mixes German terms
+# (the primary language of this API's index) with the English tech titles
+# that are commonly posted verbatim even by German employers. Overridable
+# via config.searchTerms; kept here (not in market_de.py/the TS mirror) so
+# growing this list never requires a Python/TypeScript sync.
+DEFAULT_SEARCH_TERMS = [
+    # Tech / IT
+    "Softwareentwickler",
+    "Software Engineer",
+    "Data Scientist",
+    "Data Engineer",
+    "DevOps Engineer",
+    "Systemadministrator",
+    "IT-Support",
+    "Product Manager",
+    "UX Designer",
+    # Sales / Marketing
+    "Vertriebsmitarbeiter",
+    "Sales Manager",
+    "Marketing Manager",
+    "Online Marketing Manager",
+    "Werbetexter",
+    # HR
+    "Personalreferent",
+    "HR Manager",
+    "Recruiter",
+    # Finance / Accounting
+    "Buchhalter",
+    "Bilanzbuchhalter",
+    "Controller",
+    "Finanzanalyst",
+    # Legal
+    "Justiziar",
+    "Rechtsanwaltsfachangestellte",
+    # Customer service
+    "Kundenservice",
+    "Kundenberater",
+    # Healthcare
+    "Gesundheits- und Krankenpfleger",
+    "Pflegefachkraft",
+    "Medizinische Fachangestellte",
+    # Logistics / operations
+    "Lagerlogistik",
+    "Supply Chain Manager",
+    "Disponent",
+    # Engineering (non-software)
+    "Maschinenbauingenieur",
+    "Elektroingenieur",
+    "Projektingenieur",
+    # Admin / office
+    "Bürokaufmann",
+    "Assistenz der Geschäftsführung",
+    "Verwaltungsfachangestellte",
+    # Retail / hospitality
+    "Einzelhandelskaufmann",
+    "Hotelfachmann",
+    # Education
+    "Erzieher",
+    # Consulting
+    "Unternehmensberater",
+]
 
 
 def _search_url(base_url: str, was: str, wo: str, size: int, page: int) -> str:
@@ -108,35 +214,78 @@ def fetch(
     config: dict,
     domain_allowlist: list[str],
     search_terms: list[str] | None = None,
-    size: int = 50,
+    size: int = DEFAULT_PAGE_SIZE,
+    max_pages_per_term: int = DEFAULT_MAX_PAGES_PER_TERM,
+    max_total_jobs: int = DEFAULT_MAX_TOTAL_JOBS,
 ) -> list[RawPayload]:
-    """Fetch job postings for each search term configured for this source.
+    """Fetch job postings for each search term configured for this source,
+    deduping by refnr across every term/page in this call.
 
-    `search_terms` defaults to a small set of target roles; in production this
-    would be driven by aggregate demand across candidate profiles, but Phase 1
-    just needs a working, testable adapter shape.
+    Iterates in ROUND-ROBIN order -- page 1 of every term, then page 2 of
+    every term still returning full pages, and so on -- rather than
+    exhausting one term's pages before moving to the next. With ~40 terms
+    spanning many occupation categories (see DEFAULT_SEARCH_TERMS) and a
+    global max_total_jobs cap, exhausting terms in list order would spend the
+    entire cap on the first several terms (tech, then sales) before the cap
+    is hit, so categories later in the list (healthcare, logistics,
+    education, ...) would never get queried at all -- exactly the breadth
+    DEFAULT_SEARCH_TERMS exists to provide. Round-robin instead gives every
+    term at least one page before any term gets a second.
+
+    A term drops out of rotation (stops getting further pages) the moment
+    one of its pages comes back empty or shorter than `size`, since that's
+    the real end-of-results signal for that term.
+
+    The refnr dedup matters beyond avoiding wasted work: without it, a job
+    that legitimately matches two search terms (e.g. "Softwareentwickler" and
+    "Software Engineer" both matching the same real posting) would otherwise
+    get fetched, detail-enriched, and appended to raw_job_snapshots' append-
+    only history twice in the same run, for no benefit downstream.
+
+    `search_terms` resolves from the explicit parameter, then
+    `config.searchTerms`, then DEFAULT_SEARCH_TERMS -- in that order, so a
+    caller can still target one specific term (as the test suite does)
+    without needing to touch config.
     """
     base_url = config.get("baseUrl", f"https://{BASE_HOST}/jobboerse/jobsuche-service")
-    terms = search_terms or config.get("searchTerms", ["Software Engineer"])
+    terms = search_terms or config.get("searchTerms") or DEFAULT_SEARCH_TERMS
     payloads: list[RawPayload] = []
+    seen_refnrs: set[str] = set()
+    exhausted_terms: set[str] = set()
 
-    for term in terms:
-        url = _search_url(base_url, was=term, wo="Deutschland", size=size, page=1)
-        enforce_domain_allowlist(url, domain_allowlist)
-        data = _get(client, url)
-        for job in data.get("stellenangebote", []):
-            refnr = job.get("refnr")
-            if not refnr:
+    for page in range(1, max_pages_per_term + 1):
+        if len(seen_refnrs) >= max_total_jobs:
+            break
+        for term in terms:
+            if term in exhausted_terms:
                 continue
-            enriched = dict(job)
-            enriched["stellenangebotsBeschreibung"] = _fetch_description(client, base_url, str(refnr), domain_allowlist)
-            payloads.append(
-                RawPayload(
-                    original_job_id=str(refnr),
-                    payload=enriched,
-                    fetched_at=RawPayload.now_iso(),
+            if len(seen_refnrs) >= max_total_jobs:
+                break
+            url = _search_url(base_url, was=term, wo="Deutschland", size=size, page=page)
+            enforce_domain_allowlist(url, domain_allowlist)
+            data = _get(client, url)
+            listings = data.get("stellenangebote", [])
+            if not listings:
+                exhausted_terms.add(term)
+                continue
+            for job in listings:
+                if len(seen_refnrs) >= max_total_jobs:
+                    break
+                refnr = job.get("refnr")
+                if not refnr or refnr in seen_refnrs:
+                    continue
+                seen_refnrs.add(refnr)
+                enriched = dict(job)
+                enriched["stellenangebotsBeschreibung"] = _fetch_description(client, base_url, str(refnr), domain_allowlist)
+                payloads.append(
+                    RawPayload(
+                        original_job_id=str(refnr),
+                        payload=enriched,
+                        fetched_at=RawPayload.now_iso(),
+                    )
                 )
-            )
+            if len(listings) < size:
+                exhausted_terms.add(term)
     return payloads
 
 
