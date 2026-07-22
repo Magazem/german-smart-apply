@@ -246,6 +246,16 @@ export class RealApiClient implements ApiClient {
         return null;
       }
     },
+    matchExplanation: async (id: string): Promise<{ explanation: string | null }> => {
+      try {
+        const raw = await this.request<{ explanation: string | null }>(`/jobs/${id}/match-explanation`);
+        return { explanation: raw.explanation ?? null };
+      } catch {
+        // Same posture as the API's own try/catch around the provider call:
+        // a missing explanation collapses the block, it never errors the page.
+        return { explanation: null };
+      }
+    },
     recordFeedback: async (
       id: string,
       feedback: JobFeedbackType,
