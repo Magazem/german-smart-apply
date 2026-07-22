@@ -168,6 +168,32 @@ export class JobsService {
       } catch (err) {
         this.logger.warn(`Match explanation generation failed for job ${id}: ${String(err)}`);
       }
+
+      // TEMPORARY diagnostic (delete freely, see
+      // packages/ai/src/match-score-estimate.ts): an independent, blind
+      // second model call that judges the ranking dimensions itself and
+      // combines them with our own weights, so the result can be eyeballed
+      // against score.totalScore above. Gated so it isn't a second
+      // strong-tier call on every job-detail view for every user - only
+      // fires when explicitly enabled, and only against a real provider
+      // (MockAiProvider doesn't implement estimateMatchScoreBlind).
+      if (process.env.MATCH_SCORE_DIAGNOSTIC_ENABLED === 'true') {
+        try {
+          const aiProvider = await this.aiProviderFactory.getProvider();
+          if (aiProvider.estimateMatchScoreBlind) {
+            const estimate = await aiProvider.estimateMatchScoreBlind(toSharedCandidateProfile(profile), job);
+            score.explanation = [
+              score.explanation,
+              `Self-estimated match (internal test, blind to our real score): ${estimate.percentage}%`,
+            ]
+              .filter(Boolean)
+              .join('\n\n');
+            await this.tokenUsage.record(profile.userId, 'matchScoreDiagnostic', 'diagnostic', estimate.tokensUsed);
+          }
+        } catch (err) {
+          this.logger.warn(`Match score diagnostic estimate failed for job ${id}: ${String(err)}`);
+        }
+      }
     }
 
     return { job, score, myFeedback };

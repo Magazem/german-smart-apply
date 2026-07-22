@@ -22,6 +22,14 @@ import {
   isRecord,
   parseParsedCvInput,
 } from './prompt-utils.js';
+import {
+  buildMatchScoreEstimateSystemPrompt,
+  buildMatchScoreEstimateUserContent,
+  computeMatchScoreEstimate,
+  MATCH_SCORE_DIMENSION_DESCRIPTIONS,
+  MATCH_SCORE_ESTIMATE_TOOL_NAME,
+  parseMatchScoreEstimateDimensions,
+} from './match-score-estimate.js';
 
 export type { AiProviderErrorCode };
 export { AiProviderError };
@@ -172,6 +180,25 @@ function buildCvSuggestionsTool(): Anthropic.Tool {
         },
       },
       required: ['suggestions'],
+    },
+  };
+}
+
+/** TEMPORARY diagnostic tool - see match-score-estimate.ts. */
+function buildMatchScoreEstimateTool(): Anthropic.Tool {
+  return {
+    name: MATCH_SCORE_ESTIMATE_TOOL_NAME,
+    description: 'Record your independent match-dimension judgment. Call this exactly once.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        titleSimilarity: { type: 'number', description: MATCH_SCORE_DIMENSION_DESCRIPTIONS.titleSimilarity },
+        skillOverlap: { type: 'number', description: MATCH_SCORE_DIMENSION_DESCRIPTIONS.skillOverlap },
+        locationFit: { type: 'number', description: MATCH_SCORE_DIMENSION_DESCRIPTIONS.locationFit },
+        languageFit: { type: 'number', description: MATCH_SCORE_DIMENSION_DESCRIPTIONS.languageFit },
+        salaryFit: { type: 'number', description: MATCH_SCORE_DIMENSION_DESCRIPTIONS.salaryFit },
+      },
+      required: ['titleSimilarity', 'skillOverlap', 'locationFit', 'languageFit', 'salaryFit'],
     },
   };
 }
@@ -515,6 +542,39 @@ export class AnthropicAiProvider implements AiProvider {
     return {
       text: extractText(message, context),
       modelUsed: message.model,
+      tokensUsed: totalTokens(message.usage),
+    };
+  }
+
+  /** TEMPORARY diagnostic - see match-score-estimate.ts. */
+  async estimateMatchScoreBlind(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+  ): Promise<{ percentage: number; tokensUsed: number }> {
+    const context = 'estimateMatchScoreBlind';
+    const model = MODEL_ROUTING[TASK_MODEL_TIER.matchExplanation];
+    const system = [buildMatchScoreEstimateSystemPrompt(), NO_META_COMMENTARY_INSTRUCTION].join('\n\n');
+    const user = buildMatchScoreEstimateUserContent(profile, job);
+
+    const message = await this.createMessage(
+      {
+        model,
+        max_tokens: 256,
+        system,
+        messages: [{ role: 'user', content: user }],
+        tools: [buildMatchScoreEstimateTool()],
+        tool_choice: { type: 'tool', name: MATCH_SCORE_ESTIMATE_TOOL_NAME },
+      },
+      context,
+    );
+
+    const dimensions = parseMatchScoreEstimateDimensions(
+      extractToolInput(message, MATCH_SCORE_ESTIMATE_TOOL_NAME, context),
+      context,
+    );
+
+    return {
+      percentage: computeMatchScoreEstimate(dimensions, job, this.marketPack.rankingWeights),
       tokensUsed: totalTokens(message.usage),
     };
   }

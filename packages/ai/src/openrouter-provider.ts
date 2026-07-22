@@ -22,6 +22,14 @@ import {
   isRecord,
   parseParsedCvInput,
 } from './prompt-utils.js';
+import {
+  buildMatchScoreEstimateSystemPrompt,
+  buildMatchScoreEstimateUserContent,
+  computeMatchScoreEstimate,
+  MATCH_SCORE_DIMENSION_DESCRIPTIONS,
+  MATCH_SCORE_ESTIMATE_TOOL_NAME,
+  parseMatchScoreEstimateDimensions,
+} from './match-score-estimate.js';
 
 /**
  * Minimal structural surface of the OpenAI SDK client this provider needs -
@@ -297,6 +305,28 @@ function buildCvSuggestionsTool(): OpenAI.ChatCompletionTool {
           suggestions: { type: 'array', items: { type: 'string' }, description: 'Concrete, actionable suggestions.' },
         },
         required: ['suggestions'],
+      },
+    },
+  };
+}
+
+/** TEMPORARY diagnostic tool - see match-score-estimate.ts. */
+function buildMatchScoreEstimateTool(): OpenAI.ChatCompletionTool {
+  return {
+    type: 'function',
+    function: {
+      name: MATCH_SCORE_ESTIMATE_TOOL_NAME,
+      description: 'Record your independent match-dimension judgment.',
+      parameters: {
+        type: 'object',
+        properties: {
+          titleSimilarity: { type: 'number', description: MATCH_SCORE_DIMENSION_DESCRIPTIONS.titleSimilarity },
+          skillOverlap: { type: 'number', description: MATCH_SCORE_DIMENSION_DESCRIPTIONS.skillOverlap },
+          locationFit: { type: 'number', description: MATCH_SCORE_DIMENSION_DESCRIPTIONS.locationFit },
+          languageFit: { type: 'number', description: MATCH_SCORE_DIMENSION_DESCRIPTIONS.languageFit },
+          salaryFit: { type: 'number', description: MATCH_SCORE_DIMENSION_DESCRIPTIONS.salaryFit },
+        },
+        required: ['titleSimilarity', 'skillOverlap', 'locationFit', 'languageFit', 'salaryFit'],
       },
     },
   };
@@ -642,6 +672,39 @@ export class OpenRouterAiProvider implements AiProvider {
     return {
       text: extractText(completion, context),
       modelUsed: completion.model,
+      tokensUsed: completion.usage?.total_tokens ?? 0,
+    };
+  }
+
+  /** TEMPORARY diagnostic - see match-score-estimate.ts. */
+  async estimateMatchScoreBlind(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+  ): Promise<{ percentage: number; tokensUsed: number }> {
+    const context = 'estimateMatchScoreBlind';
+    const system = [buildMatchScoreEstimateSystemPrompt(), NO_META_COMMENTARY_INSTRUCTION].join('\n\n');
+    const user = buildMatchScoreEstimateUserContent(profile, job);
+
+    const completion = await this.createCompletion(
+      {
+        max_tokens: 256,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        tools: [buildMatchScoreEstimateTool()],
+        tool_choice: { type: 'function', function: { name: MATCH_SCORE_ESTIMATE_TOOL_NAME } },
+      },
+      context,
+    );
+
+    const dimensions = parseMatchScoreEstimateDimensions(
+      extractStructuredOutput(completion, MATCH_SCORE_ESTIMATE_TOOL_NAME, context),
+      context,
+    );
+
+    return {
+      percentage: computeMatchScoreEstimate(dimensions, job, this.marketPack.rankingWeights),
       tokensUsed: completion.usage?.total_tokens ?? 0,
     };
   }

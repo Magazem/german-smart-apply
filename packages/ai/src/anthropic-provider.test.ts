@@ -387,6 +387,43 @@ describe('AnthropicAiProvider', () => {
     });
   });
 
+  describe('estimateMatchScoreBlind (TEMPORARY diagnostic, see match-score-estimate.ts)', () => {
+    it('forces the dimension-estimate tool and combines the result with the market pack weights', async () => {
+      const { client, create } = fakeClient(() =>
+        toolUseMessage('record_match_score_estimate', {
+          titleSimilarity: 0.8,
+          skillOverlap: 0.6,
+          locationFit: 0.7,
+          languageFit: 1,
+          salaryFit: 0.5,
+        }),
+      );
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      const result = await provider.estimateMatchScoreBlind(profile, job);
+
+      const params = create.mock.calls[0][0] as Anthropic.MessageCreateParamsNonStreaming;
+      expect(params.tool_choice).toEqual({ type: 'tool', name: 'record_match_score_estimate' });
+      // testMarketPack.rankingWeights: titleSimilarity/skillOverlap 0.25, locationFit 0.15, recency/salaryFit 0.1,
+      // languageFit/sourceTrust/riskPenalty 0.05. job fixture: postedAt=null -> recency=0.4, sourceTrustScore=0.9,
+      // scamRiskScore=0.02.
+      // weightedPositive = 0.8*0.25 + 0.6*0.25 + 0.7*0.15 + 0.4*0.1 + 0.5*0.1 + 1*0.05 + 0.9*0.05
+      //                  = 0.2 + 0.15 + 0.105 + 0.04 + 0.05 + 0.05 + 0.045 = 0.64
+      // totalScore = 0.64 - 0.02*0.05 = 0.639 -> round(63.9) = 64
+      expect(result.percentage).toBe(64);
+      expect(result.tokensUsed).toBe(150);
+    });
+
+    it('throws malformed_response when the tool input is missing a dimension', async () => {
+      const { client } = fakeClient(() => toolUseMessage('record_match_score_estimate', { titleSimilarity: 0.8 }));
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      await expect(provider.estimateMatchScoreBlind(profile, job)).rejects.toMatchObject({
+        code: 'malformed_response',
+      });
+    });
+  });
+
   describe('generateFollowUpEmail', () => {
     it('routes to the strong tier, interpolates days-since-applied into the market prompt, and forces the tool', async () => {
       const { client, create } = fakeClient(() =>
