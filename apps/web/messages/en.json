@@ -257,6 +257,13 @@
     "fewerLikeThis": "Fewer like this",
     "statusLabel": "Your application status:",
     "whyMatches": "Why this matches:",
+    "explanationPhrases": {
+      "reading": "Reading the posting…",
+      "comparing": "Comparing it with your profile…",
+      "weighing": "Weighing up the match…",
+      "writing": "Writing your summary…",
+      "almostThere": "Almost there…"
+    },
     "matchBreakdownSummary": "Match score breakdown",
     "fullDescriptionHeading": "Full description",
     "cvVariantStyleLabel": "CV variant style",

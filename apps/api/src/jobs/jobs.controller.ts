@@ -17,6 +17,14 @@ export class JobsController {
     return this.jobsService.search(filters, user?.id);
   }
 
+  // Split out of GET :id so the job-detail page can render immediately and
+  // fill this block in when the model answers, instead of the whole page
+  // waiting on the AI provider. Anonymous callers get `{ explanation: null }`.
+  @Get(':id/match-explanation')
+  getMatchExplanation(@Param('id') id: string, @CurrentUser() user?: AuthenticatedUser) {
+    return this.jobsService.getMatchExplanation(id, user?.id);
+  }
+
   @Get(':id')
   getById(@Param('id') id: string, @CurrentUser() user?: AuthenticatedUser) {
     return this.jobsService.getById(id, user?.id);

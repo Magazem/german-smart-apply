@@ -160,6 +160,13 @@ export interface ApiClient {
   jobs: {
     search(filters: JobSearchFilters): Promise<JobSearchResult>;
     get(id: string): Promise<JobDetailResult | null>;
+    /**
+     * The "Why this matches" prose, fetched separately from get() because it
+     * costs an LLM round-trip - the detail page renders first and fills this
+     * block in when it resolves. `explanation: null` means there's nothing to
+     * show (no profile, or the provider failed), and the block collapses.
+     */
+    matchExplanation(id: string): Promise<{ explanation: string | null }>;
     /** Toggles like/skip: re-sending the currently-active value clears it (feedback: null). */
     recordFeedback(id: string, feedback: JobFeedbackType): Promise<{ feedback: JobFeedbackType | null }>;
   };
