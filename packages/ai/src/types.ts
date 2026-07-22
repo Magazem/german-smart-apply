@@ -106,6 +106,21 @@ export interface AiProvider {
     matchScore?: number,
   ): Promise<AiGenerationResult>;
 
+  /**
+   * TEMPORARY diagnostic (see packages/ai/src/match-score-estimate.ts):
+   * an isolated, blind second model call that judges the five
+   * text-derivable ranking dimensions independently - unlike
+   * generateMatchExplanation above, this one is never told the real
+   * computed score, so its estimate isn't anchored on the answer. Optional
+   * and gated by MATCH_SCORE_DIAGNOSTIC_ENABLED (see jobs.service.ts);
+   * MockAiProvider doesn't implement it since a canned mock has no
+   * independent judgment to offer.
+   */
+  estimateMatchScoreBlind?(
+    profile: CandidateProfile,
+    job: CanonicalJob,
+  ): Promise<{ percentage: number; tokensUsed: number }>;
+
   generateFollowUpEmail(
     profile: CandidateProfile,
     job: CanonicalJob,

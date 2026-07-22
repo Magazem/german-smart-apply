@@ -9,6 +9,9 @@ export type TokenUsageFeature =
   | 'cvVariant'
   | 'coverLetter'
   | 'matchExplanation'
+  // TEMPORARY diagnostic (see packages/ai/src/match-score-estimate.ts) -
+  // remove alongside it once the comparison has served its purpose.
+  | 'matchScoreDiagnostic'
   | 'followUpEmail'
   | 'interviewPrep'
   | 'roleGapAnalysis';

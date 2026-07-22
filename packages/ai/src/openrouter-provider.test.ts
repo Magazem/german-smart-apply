@@ -338,6 +338,38 @@ describe('OpenRouterAiProvider', () => {
     });
   });
 
+  describe('estimateMatchScoreBlind (TEMPORARY diagnostic, see match-score-estimate.ts)', () => {
+    it('forces the dimension-estimate tool and combines the result with the market pack weights', async () => {
+      const { client, create } = fakeClient(() =>
+        toolCallCompletion('record_match_score_estimate', {
+          titleSimilarity: 0.8,
+          skillOverlap: 0.6,
+          locationFit: 0.7,
+          languageFit: 1,
+          salaryFit: 0.5,
+        }),
+      );
+      const provider = new OpenRouterAiProvider(testMarketPack, { client });
+
+      const result = await provider.estimateMatchScoreBlind(profile, job);
+
+      const params = create.mock.calls[0][0] as OpenAI.ChatCompletionCreateParamsNonStreaming;
+      expect(params.tool_choice).toEqual({ type: 'function', function: { name: 'record_match_score_estimate' } });
+      // Same fixtures/weights as anthropic-provider.test.ts's equivalent case: 64%.
+      expect(result.percentage).toBe(64);
+      expect(result.tokensUsed).toBe(180);
+    });
+
+    it('throws malformed_response when the tool input is missing a dimension', async () => {
+      const { client } = fakeClient(() => toolCallCompletion('record_match_score_estimate', { titleSimilarity: 0.8 }));
+      const provider = new OpenRouterAiProvider(testMarketPack, { client });
+
+      await expect(provider.estimateMatchScoreBlind(profile, job)).rejects.toMatchObject({
+        code: 'malformed_response',
+      });
+    });
+  });
+
   describe('generateFollowUpEmail', () => {
     it('interpolates days-since-applied and forces the tool', async () => {
       const { client, create } = fakeClient(() =>
