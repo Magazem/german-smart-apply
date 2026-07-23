@@ -11,14 +11,29 @@ import json as json_module
 
 
 class FakeResponse:
-    """Wraps either JSON (the common case) or raw text (e.g. XML feeds like
-    Personio's) -- pass `raw_text` for adapters that read `.text` directly
-    instead of calling `.json()`.
+    """Wraps either JSON (the common case) or a raw body (e.g. XML feeds like
+    Personio's) -- pass `raw_text` for adapters that read `.text`/`.content`
+    directly instead of calling `.json()`.
+
+    Pass `raw_bytes` to model a response whose Content-Type carries no
+    charset (Personio's `text/xml`). `requests` decodes those with its
+    ISO-8859-1 default regardless of what the bytes actually are, so `.text`
+    below deliberately reproduces that lossy decode while `.content` returns
+    the bytes untouched. Without this asymmetry a test of the mojibake fix
+    would be vacuous: a fake whose `.text` and `.content` always agree passes
+    whether the adapter reads the right one or not.
     """
 
-    def __init__(self, json_data=None, status_code: int = 200, raw_text: str | None = None):
+    def __init__(
+        self,
+        json_data=None,
+        status_code: int = 200,
+        raw_text: str | None = None,
+        raw_bytes: bytes | None = None,
+    ):
         self._json = json_data
         self._raw_text = raw_text
+        self._raw_bytes = raw_bytes
         self.status_code = status_code
 
     def json(self):
@@ -26,9 +41,18 @@ class FakeResponse:
 
     @property
     def text(self) -> str:
+        if self._raw_bytes is not None:
+            # Mirrors requests' charset-less `text/*` fallback (see class docstring).
+            return self._raw_bytes.decode("ISO-8859-1")
         if self._raw_text is not None:
             return self._raw_text
         return json_module.dumps(self._json)
+
+    @property
+    def content(self) -> bytes:
+        if self._raw_bytes is not None:
+            return self._raw_bytes
+        return self.text.encode("utf-8")
 
 
 class FakeClient:

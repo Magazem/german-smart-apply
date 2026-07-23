@@ -27,9 +27,35 @@ Response shape (subset we care about, per SmartRecruiters' public Posting API):
   ]
 }
 
-The base `/postings` list response includes full `jobAd` content when queried
-without pagination-only fields, which is what this adapter relies on rather
-than making a second per-posting detail request per job.
+IMPORTANT: the `jobAd` block above is NOT part of the list response. The
+`/postings` list endpoint returns only summary fields (id, name, uuid,
+jobAdId, refNumber, company, releasedDate, location, industry, department,
+function, typeOfEmployment, experienceLevel, customField, ref, visibility) --
+live-verified against the real API on 2026-07-23, where every entry in
+Continental's 945-posting list came back with no `jobAd` key at all. The
+adapter previously assumed otherwise, so `extract_smartrecruiters` found an
+empty `sections` dict and every SmartRecruiters job landed with a blank
+description.
+
+The full job ad only comes from the per-posting detail endpoint:
+  GET https://api.smartrecruiters.com/v1/companies/{company_identifier}/postings/{posting_id}
+  { ..., "jobAd": {"sections": {"companyDescription": {...},
+                                "jobDescription": {...},
+                                "qualifications": {...},
+                                "additionalInformation": {...}}},
+        "applyUrl": "...", "postingUrl": "..." }
+`fetch()` below makes one such call per listing and merges `jobAd` (plus the
+authoritative `applyUrl`/`postingUrl`) into the payload before handing it to
+the normalizer. This mirrors arbeitsagentur.py, which pays the same
+one-detail-call-per-listing cost for the same reason, and likewise degrades a
+failed detail call to an empty description for that one listing rather than
+dropping it or aborting the batch.
+
+COST NOTE: combined with the pagination below this is ~1 extra request per
+posting (Continental alone is ~945), so a full crawl of this source is now
+dominated by detail calls. That is the only way to get descriptions from this
+API; if it becomes a problem the lever is `max_jobs_per_company`, not
+skipping the detail call.
 
 The list response is paginated (`limit`/`offset` query params, `totalFound`
 in the response body) and defaults to only the first `limit` (100) postings
@@ -55,6 +81,10 @@ def _postings_url(company_identifier: str, offset: int = 0, limit: int = DEFAULT
     return f"https://{BASE_HOST}/v1/companies/{company_identifier}/postings?offset={offset}&limit={limit}"
 
 
+def _posting_detail_url(company_identifier: str, posting_id: str) -> str:
+    return f"https://{BASE_HOST}/v1/companies/{company_identifier}/postings/{posting_id}"
+
+
 @retryable()
 def _get(client: HttpClient, url: str) -> dict:
     try:
@@ -66,6 +96,40 @@ def _get(client: HttpClient, url: str) -> dict:
     if resp.status_code != 200:
         raise RuntimeError(f"SmartRecruiters returned {resp.status_code} for {url}")
     return resp.json()
+
+
+def _fetch_posting_detail(
+    client: HttpClient, company_identifier: str, posting_id: str, domain_allowlist: list[str]
+) -> dict:
+    """Fetch one posting's detail record, whose `jobAd.sections` is the only
+    place the actual job description lives (see module docstring).
+
+    A fetch failure (404, exhausted retries, network error) degrades to an
+    empty dict -- the listing is still kept, just without a description,
+    which is strictly better than losing a real posting entirely. A
+    domain-allowlist failure is NOT swallowed: that's a governance/config
+    bug that must fail loudly, same as the list call. Mirrors
+    arbeitsagentur._fetch_description.
+    """
+    url = _posting_detail_url(company_identifier, posting_id)
+    enforce_domain_allowlist(url, domain_allowlist)
+    try:
+        return _get(client, url)
+    except (TransientFetchError, RuntimeError):
+        return {}
+
+
+def _merge_detail_into_posting(posting: dict, detail: dict) -> dict:
+    """Copy the description-bearing fields off the detail record onto the
+    list-summary posting. Only fields the list response genuinely lacks are
+    copied, and only when present, so a degraded (empty) detail leaves the
+    summary exactly as it was.
+    """
+    enriched = dict(posting)
+    for key in ("jobAd", "applyUrl", "postingUrl"):
+        if key in detail:
+            enriched[key] = detail[key]
+    return enriched
 
 
 def fetch(
@@ -92,10 +156,12 @@ def fetch(
             data = _get(client, url)
             content = data.get("content", [])
             for posting in content:
+                posting_id = str(posting["id"])
+                detail = _fetch_posting_detail(client, identifier, posting_id, domain_allowlist)
                 payloads.append(
                     RawPayload(
-                        original_job_id=str(posting["id"]),
-                        payload=posting,
+                        original_job_id=posting_id,
+                        payload=_merge_detail_into_posting(posting, detail),
                         fetched_at=RawPayload.now_iso(),
                     )
                 )

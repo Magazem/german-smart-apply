@@ -129,6 +129,24 @@ export default function JobDetailPage() {
     };
   }, [authLoading, params.id]);
 
+  // Name the browser tab after the job itself. Opening several postings in
+  // parallel is the normal way to compare them, and every job page otherwise
+  // inherited the one generic site-wide title from layout.tsx's metadata, so
+  // the tab strip showed a row of identical tabs with nothing to navigate by.
+  // generateMetadata isn't available here (this is a 'use client' page whose
+  // data is auth-gated and fetched client-side), so the title is set
+  // imperatively. Job title leads because tabs truncate from the right, and
+  // the previous title is captured and restored on unmount so a stale job
+  // name never lingers on whatever page comes next.
+  useEffect(() => {
+    if (!job) return;
+    const previousTitle = document.title;
+    document.title = `${job.jobTitleNormalized} · ${job.companyNameNormalized} · Smart Apply`;
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [job]);
+
   // Deliberately its own effect, not awaited alongside the load above: this
   // is an LLM round-trip and can take seconds. Keeping it separate is what
   // lets the page paint - description, apply links, draft controls, all of

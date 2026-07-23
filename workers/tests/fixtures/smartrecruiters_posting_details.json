@@ -1,0 +1,42 @@
+{
+  "744000012345678": {
+    "id": "744000012345678",
+    "name": "Senior Backend Engineer (m/f/d)",
+    "company": {
+      "identifier": "acme",
+      "name": "Acme GmbH"
+    },
+    "jobAd": {
+      "sections": {
+        "jobDescription": {
+          "title": "Job Description",
+          "text": "<p>We are looking for a Senior Backend Engineer.</p>"
+        },
+        "qualifications": {
+          "title": "Qualifications",
+          "text": "<p>Python and AWS experience required.</p>"
+        }
+      }
+    },
+    "postingUrl": "https://jobs.smartrecruiters.com/acme/744000012345678-senior",
+    "applyUrl": "https://jobs.smartrecruiters.com/acme/744000012345678-senior?oga=true"
+  },
+  "744000098765432": {
+    "id": "744000098765432",
+    "name": "Werkstudent Marketing",
+    "company": {
+      "identifier": "acme",
+      "name": "Acme GmbH"
+    },
+    "jobAd": {
+      "sections": {
+        "jobDescription": {
+          "title": "Job Description",
+          "text": "<p>Praktikum/Werkstudent Rolle im Marketing Team.</p>"
+        }
+      }
+    },
+    "postingUrl": "https://jobs.smartrecruiters.com/acme/744000098765432-werkstudent",
+    "applyUrl": "https://jobs.smartrecruiters.com/acme/744000098765432-werkstudent?oga=true"
+  }
+}

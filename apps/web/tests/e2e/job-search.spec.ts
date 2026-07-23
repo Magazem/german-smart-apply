@@ -88,4 +88,36 @@ test.describe('Job search filtering', () => {
     const detailHref = await detailLink.getAttribute('href');
     expect(detailHref).toMatch(/^https?:\/\//);
   });
+
+  test('each job detail page names the browser tab after the job itself', async ({ page }) => {
+    // Comparing postings means opening several of them at once, and every job
+    // page used to inherit one generic site-wide title - so the tab strip was
+    // a row of identical tabs with nothing to navigate by.
+    await loginAsDemo(page);
+    await page.goto('/jobs');
+    await expect(page.getByTestId('job-card').first()).toBeVisible();
+
+    const listTitle = await page.title();
+
+    const firstJobTitle = (await page.getByTestId('job-card-title').first().innerText()).trim();
+    await page.getByTestId('job-card-title').first().click();
+    await expect(page).toHaveURL(/\/jobs\/.+/);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+    await expect.poll(async () => await page.title(), { timeout: 10_000 }).toContain(firstJobTitle);
+
+    // Two different jobs must not produce the same tab name.
+    await page.goBack();
+    await expect(page.getByTestId('job-card').nth(1)).toBeVisible();
+    const secondJobTitle = (await page.getByTestId('job-card-title').nth(1).innerText()).trim();
+    await page.getByTestId('job-card-title').nth(1).click();
+    await expect(page).toHaveURL(/\/jobs\/.+/);
+
+    await expect.poll(async () => await page.title(), { timeout: 10_000 }).toContain(secondJobTitle);
+
+    // Leaving the page must not strand the previous job's name in the tab.
+    await page.goto('/jobs');
+    await expect(page.getByTestId('job-card').first()).toBeVisible();
+    await expect.poll(async () => await page.title(), { timeout: 10_000 }).toBe(listTitle);
+  });
 });

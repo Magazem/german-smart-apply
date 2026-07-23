@@ -54,7 +54,24 @@ def _feed_url(company_subdomain: str) -> str:
 
 
 @retryable()
-def _get(client: HttpClient, url: str) -> str:
+def _get(client: HttpClient, url: str) -> bytes:
+    """Returns the *undecoded* response body.
+
+    Deliberately `.content`, never `.text`: Personio serves this feed as
+    `Content-Type: text/xml` with no charset parameter, and `requests`
+    defaults any charset-less `text/*` response to ISO-8859-1. Reading
+    `.text` therefore decoded the feed's UTF-8 bytes as Latin-1 and turned
+    every German umlaut into mojibake ("fuehrenden" -> "fÃ¼hrenden"), which
+    then flowed through the snapshot and into the rendered job description.
+    Live-verified against candis/clark's real feeds on 2026-07-23.
+
+    Handing raw bytes to ElementTree is also the *correct* fix rather than
+    just hard-coding utf-8: the feed opens with `<?xml version="1.0"
+    encoding="UTF-8"?>`, and an XML parser given bytes honours that
+    declaration, so a company whose feed ever declares something else still
+    decodes correctly. (Passing an already-decoded `str` containing an
+    encoding declaration is what XML parsers reject/ignore.)
+    """
     try:
         resp = client.get(url, timeout=10.0)
     except Exception as exc:  # noqa: BLE001 - network errors of any kind are transient
@@ -63,7 +80,7 @@ def _get(client: HttpClient, url: str) -> str:
         raise TransientFetchError(f"Personio returned {resp.status_code} for {url}")
     if resp.status_code != 200:
         raise RuntimeError(f"Personio returned {resp.status_code} for {url}")
-    return resp.text
+    return resp.content
 
 
 def _position_to_dict(position: ElementTree.Element, company_subdomain: str) -> dict:
@@ -99,8 +116,8 @@ def fetch(client: HttpClient, config: dict, domain_allowlist: list[str]) -> list
     for subdomain in company_subdomains:
         url = _feed_url(subdomain)
         enforce_domain_allowlist(url, domain_allowlist)
-        xml_text = _get(client, url)
-        root = ElementTree.fromstring(xml_text)
+        xml_bytes = _get(client, url)
+        root = ElementTree.fromstring(xml_bytes)
         for position in root.findall("./position"):
             job = _position_to_dict(position, subdomain)
             if not job["id"]:
