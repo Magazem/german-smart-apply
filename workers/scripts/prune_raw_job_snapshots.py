@@ -22,6 +22,10 @@ Safety:
   * Dry-run by default. Pass --apply to actually swap tables.
   * Refuses to run unless the payloadHash migration is applied.
   * The swap runs in one transaction: on any error nothing changes.
+  * It takes an ACCESS EXCLUSIVE lock up front and holds it across the whole
+    rewrite, so a concurrently-committing crawl cannot have its rows silently
+    dropped (see the comment in _apply). Run it with the crawler paused; if a
+    crawl is live this fails fast on lock_timeout instead of eating data.
   * Nothing in the schema references raw_job_snapshots via an incoming FK
     (verified below at runtime), so the swap cannot orphan another table.
 
@@ -111,7 +115,19 @@ def _report(cur) -> tuple[int, int]:
 
 
 def _apply(conn, cur) -> None:
-    print("\nbuilding replacement table ...")
+    # Take the exclusive lock BEFORE reading, and hold it for the whole
+    # transaction. Without this there is a silent data-loss window that the
+    # single transaction does NOT close: CREATE TABLE AS SELECT reads a
+    # READ COMMITTED snapshot, so any row a crawl commits after that snapshot
+    # but before the DROP below exists only in the old table and disappears
+    # with it. A lock taken only at DROP time would not catch it either -- a
+    # quick insert commits and releases its own lock long before we get there.
+    # If a crawl is running, lock_timeout makes this fail fast and roll back
+    # cleanly rather than silently eating that crawl's rows.
+    print("\nacquiring exclusive lock on raw_job_snapshots ...")
+    cur.execute('LOCK TABLE "raw_job_snapshots" IN ACCESS EXCLUSIVE MODE')
+
+    print("building replacement table ...")
     # LOGGED (the default) on purpose: an UNLOGGED table would be emptied by a
     # Neon compute restart mid-swap, silently destroying the history.
     cur.execute(
@@ -177,6 +193,12 @@ def _apply(conn, cur) -> None:
 
     conn.commit()
     print("committed.\n")
+
+    # The rebuilt table has no statistics until autovacuum gets to it; give
+    # the planner something to work with immediately.
+    conn.autocommit = True
+    cur.execute('ANALYZE "raw_job_snapshots"')
+    conn.autocommit = False
 
     cur.execute("SELECT pg_size_pretty(pg_total_relation_size('raw_job_snapshots'))")
     print(f"raw_job_snapshots size : {cur.fetchone()[0]}")
