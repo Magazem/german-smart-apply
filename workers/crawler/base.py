@@ -55,6 +55,13 @@ class HttpResponse(Protocol):
     def json(self) -> Any: ...
     @property
     def text(self) -> str: ...
+    # Undecoded response body. Adapters parsing a *document* format that
+    # declares its own encoding (XML, HTML) must read this rather than
+    # `.text`: `requests` defaults to ISO-8859-1 for any `text/*` response
+    # that omits a charset in Content-Type, which silently mojibake-decodes
+    # UTF-8 feeds (see personio.py's `_get`).
+    @property
+    def content(self) -> bytes: ...
 
 
 class HttpClient(Protocol):

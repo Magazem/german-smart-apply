@@ -4,18 +4,22 @@
       "id": 1001,
       "title": "Senior Backend Engineer (m/w/d)",
       "updated_at": "2026-06-01T10:00:00Z",
-      "location": {"name": "Berlin, Germany"},
+      "location": {
+        "name": "Berlin, Germany"
+      },
       "absolute_url": "https://boards.greenhouse.io/acme/jobs/1001",
-      "content": "<p>We are looking for a Senior Backend Engineer with Python and AWS experience. Gehalt: 65.000 - 80.000 EUR.</p>",
+      "content": "&lt;p&gt;We are looking for a Senior Backend Engineer with Python and AWS experience. Gehalt: 65.000 - 80.000 EUR.&lt;/p&gt;",
       "company_name": "Acme GmbH"
     },
     {
       "id": 1002,
       "title": "Werkstudent Marketing",
       "updated_at": "2026-06-02T09:00:00Z",
-      "location": {"name": "Remote"},
+      "location": {
+        "name": "Remote"
+      },
       "absolute_url": "https://boards.greenhouse.io/acme/jobs/1002",
-      "content": "<p>Praktikum/Werkstudent Rolle im Marketing Team. Wir suchen jemanden mit Erfahrung.</p>",
+      "content": "&lt;p&gt;Praktikum/Werkstudent Rolle im Marketing Team. Wir suchen jemanden mit Erfahrung.&lt;/p&gt;",
       "company_name": "Acme GmbH"
     }
   ]

@@ -8,7 +8,14 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from normalizer.extractors import _strip_html, extract_common_fields, extract_personio
+from normalizer.extractors import (
+    _sanitize_html,
+    _strip_html,
+    extract_common_fields,
+    extract_greenhouse,
+    extract_personio,
+    extract_smartrecruiters,
+)
 from normalizer.pipeline import _parse_datetime, build_raw_job_fields
 from tests.conftest import load_fixture
 
@@ -273,3 +280,140 @@ def test_extract_personio_description_text_preserves_section_heading_breaks():
     assert "Your Profile" in result["description_text"]
     assert "\n" in result["description_text"]
     assert "RoleOwn" not in result["description_text"]
+
+
+# ---------------------------------------------------------------------------
+# Greenhouse entity-escaping + description HTML sanitization
+# ---------------------------------------------------------------------------
+
+def test_extract_greenhouse_unescapes_the_api_s_entity_encoded_content():
+    """Greenhouse's Job Board API returns `content` HTML-entity-escaped once
+    (live-verified: the wire value literally starts "&lt;h2&gt;"). Storing
+    that verbatim as description_html made the job page -- which renders that
+    field as HTML -- display literal "<h1>" and "&amp;" as body text instead
+    of a heading and an ampersand. description_html must be the real markup.
+    """
+    payload = {
+        "id": 1001,
+        "title": "Senior Product Manager",
+        "_board_token": "acme",
+        "location": {"name": "Berlin"},
+        "content": "&lt;h1&gt;About the opportunity&lt;/h1&gt; &lt;p&gt;Ops Automation &amp;amp; Enablement.&lt;/p&gt;",
+    }
+
+    result = extract_greenhouse(payload)
+
+    assert "<h1>About the opportunity</h1>" in result["description_html"]
+    assert "&lt;" not in result["description_html"]
+    # `&amp;amp;` was an `&amp;` in the original posting -- exactly one
+    # unescape recovers that, and it must NOT be decoded further to a bare "&"
+    # (which would no longer be valid HTML for an ampersand).
+    assert "&amp;" in result["description_html"]
+    assert "About the opportunity" in result["description_text"]
+    assert "&lt;" not in result["description_text"]
+    assert "Ops Automation & Enablement" in result["description_text"]
+
+
+def test_extract_greenhouse_none_content_still_yields_none_html():
+    result = extract_greenhouse(
+        {"id": 1, "title": "T", "_board_token": "acme", "location": {"name": "Berlin"}, "content": None}
+    )
+    assert result["description_html"] is None
+    assert result["description_text"] == ""
+
+
+def test_sanitize_html_drops_script_and_style_bodies():
+    dirty = "<p>Real copy.</p><script>alert('x')</script><style>.a{color:red}</style><p>More.</p>"
+    clean = _sanitize_html(dirty)
+    assert "alert" not in clean
+    assert "color:red" not in clean
+    assert "<p>Real copy.</p>" in clean and "<p>More.</p>" in clean
+
+
+def test_strip_html_does_not_leak_script_or_style_source_into_plain_text():
+    """The generic tag strip alone would untag <style> and leave its CSS
+    sitting in jobDescriptionText as if it were prose.
+    """
+    text = _strip_html("<style>.job{font-family:Arial}</style><p>We are hiring.</p>")
+    assert "font-family" not in text
+    assert "We are hiring." in text
+
+
+def test_sanitize_html_strips_inline_presentation_so_the_site_s_typography_wins():
+    """Real ATS payloads (verified on a live Personio feed) carry inline
+    `style="font-family:Arial;font-size:14px"` pasted in by whoever wrote the
+    posting, which fights the app's own type scale when rendered.
+    """
+    dirty = '<p style="font-family:Arial;font-size:14px" class="c-1" id="x">Als eines von Europas führenden InsurTechs</p>'
+    clean = _sanitize_html(dirty)
+    assert clean == "<p>Als eines von Europas führenden InsurTechs</p>"
+
+
+def test_sanitize_html_drops_embedded_content_and_event_handlers():
+    dirty = (
+        '<p onclick="steal()">Copy</p>'
+        '<iframe src="https://evil.example"></iframe>'
+        '<img src="https://tracker.example/p.gif">'
+        '<a href="javascript:alert(1)">bad</a>'
+        '<a href="https://apply.example" target="_blank">good</a>'
+    )
+    clean = _sanitize_html(dirty)
+    assert "onclick" not in clean
+    assert "iframe" not in clean and "evil.example" not in clean
+    assert "tracker.example" not in clean
+    assert "javascript:" not in clean
+    assert '<a href="https://apply.example">good</a>' in clean
+    assert "target=" not in clean  # not on the attribute allowlist
+
+
+def test_extract_smartrecruiters_uses_the_detail_endpoint_s_canonical_urls():
+    payload = {
+        "id": "744000139207009",
+        "name": "FP&A Assistant",
+        "company": {"identifier": "Continental", "name": "Continental"},
+        "location": {"city": "Hannover", "region": "Lower Saxony"},
+        "postingUrl": "https://jobs.smartrecruiters.com/Continental/744000139207009-fp-a-assistant",
+        "applyUrl": "https://jobs.smartrecruiters.com/Continental/744000139207009-fp-a-assistant?oga=true",
+        "jobAd": {"sections": {"jobDescription": {"title": "Job Description", "text": "<p>Support forecasting.</p>"}}},
+    }
+
+    result = extract_smartrecruiters(payload)
+
+    assert result["apply_url"].endswith("?oga=true")
+    assert result["source_url"].endswith("-fp-a-assistant")
+    assert "Support forecasting." in result["description_text"]
+
+
+def test_extract_smartrecruiters_without_a_detail_response_falls_back_to_the_id_url():
+    """A posting whose detail call degraded still has to produce a usable
+    apply link rather than an empty string.
+    """
+    result = extract_smartrecruiters(
+        {"id": "9", "name": "Role", "company": {"identifier": "Continental"}, "location": {"city": "Hannover"}}
+    )
+    assert result["apply_url"] == "https://jobs.smartrecruiters.com/Continental/9"
+    assert result["description_html"] is None
+    assert result["description_text"] == ""
+
+
+def test_extract_smartrecruiters_skips_sections_with_no_body():
+    """SmartRecruiters returns the full four-section skeleton even when a
+    company filled in only some of it -- an empty section must not emit a
+    dangling heading with nothing under it.
+    """
+    result = extract_smartrecruiters(
+        {
+            "id": "9",
+            "name": "Role",
+            "company": {"identifier": "Continental"},
+            "location": {"city": "Hannover"},
+            "jobAd": {
+                "sections": {
+                    "companyDescription": {"title": "Company Description", "text": ""},
+                    "jobDescription": {"title": "Job Description", "text": "<p>Real body.</p>"},
+                }
+            },
+        }
+    )
+    assert "Company Description" not in result["description_html"]
+    assert "Job Description" in result["description_html"]

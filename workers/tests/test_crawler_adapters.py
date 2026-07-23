@@ -566,6 +566,41 @@ def test_personio_fetch_returns_raw_payloads():
     assert client.calls == [url]
 
 
+def test_personio_decodes_a_utf8_feed_served_without_a_charset():
+    """Personio serves this feed as `Content-Type: text/xml` with NO charset,
+    and `requests` decodes any charset-less `text/*` body as ISO-8859-1. The
+    adapter used to read `.text`, so every German umlaut in a real feed came
+    back double-encoded ("fuehrenden" -> "fÃ¼hrenden") and that mojibake was
+    persisted into the snapshot and shown in the rendered job description.
+    Live-verified against clark.jobs.personio.de on 2026-07-23.
+
+    FakeResponse(raw_bytes=...) reproduces that decode asymmetry on purpose
+    (`.text` is lossy, `.content` is not), so this test genuinely fails if the
+    adapter ever goes back to reading `.text`.
+    """
+    xml_bytes = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<workzag-jobs><position>"
+        "<id>2001</id><name>Fachkraft für Veranstaltungstechnik</name><office>München</office>"
+        "<jobDescriptions><jobDescription><name>Profil</name>"
+        "<value>Du verfügst über mehrjährige Berufserfahrung.</value>"
+        "</jobDescription></jobDescriptions>"
+        "</position></workzag-jobs>"
+    ).encode("utf-8")
+    url = personio._feed_url("acme")
+    client = FakeClient({url: FakeResponse(raw_bytes=xml_bytes)})
+
+    payloads = personio.fetch(client, {"companySubdomains": ["acme"]}, PERSONIO_ALLOWLIST)
+
+    payload = payloads[0].payload
+    assert payload["name"] == "Fachkraft für Veranstaltungstechnik"
+    assert payload["office"] == "München"
+    assert payload["descriptions"]["Profil"] == "Du verfügst über mehrjährige Berufserfahrung."
+    # The exact mojibake the bug produced, spelled out so a regression is
+    # unmistakable rather than just "some assertion about umlauts".
+    assert "Ã¼" not in payload["descriptions"]["Profil"]
+
+
 def test_personio_fetch_empty_company_subdomains_returns_empty_list():
     client = FakeClient()
     payloads = personio.fetch(client, {"companySubdomains": []}, PERSONIO_ALLOWLIST)
@@ -629,17 +664,84 @@ def test_personio_skips_positions_without_an_id():
 # SmartRecruiters
 # ---------------------------------------------------------------------------
 
+def _smartrecruiters_detail_responses(identifier: str = "acme") -> dict:
+    """FakeClient entries for the per-posting detail endpoint, built from the
+    detail fixture. The list fixture deliberately carries no `jobAd` (the real
+    list endpoint doesn't either) -- descriptions only exist behind these.
+    """
+    details = load_fixture("smartrecruiters_posting_details.json")
+    return {
+        smartrecruiters._posting_detail_url(identifier, posting_id): FakeResponse(detail)
+        for posting_id, detail in details.items()
+    }
+
+
 def test_smartrecruiters_fetch_returns_raw_payloads():
     fixture = load_fixture("smartrecruiters_postings.json")
     url = smartrecruiters._postings_url("acme")
-    client = FakeClient({url: FakeResponse(fixture)})
+    client = FakeClient({url: FakeResponse(fixture), **_smartrecruiters_detail_responses()})
 
     payloads = smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST)
 
     assert len(payloads) == 2
     assert payloads[0].original_job_id == "744000012345678"
     assert payloads[0].payload["name"] == "Senior Backend Engineer (m/f/d)"
-    assert client.calls == [url]
+    assert client.calls == [
+        url,
+        smartrecruiters._posting_detail_url("acme", "744000012345678"),
+        smartrecruiters._posting_detail_url("acme", "744000098765432"),
+    ]
+
+
+def test_smartrecruiters_fetch_merges_the_detail_job_ad_into_the_payload():
+    """The postings LIST endpoint returns no `jobAd` at all (live-verified),
+    so without a per-posting detail call every SmartRecruiters job normalized
+    to a blank description. Pin that the description-bearing fields actually
+    arrive on the payload the normalizer receives.
+    """
+    fixture = load_fixture("smartrecruiters_postings.json")
+    url = smartrecruiters._postings_url("acme")
+    assert all("jobAd" not in p for p in fixture["content"]), "list fixture must mirror the real API"
+    client = FakeClient({url: FakeResponse(fixture), **_smartrecruiters_detail_responses()})
+
+    payloads = smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST)
+
+    sections = payloads[0].payload["jobAd"]["sections"]
+    assert "Senior Backend Engineer" in sections["jobDescription"]["text"]
+    assert payloads[0].payload["applyUrl"].endswith("?oga=true")
+    # Merge must not clobber the list-only summary fields.
+    assert payloads[0].payload["location"]["city"] == "Berlin"
+
+
+def test_smartrecruiters_detail_fetch_failure_degrades_to_no_description_not_a_dropped_job():
+    """A posting whose detail call 404s is still worth surfacing -- losing a
+    real posting entirely is strictly worse than showing it without a
+    description. Mirrors arbeitsagentur's degradation contract.
+    """
+    fixture = load_fixture("smartrecruiters_postings.json")
+    url = smartrecruiters._postings_url("acme")
+    details = _smartrecruiters_detail_responses()
+    details[smartrecruiters._posting_detail_url("acme", "744000012345678")] = FakeResponse(
+        {"error": "not found"}, status_code=404
+    )
+    client = FakeClient({url: FakeResponse(fixture), **details})
+
+    payloads = smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST)
+
+    assert [p.original_job_id for p in payloads] == ["744000012345678", "744000098765432"]
+    assert "jobAd" not in payloads[0].payload
+    assert payloads[1].payload["jobAd"]["sections"]  # the healthy one is unaffected
+
+
+def test_smartrecruiters_detail_fetch_is_domain_allowlist_guarded():
+    """The detail URL is built per posting, so it needs the same governance
+    guard as the list URL -- an allowlist violation must fail loudly rather
+    than being swallowed by the degrade-to-empty path.
+    """
+    with pytest.raises(DomainNotAllowedError):
+        smartrecruiters._fetch_posting_detail(
+            FakeClient(), "acme", "744000012345678", ["not-smartrecruiters.example"]
+        )
 
 
 def test_smartrecruiters_fetch_empty_company_identifiers_returns_empty_list():
@@ -664,7 +766,9 @@ def test_smartrecruiters_retries_on_transient_failure_then_succeeds():
     payloads = smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST)
 
     assert len(payloads) == 2
-    assert len(client.calls) == 2
+    # The list call is retried once before succeeding; the per-posting detail
+    # calls that follow are not part of what this test pins.
+    assert client.calls[:2] == [url, url]
 
 
 def test_smartrecruiters_raises_after_exhausting_retries():
@@ -698,12 +802,18 @@ def test_smartrecruiters_fetch_paginates_across_offsets():
         ],
     }
     page2 = {"totalFound": 3, "content": [{"id": "3", "name": "C", "company": {"identifier": "acme"}}]}
-    client = FakeClient({url_page1: FakeResponse(page1), url_page2: FakeResponse(page2)})
+    client = FakeClient(
+        {
+            url_page1: FakeResponse(page1),
+            url_page2: FakeResponse(page2),
+            **{smartrecruiters._posting_detail_url("acme", i): FakeResponse({}) for i in "123"},
+        }
+    )
 
     payloads = smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST, limit=2)
 
     assert [p.original_job_id for p in payloads] == ["1", "2", "3"]
-    assert client.calls == [url_page1, url_page2]
+    assert [c for c in client.calls if "/postings?" in c] == [url_page1, url_page2]
 
 
 def test_smartrecruiters_fetch_stops_at_max_jobs_per_company_safety_cap():
@@ -715,11 +825,17 @@ def test_smartrecruiters_fetch_stops_at_max_jobs_per_company_safety_cap():
             {"id": "2", "name": "B", "company": {"identifier": "acme"}},
         ],
     }
-    client = FakeClient({url_page1: FakeResponse(page1)})
+    client = FakeClient(
+        {
+            url_page1: FakeResponse(page1),
+            **{smartrecruiters._posting_detail_url("acme", i): FakeResponse({}) for i in "12"},
+        }
+    )
 
     payloads = smartrecruiters.fetch(
         client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST, limit=2, max_jobs_per_company=2
     )
 
     assert len(payloads) == 2
-    assert client.calls == [url_page1]  # cap reached after page 1 -- never requests offset=2
+    # cap reached after page 1 -- never requests offset=2
+    assert [c for c in client.calls if "/postings?" in c] == [url_page1]
