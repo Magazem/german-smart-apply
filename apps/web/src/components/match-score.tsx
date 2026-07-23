@@ -44,7 +44,16 @@ export function MatchScoreBar({ match, compact }: { match: JobMatchScore | null 
   );
 }
 
-export function MatchBreakdown({ match, isPro }: { match: JobMatchScore; isPro: boolean }) {
+export function MatchBreakdown({
+  match,
+  isPro,
+  jobCity,
+}: {
+  match: JobMatchScore;
+  isPro: boolean;
+  /** Shown in the city note - the job's normalized location. */
+  jobCity?: string;
+}) {
   const t = useTranslations('MatchScore');
 
   // Why salaryFit's row shows a message instead of a bar, and why the
@@ -71,15 +80,34 @@ export function MatchBreakdown({ match, isPro }: { match: JobMatchScore; isPro: 
     }
   }
 
+  // Same principle as salaryNote above: when a dimension wasn't measured,
+  // say what would make it measurable instead of a bare "No data". Both of
+  // these are answerable by the candidate (upload a CV / list your
+  // languages), unlike a listing that simply discloses no salary.
+  const noteFor: Record<string, ReactNode> = {
+    salary: salaryNote,
+    skills: t('skillsNotCounted'),
+    languages: t('languagesNotCounted'),
+  };
+
   const rows: Array<[string, number | null, string | null]> = [
     [t('titleFit'), match.titleSimilarity, null],
-    [t('skillOverlap'), match.skillOverlap, null],
+    [t('skillOverlap'), match.skillOverlap, 'skills'],
     [t('locationFit'), match.locationFit, null],
     [t('recency'), match.recencmyBoost, null],
     [t('salaryFit'), match.salaryFit, 'salary'],
-    [t('languageFit'), match.languageFit, null],
+    [t('languageFit'), match.languageFit, 'languages'],
     [t('sourceTrust'), match.sourceTrust, null],
   ];
+  // The point of collecting a home city at all: say plainly why a job that
+  // looks like a strong match on paper is ranked down or ruled out.
+  const cityNote =
+    match.cityFit === 'mismatch'
+      ? t('cityMismatch', { city: jobCity ?? '' })
+      : match.cityFit === 'relocation_required'
+        ? t('cityRelocation', { city: jobCity ?? '' })
+        : null;
+
   return (
     <div className="stack gap-8">
       {rows.map(([label, value, kind]) => (
@@ -89,7 +117,7 @@ export function MatchBreakdown({ match, isPro }: { match: JobMatchScore; isPro: 
           </span>
           {value == null ? (
             <span className="muted" style={{ fontSize: '0.78rem', fontStyle: 'italic' }}>
-              {kind === 'salary' ? salaryNote : t('noData')}
+              {(kind && noteFor[kind]) || t('noData')}
             </span>
           ) : (
             <div
@@ -112,6 +140,14 @@ export function MatchBreakdown({ match, isPro }: { match: JobMatchScore; isPro: 
           )}
         </div>
       ))}
+      {cityNote && (
+        <div className="row gap-8" data-testid="match-city-note">
+          <span className="muted" style={{ fontSize: '0.8rem', width: 100, flexShrink: 0 }} />
+          <span className="muted" style={{ fontSize: '0.78rem', fontStyle: 'italic' }}>
+            {cityNote}
+          </span>
+        </div>
+      )}
       {match.riskPenalty > 0 && (
         <div className="row gap-8">
           <span className="muted" style={{ fontSize: '0.8rem', width: 100, flexShrink: 0 }}>

@@ -86,6 +86,12 @@ export function ensureDemoSeed(db: MockDb): void {
     salaryTargetMax: 85000,
     workAuthorization: 'EU work permit (no sponsorship required)',
     companyBlacklist: [],
+    // Set on the demo profile (unlike a real new user's, which starts empty)
+    // so the seeded experience actually exercises city matching - an onsite
+    // Munich role should visibly rank below an equivalent Berlin one.
+    homeCity: 'Berlin',
+    acceptableCities: ['Potsdam'],
+    relocationWillingness: 'no',
     commutePreferenceKm: 15,
     portfolioLinks: ['https://github.com/alex-demo'],
     createdAt: '2026-06-20T09:05:00.000Z',

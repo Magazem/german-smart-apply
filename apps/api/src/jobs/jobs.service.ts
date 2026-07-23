@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { Prisma } from '@german-smart-apply/db';
+import type { CandidateProfile as PrismaCandidateProfile, Prisma } from '@german-smart-apply/db';
 import type { CanonicalJob, JobFeedbackType, JobMatchScore } from '@german-smart-apply/shared';
 import { AiProviderFactory } from '../ai/ai-provider-factory.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -22,6 +22,30 @@ export interface RankedJobResult {
 const CANDIDATE_POOL_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 20;
 const ALERT_MATCH_LIMIT = 20;
+
+/**
+ * Narrows a Prisma candidate_profiles row to just the fields the ranking
+ * formula reads. Shared by the search and job-detail paths, which previously
+ * each spelled this mapping out and so had to be kept in step by hand - the
+ * same drift hazard that already bit apps/web's mock scorer.
+ */
+function toRankingProfile(profile: PrismaCandidateProfile): RankingProfileInput {
+  return {
+    skills: profile.skills,
+    targetRole: profile.targetRole,
+    targetCountryCode: profile.targetCountryCode,
+    preferredLanguage: profile.preferredLanguage,
+    languages: profile.languages,
+    seniority: profile.seniority,
+    locationPreference: profile.locationPreference,
+    homeCity: profile.homeCity,
+    acceptableCities: profile.acceptableCities,
+    relocationWillingness: profile.relocationWillingness as RankingProfileInput['relocationWillingness'],
+    salaryTargetMin: profile.salaryTargetMin,
+    salaryTargetMax: profile.salaryTargetMax,
+    commutePreferenceKm: profile.commutePreferenceKm,
+  };
+}
 
 @Injectable()
 export class JobsService {
@@ -130,19 +154,7 @@ export class JobsService {
       }
     }
 
-    const rankingProfile: RankingProfileInput | null = profile
-      ? {
-          skills: profile.skills,
-          targetRole: profile.targetRole,
-          targetCountryCode: profile.targetCountryCode,
-          preferredLanguage: profile.preferredLanguage,
-          seniority: profile.seniority,
-          locationPreference: profile.locationPreference,
-          salaryTargetMin: profile.salaryTargetMin,
-          salaryTargetMax: profile.salaryTargetMax,
-          commutePreferenceKm: profile.commutePreferenceKm,
-        }
-      : null;
+    const rankingProfile: RankingProfileInput | null = profile ? toRankingProfile(profile) : null;
 
     const score = this.ranking.score(job, { profile: rankingProfile });
 
@@ -309,17 +321,7 @@ export class JobsService {
     if (!userId) return null;
     const profile = await this.prisma.client.candidateProfile.findUnique({ where: { userId } });
     if (!profile) return null;
-    return {
-      skills: profile.skills,
-      targetRole: profile.targetRole,
-      targetCountryCode: profile.targetCountryCode,
-      preferredLanguage: profile.preferredLanguage,
-      seniority: profile.seniority,
-      locationPreference: profile.locationPreference,
-      salaryTargetMin: profile.salaryTargetMin,
-      salaryTargetMax: profile.salaryTargetMax,
-      commutePreferenceKm: profile.commutePreferenceKm,
-    };
+    return toRankingProfile(profile);
   }
 
   private async loadInteractionBias(

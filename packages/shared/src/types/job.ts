@@ -106,12 +106,35 @@ export interface JobSearchFilters {
  */
 export type SalaryFitUnavailableReason = 'no_candidate_target' | 'no_job_salary';
 
+/**
+ * How a job's city relates to the cities the candidate said they'd work in.
+ *
+ * - `not_applicable`: the job is remote, so its city is irrelevant.
+ * - `unknown`: the candidate hasn't given us any city (the default for every
+ *   profile created before homeCity/acceptableCities existed) - measure
+ *   nothing, penalize nothing.
+ * - `match`: the job's city is one the candidate already accepts.
+ * - `relocation_required`: wrong city, but the candidate said they'd move.
+ * - `mismatch`: wrong city and the candidate won't move.
+ */
+export type CityFit = 'not_applicable' | 'unknown' | 'match' | 'relocation_required' | 'mismatch';
+
 export interface JobMatchScore {
   jobId: string;
   totalScore: number;
   titleSimilarity: number;
-  skillOverlap: number;
+  /**
+   * null when the candidate has no skills recorded at all (unparsed CV), so
+   * there is nothing to compare - excluded from totalScore with its weight
+   * redistributed, rather than scored as a poor fit. Same convention as
+   * salaryFit. When present, this is evidence-based: how many of the
+   * candidate's skills this posting actually mentions, not set similarity
+   * against the regex-extracted techStackTags.
+   */
+  skillOverlap: number | null;
   locationFit: number;
+  /** How the job's city compares to the candidate's stated cities. */
+  cityFit: CityFit;
   recencmyBoost: number;
   /**
    * null when there's nothing to compare - no salary target set on the
@@ -123,7 +146,14 @@ export interface JobMatchScore {
   salaryFit: number | null;
   /** Set only when salaryFit is null. */
   salaryFitUnavailableReason?: SalaryFitUnavailableReason;
-  languageFit: number;
+  /**
+   * null when the candidate has no languages recorded (or the posting's
+   * language is unrecognizable) - excluded from totalScore rather than
+   * reported as a confident-looking 0.5. Reads the candidate's actual
+   * languages[]; it deliberately no longer consults preferredLanguage, which
+   * is a UI display preference, not evidence of what they speak.
+   */
+  languageFit: number | null;
   sourceTrust: number;
   duplicateConfidence: number;
   riskPenalty: number;

@@ -4,6 +4,9 @@ import { buildTitleEquivalenceIndex } from './title-matching.js';
 export * from './title-matching.js';
 export * from './title-negative-pairs.js';
 export * from './curation-engine.js';
+export * from './skill-matching.js';
+export * from './language-matching.js';
+export * from './location-matching.js';
 
 export const marketDe: MarketPack = {
   countryCode: 'DE',

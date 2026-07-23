@@ -1,5 +1,11 @@
 ﻿import { describe, expect, it } from 'vitest';
-import { marketDe, resolveTitleEquivalenceClassId, titleEquivalenceIndex, TITLE_NEGATIVE_PAIRS } from '@german-smart-apply/market-de';
+import {
+  marketDe,
+  resolveTitleEquivalenceClassId,
+  SKILL_EVIDENCE_TARGET,
+  titleEquivalenceIndex,
+  TITLE_NEGATIVE_PAIRS,
+} from '@german-smart-apply/market-de';
 import type { CanonicalJob } from '@german-smart-apply/shared';
 import { RankingService, type RankingProfileInput } from './ranking.service.js';
 
@@ -43,8 +49,12 @@ function buildProfile(overrides: Partial<RankingProfileInput> = {}): RankingProf
     targetRole: 'Backend Engineer',
     targetCountryCode: 'DE',
     preferredLanguage: 'en',
+    languages: [],
     seniority: 'mid',
     locationPreference: 'any',
+    homeCity: null,
+    acceptableCities: [],
+    relocationWillingness: null,
     salaryTargetMin: null,
     salaryTargetMax: null,
     commutePreferenceKm: null,
@@ -70,18 +80,24 @@ describe('RankingService.score - salaryFit', () => {
   });
 
   it('excludes salary from totalScore entirely when unavailable, rather than assuming a neutral 0.5', () => {
+    // Enough matched skills to reach a full skillOverlap - the point of this
+    // case is a job that is perfect on every measurable dimension, and skill
+    // fit is now scored against SKILL_EVIDENCE_TARGET distinct matches
+    // rather than the presence of any single one.
+    const perfectSkills = ['typescript', 'postgres', 'docker', 'kafka', 'graphql'];
     const profile = buildProfile({
       targetRole: 'Backend Engineer',
-      skills: ['typescript'],
+      skills: perfectSkills,
       locationPreference: 'hybrid',
       targetCountryCode: 'DE',
       preferredLanguage: 'en',
+      languages: ['en'],
       salaryTargetMin: null,
       salaryTargetMax: null,
     });
     const job = buildJob({
       jobTitleNormalized: 'backend engineer',
-      techStackTags: ['typescript'],
+      techStackTags: perfectSkills,
       remoteType: 'hybrid',
       countryCode: 'DE',
       language: 'en',
@@ -263,7 +279,17 @@ describe('RankingService.score - conservative skill aliasing (skillAliases)', ()
   it.each(ALIAS_PAIRS)('treats "%s" and "%s" (%s) as the same skill despite zero literal token overlap', (skill, tag) => {
     const job = buildJob({ techStackTags: [tag] });
     const result = service.score(job, { profile: buildProfile({ skills: [skill] }) });
-    expect(result.skillOverlap).toBe(1);
+
+    // Asserted as a property rather than a magic number: the alias must earn
+    // exactly what spelling the skill the job's own way would have earned,
+    // and strictly more than no match at all. Stays meaningful if
+    // SKILL_EVIDENCE_TARGET is later retuned against the eval harness.
+    const literalMatch = service.score(buildJob({ techStackTags: [tag] }), {
+      profile: buildProfile({ skills: [tag] }),
+    });
+    expect(result.skillOverlap).toBe(literalMatch.skillOverlap);
+    expect(result.skillOverlap).toBeCloseTo(1 / SKILL_EVIDENCE_TARGET);
+    expect(result.skillOverlap!).toBeGreaterThan(0);
   });
 
   it('does NOT credit adjacent-but-distinct PM competencies as a skill match - the conservative boundary', () => {
@@ -284,17 +310,208 @@ describe('RankingService.score - conservative skill aliasing (skillAliases)', ()
     });
     // {stakeholder management, a/b testing, product roadmap, fintech} vs
     // {cross-functional leadership, experimentation, product roadmap, fintech}
-    // -> intersection {product roadmap, fintech} = 2, union 6. 'A/B Testing'
+    // -> 2 of the candidate's skills are evidenced by this job. 'A/B Testing'
     // does NOT canonicalize to 'Experimentation' (removed after adversarial
     // audit - see skillAliases' comment for why), so only the Roadmapping
     // pair collapses here, not both.
-    expect(result.skillOverlap).toBeCloseTo(2 / 6);
+    //
+    // Under the old Jaccard this was 2/6 (divided by the UNION); it's now
+    // scored against a fixed evidence target instead, so the same two real
+    // matches read higher. The count of matched concepts - the thing this
+    // case actually pins down - is unchanged at 2.
+    expect(result.skillOverlap).toBeCloseTo(2 / SKILL_EVIDENCE_TARGET);
   });
 
   it('is unaffected (no-op) for skills that are not in the alias table', () => {
     const job = buildJob({ techStackTags: ['Underwater Basket Weaving'] });
     const result = service.score(job, { profile: buildProfile({ skills: ['Underwater Basket Weaving'] }) });
+    expect(result.skillOverlap).toBeCloseTo(1 / SKILL_EVIDENCE_TARGET);
+  });
+});
+
+describe('RankingService.score - skill evidence from the job description', () => {
+  const service = new RankingService();
+
+  it('scores a non-tech job that has no techStackTags at all, from its description text', () => {
+    // The case the old Jaccard could never score: extract_tech_stack_tags()
+    // is a 53-entry English tech keyword regex, so a legal/marketing/nursing
+    // posting gets zero tags and used to hit a hardcoded 0.1 floor no matter
+    // how well it actually matched.
+    const job = buildJob({
+      techStackTags: [],
+      jobTitleNormalized: 'legal counsel',
+      jobDescriptionText:
+        'You will advise on Contract Law and Intellectual Property Law, support Compliance reviews, ' +
+        'handle Data Protection questions and manage external Litigation counsel.',
+    });
+    const result = service.score(job, {
+      profile: buildProfile({
+        targetRole: 'Legal Counsel',
+        skills: ['Contract Law', 'Intellectual Property Law', 'Compliance', 'Data Protection', 'Litigation'],
+      }),
+    });
     expect(result.skillOverlap).toBe(1);
+  });
+
+  it('matches skills in a German-language description', () => {
+    const job = buildJob({
+      techStackTags: [],
+      language: 'de',
+      jobDescriptionText: 'Wir suchen Verstärkung mit fundierter Erfahrung in Kubernetes und Terraform.',
+    });
+    const result = service.score(job, { profile: buildProfile({ skills: ['Kubernetes', 'Terraform'] }) });
+    expect(result.skillOverlap).toBeCloseTo(2 / SKILL_EVIDENCE_TARGET);
+  });
+
+  it('does NOT count generic soft skills as evidence, so a padded CV cannot match everything', () => {
+    // The inverse failure mode of the bug being fixed: evidence counting
+    // makes it cheap to score high, and a CV of nothing but generic
+    // competencies would otherwise match essentially every posting in every
+    // field. See SKILL_EVIDENCE_STOPLIST.
+    const job = buildJob({
+      jobDescriptionText:
+        'A role requiring excellent Communication, strong Teamwork, Leadership, ' +
+        'Project Management and Problem Solving skills.',
+    });
+    const result = service.score(job, {
+      profile: buildProfile({
+        skills: ['Communication', 'Teamwork', 'Leadership', 'Project Management', 'Problem Solving'],
+      }),
+    });
+    expect(result.skillOverlap).toBe(0);
+  });
+
+  it('does not let a two-skill CV reach a perfect score just by matching both of them', () => {
+    // Guards the fixed denominator: scaling the target down to the CV's own
+    // length would make matching 2 of 2 look like stronger evidence than
+    // matching 5 of 25, which is backwards.
+    const job = buildJob({ techStackTags: ['typescript', 'docker'] });
+    const result = service.score(job, { profile: buildProfile({ skills: ['typescript', 'docker'] }) });
+    expect(result.skillOverlap).toBeCloseTo(2 / SKILL_EVIDENCE_TARGET);
+    expect(result.skillOverlap!).toBeLessThan(1);
+  });
+
+  it('reports skillOverlap as null - not a low score - when the candidate has no skills recorded', () => {
+    const result = service.score(buildJob({ techStackTags: ['typescript'] }), {
+      profile: buildProfile({ skills: [] }),
+    });
+    expect(result.skillOverlap).toBeNull();
+  });
+
+  it('does not match a skill that only appears as a substring of a longer word', () => {
+    const job = buildJob({ techStackTags: [], jobDescriptionText: 'Experience with javascripting frameworks.' });
+    const result = service.score(job, { profile: buildProfile({ skills: ['Java'] }) });
+    expect(result.skillOverlap).toBe(0);
+  });
+
+  it('matches multi-symbol skills that a naive word-boundary regex would miss', () => {
+    const job = buildJob({ techStackTags: [], jobDescriptionText: 'Our stack is C++ and Node.js with CI/CD.' });
+    const result = service.score(job, { profile: buildProfile({ skills: ['C++', 'Node.js', 'CI/CD'] }) });
+    expect(result.skillOverlap).toBeCloseTo(3 / SKILL_EVIDENCE_TARGET);
+  });
+});
+
+describe('RankingService.score - languageFit reads the candidate languages, not the UI language', () => {
+  const service = new RankingService();
+
+  it('credits a German-language posting for a German speaker whose interface language is English', () => {
+    // The actual bug: preferredLanguage is the UI language. A candidate
+    // fluent in German who reads the app in English scored a flat 0.5
+    // against every German posting.
+    const result = service.score(buildJob({ language: 'de' }), {
+      profile: buildProfile({ preferredLanguage: 'en', languages: ['German', 'English'] }),
+    });
+    expect(result.languageFit).toBe(1);
+  });
+
+  it('parses proficiency qualifiers off a CV languages entry', () => {
+    const result = service.score(buildJob({ language: 'de' }), {
+      profile: buildProfile({ preferredLanguage: 'en', languages: ['Deutsch (C1)', 'English - fluent'] }),
+    });
+    expect(result.languageFit).toBe(1);
+  });
+
+  it('scores a genuine language gap low, not neutral', () => {
+    const result = service.score(buildJob({ language: 'de' }), {
+      profile: buildProfile({ preferredLanguage: 'de', languages: ['English'] }),
+    });
+    expect(result.languageFit).toBeCloseTo(0.25);
+  });
+
+  it('reports languageFit as null when the candidate has no languages recorded', () => {
+    const result = service.score(buildJob({ language: 'de' }), {
+      profile: buildProfile({ preferredLanguage: 'de', languages: [] }),
+    });
+    expect(result.languageFit).toBeNull();
+  });
+});
+
+describe('RankingService.score - cityFit', () => {
+  const service = new RankingService();
+
+  const berliner = (overrides = {}) =>
+    buildProfile({
+      locationPreference: 'onsite',
+      homeCity: 'Berlin',
+      acceptableCities: [],
+      relocationWillingness: 'no',
+      ...overrides,
+    });
+
+  it('disqualifies an onsite job in a city the candidate will not move to', () => {
+    const job = buildJob({ remoteType: 'onsite', locationNormalized: 'Munich' });
+    const result = service.score(job, { profile: berliner() });
+    expect(result.cityFit).toBe('mismatch');
+    expect(result.eligible).toBe(false);
+  });
+
+  it('treats an onsite job in the candidate home city as a match', () => {
+    const job = buildJob({ remoteType: 'onsite', locationNormalized: 'Berlin' });
+    const result = service.score(job, { profile: berliner() });
+    expect(result.cityFit).toBe('match');
+    expect(result.eligible).toBe(true);
+  });
+
+  it('resolves German city spellings through the market pack dictionary', () => {
+    const job = buildJob({ remoteType: 'onsite', locationNormalized: 'Munich' });
+    const result = service.score(job, { profile: berliner({ homeCity: 'München' }) });
+    expect(result.cityFit).toBe('match');
+  });
+
+  it('ignores city entirely for a remote job', () => {
+    const job = buildJob({ remoteType: 'remote', locationNormalized: 'Munich' });
+    const result = service.score(job, { profile: berliner({ locationPreference: 'remote' }) });
+    expect(result.cityFit).toBe('not_applicable');
+    expect(result.eligible).toBe(true);
+  });
+
+  it('keeps a wrong-city job eligible but discounted when the candidate would relocate', () => {
+    const job = buildJob({ remoteType: 'onsite', locationNormalized: 'Munich' });
+    const willing = service.score(job, { profile: berliner({ relocationWillingness: 'within_country' }) });
+    const athome = service.score(buildJob({ remoteType: 'onsite', locationNormalized: 'Berlin' }), {
+      profile: berliner(),
+    });
+    expect(willing.cityFit).toBe('relocation_required');
+    expect(willing.eligible).toBe(true);
+    expect(willing.locationFit).toBeLessThan(athome.locationFit);
+  });
+
+  it('stays dormant for a profile with no city recorded, so existing users are unaffected', () => {
+    // Every profile predating these columns is empty. City scoring must not
+    // start disqualifying jobs for people who were never asked the question.
+    const job = buildJob({ remoteType: 'onsite', locationNormalized: 'Munich' });
+    const result = service.score(job, {
+      profile: buildProfile({ locationPreference: 'onsite', homeCity: null, acceptableCities: [] }),
+    });
+    expect(result.cityFit).toBe('unknown');
+    expect(result.eligible).toBe(true);
+    expect(result.locationFit).toBe(1);
+  });
+
+  it('accepts a secondary city from acceptableCities, not just the home city', () => {
+    const job = buildJob({ remoteType: 'onsite', locationNormalized: 'Hamburg' });
+    const result = service.score(job, { profile: berliner({ acceptableCities: ['Hamburg'] }) });
+    expect(result.cityFit).toBe('match');
   });
 });
 

@@ -1,3 +1,11 @@
+/**
+ * How far the candidate will move for a job. Collected alongside homeCity/
+ * acceptableCities so a wrong-city posting can be read as either a hard
+ * constraint or a soft cost - see market-de's cityFit().
+ */
+export const RELOCATION_WILLINGNESS = ['no', 'within_country', 'within_eu', 'anywhere'] as const;
+export type RelocationWillingness = (typeof RELOCATION_WILLINGNESS)[number];
+
 export interface CandidateProfile {
   id: string;
   userId: string;
@@ -26,6 +34,17 @@ export interface CandidateProfile {
   salaryTargetMax: number | null;
   workAuthorization: string | null;
   companyBlacklist: string[];
+  // Where the candidate actually is and where they'd work, as distinct from
+  // locationPreference (which is only a work MODE - onsite/hybrid/remote).
+  // Without these, ranking could tell that a job was in the wrong country but
+  // treated every city within the target country as interchangeable, so an
+  // onsite Munich role scored identically to an onsite Berlin one for a
+  // Berlin candidate. Null/empty on every profile created before these
+  // existed, and city scoring stays dormant in that case rather than
+  // penalizing an unanswered question.
+  homeCity: string | null;
+  acceptableCities: string[];
+  relocationWillingness: RelocationWillingness | null;
   commutePreferenceKm: number | null;
   portfolioLinks: string[];
   createdAt: string;

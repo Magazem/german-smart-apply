@@ -1,3 +1,4 @@
+import { RELOCATION_WILLINGNESS } from '@german-smart-apply/shared';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -142,6 +143,22 @@ export class UpdateProfileDto {
   @IsArray()
   @IsString({ each: true })
   companyBlacklist?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  homeCity?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(20)
+  acceptableCities?: string[];
+
+  @IsOptional()
+  @IsString()
+  @IsIn(RELOCATION_WILLINGNESS)
+  relocationWillingness?: string;
 
   @IsOptional()
   @IsInt()

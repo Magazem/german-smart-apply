@@ -46,6 +46,9 @@ export class ProfileService {
         salaryTargetMax: dto.salaryTargetMax,
         workAuthorization: dto.workAuthorization,
         companyBlacklist: dto.companyBlacklist ?? [],
+        homeCity: dto.homeCity,
+        acceptableCities: dto.acceptableCities ?? [],
+        relocationWillingness: dto.relocationWillingness,
         commutePreferenceKm: dto.commutePreferenceKm,
         portfolioLinks: dto.portfolioLinks ?? [],
       },
@@ -71,6 +74,11 @@ export class ProfileService {
         ...(dto.salaryTargetMax !== undefined && { salaryTargetMax: dto.salaryTargetMax }),
         ...(dto.workAuthorization !== undefined && { workAuthorization: dto.workAuthorization }),
         ...(dto.companyBlacklist !== undefined && { companyBlacklist: dto.companyBlacklist }),
+        ...(dto.homeCity !== undefined && { homeCity: dto.homeCity }),
+        ...(dto.acceptableCities !== undefined && { acceptableCities: dto.acceptableCities }),
+        ...(dto.relocationWillingness !== undefined && {
+          relocationWillingness: dto.relocationWillingness,
+        }),
         ...(dto.commutePreferenceKm !== undefined && {
           commutePreferenceKm: dto.commutePreferenceKm,
         }),
