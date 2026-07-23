@@ -66,17 +66,22 @@ def main() -> int:
             if crawl_result["status"] != "success":
                 continue
 
-            # Scoped to exactly the snapshot rows this run's own crawl just
-            # inserted (crawl_result["snapshotIds"]), not "every snapshot
-            # ever recorded for this source" -- raw_job_snapshots is an
-            # intentional append-only history log that keeps every past
-            # crawl's rows forever (see runner.run_crawl), so re-fetching
-            # and re-normalizing the whole history on every 4-hourly
-            # invocation grows unbounded with total crawl count and was
-            # the main driver of the worker machine's OOM. Re-normalizing
+            # Scoped to exactly the snapshot row representing each job this
+            # run's own crawl fetched (crawl_result["snapshotIds"]), not
+            # "every snapshot ever recorded for this source" --
+            # raw_job_snapshots is an append-only history log that keeps a
+            # row per distinct payload forever (see runner.run_crawl), so
+            # re-fetching and re-normalizing the whole history on every
+            # 4-hourly invocation grows unbounded with total crawl count and
+            # was the main driver of the worker machine's OOM. Re-normalizing
             # the same job repeatedly is otherwise harmless (upsert keyed
             # on sourceId+originalJobId), but doing it for the entire
             # history every run is pure waste.
+            #
+            # Note these ids are no longer all freshly-inserted rows: when a
+            # payload comes back unchanged the crawler skips the write and
+            # returns the existing row's id, so this list still covers every
+            # job fetched this run and the normalizer's behavior is unchanged.
             if not crawl_result["snapshotIds"]:
                 continue
 

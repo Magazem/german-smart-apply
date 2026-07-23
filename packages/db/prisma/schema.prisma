@@ -62,15 +62,29 @@ model SourceCrawlRun {
   @@map("source_crawl_runs")
 }
 
+// Append-only history of every *distinct* payload seen per job. A crawl that
+// re-fetches a job whose payload is byte-identical to the last one stored does
+// NOT write a new row (see crawler/runner.py::_insert_snapshot) - re-capturing
+// unchanged postings every 4h is what took this table to 748k rows / 3.5 GB
+// for 14.5k distinct payloads. Genuine changes still each get their own row.
 model RawJobSnapshot {
   id            String   @id @default(uuid())
   sourceId      String
   source        Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   originalJobId String
   payload       Json
+  // md5 of payload::text. Nullable because it is deliberately NOT backfilled
+  // over the pre-existing rows - hashing 748k TOASTed payloads would rewrite
+  // every row and briefly double the storage of an already-bloated table.
+  // Rows written before this column exists read back as NULL and the runner
+  // falls back to hashing that one row's payload on read.
+  payloadHash   String?
   fetchedAt     DateTime @default(now())
 
-  @@index([sourceId, originalJobId])
+  // Serves both the "latest snapshot for this job" dedup lookup and any plain
+  // (sourceId, originalJobId) filter. The old 2-column index was an exact
+  // prefix of this one, so it was pure write amplification on every crawl.
+  @@index([sourceId, originalJobId, fetchedAt(sort: Desc)])
   @@map("raw_job_snapshots")
 }
 
