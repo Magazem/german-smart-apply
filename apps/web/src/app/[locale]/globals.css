@@ -447,3 +447,74 @@ p {
 .job-description-html ol {
   padding-left: 1.4em;
 }
+
+/* "Why this matches" placeholder while the model writes the explanation.
+   The job detail page is fully rendered behind this - only this one block
+   is still waiting - so the animation is a small inline reassurance rather
+   than a page-blocking spinner. */
+.rotating-phrase {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.rotating-phrase-text {
+  animation: rotating-phrase-in 400ms ease;
+}
+
+.rotating-phrase-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.rotating-phrase-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: rotating-phrase-pulse 1.2s ease-in-out infinite;
+}
+
+.rotating-phrase-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.rotating-phrase-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes rotating-phrase-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rotating-phrase-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The phrases still rotate (they're the actual progress signal); only the
+   motion around them is dropped. */
+@media (prefers-reduced-motion: reduce) {
+  .rotating-phrase-text,
+  .rotating-phrase-dots i {
+    animation: none;
+  }
+  .rotating-phrase-dots i {
+    opacity: 0.5;
+  }
+}

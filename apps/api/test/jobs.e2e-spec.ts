@@ -132,26 +132,47 @@ describe('Jobs search & detail (e2e)', () => {
     expect(matchingIndex).toBeLessThan(offTopicIndex);
   });
 
-  it('returns job detail with a match explanation for an authenticated profile-holder', async () => {
+  // The explanation is no longer inlined into GET /jobs/:id - it costs an
+  // LLM round-trip, and having it there kept the whole detail page on a
+  // skeleton until the model answered.
+  it('returns job detail without waiting on the match explanation', async () => {
     const res = await request(app.getHttpServer())
       .get(`/jobs/${matchingJobId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
     expect(res.body.job.jobId).toBe(matchingJobId);
-    expect(res.body.score.explanation).toEqual(expect.any(String));
-    expect(res.body.score.explanation.length).toBeGreaterThan(0);
+    expect(res.body.score.totalScore).toEqual(expect.any(Number));
+    expect(res.body.score.explanation).toBeUndefined();
   });
 
-  it('returns job detail without an explanation for an anonymous request', async () => {
-    const res = await request(app.getHttpServer()).get(`/jobs/${matchingJobId}`).expect(200);
-    expect(res.body.job.jobId).toBe(matchingJobId);
-    expect(res.body.score.explanation).toBeUndefined();
+  it('returns a match explanation from its own endpoint for a profile-holder', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/jobs/${matchingJobId}/match-explanation`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(res.body.explanation).toEqual(expect.any(String));
+    expect(res.body.explanation.length).toBeGreaterThan(0);
+  });
+
+  it('returns a null explanation for an anonymous request', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/jobs/${matchingJobId}/match-explanation`)
+      .expect(200);
+    expect(res.body.explanation).toBeNull();
   });
 
   it('404s for an unknown job id', async () => {
     await request(app.getHttpServer())
       .get('/jobs/00000000-0000-0000-0000-000000000000')
+      .expect(404);
+  });
+
+  it('404s on the explanation endpoint for an unknown job id', async () => {
+    await request(app.getHttpServer())
+      .get('/jobs/00000000-0000-0000-0000-000000000000/match-explanation')
+      .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
   });
 

@@ -19,6 +19,7 @@ import { useRequireAuth } from '@/lib/use-require-auth';
 import { useAuth } from '@/lib/auth-context';
 import { RiskBadge, TrustBadge } from '@/components/risk-badge';
 import { MatchBreakdown, MatchScoreBar } from '@/components/match-score';
+import { MatchExplanation, type MatchExplanationState } from '@/components/match-explanation';
 import { StatusBadge } from '@/components/status-badge';
 import {
   formatEmploymentType,
@@ -43,6 +44,8 @@ export default function JobDetailPage() {
 
   const [job, setJob] = useState<CanonicalJob | null>(null);
   const [match, setMatch] = useState<JobMatchScore | null>(null);
+  // Loaded on its own, after the page renders - see the second effect below.
+  const [explanation, setExplanation] = useState<MatchExplanationState>({ status: 'pending' });
   const [application, setApplication] = useState<Application | null>(null);
   const [draft, setDraft] = useState<ApplicationDraft | null>(null);
   const [allDrafts, setAllDrafts] = useState<ApplicationDraft[]>([]);
@@ -143,6 +146,40 @@ export default function JobDetailPage() {
       document.title = previousTitle;
     };
   }, [job]);
+
+  // Deliberately its own effect, not awaited alongside the load above: this
+  // is an LLM round-trip and can take seconds. Keeping it separate is what
+  // lets the page paint - description, apply links, draft controls, all of
+  // it usable - while only the "Why this matches" block shows a loader.
+  useEffect(() => {
+    if (authLoading) return;
+    // Nothing to explain without a signed-in candidate to compare against -
+    // skip the request entirely rather than showing a loader that resolves
+    // to an empty block.
+    if (!user?.id) {
+      setExplanation({ status: 'none' });
+      return;
+    }
+    let cancelled = false;
+    setExplanation({ status: 'pending' });
+    (async () => {
+      try {
+        const res = await getApiClient().jobs.matchExplanation(params.id);
+        if (cancelled) return;
+        // No explanation means no profile to match against, or the provider
+        // failed - either way the block collapses rather than showing an
+        // error, matching how a failure here behaved before the split.
+        setExplanation(res.explanation ? { status: 'ready', text: res.explanation } : { status: 'none' });
+      } catch {
+        if (!cancelled) setExplanation({ status: 'none' });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // user?.id, not user: a new object identity from the auth context on an
+    // unrelated re-render would otherwise refire the model call.
+  }, [authLoading, user?.id, params.id]);
 
   const refreshApplication = async () => {
     if (!application) return;
@@ -387,12 +424,7 @@ export default function JobDetailPage() {
           </div>
         )}
 
-        {match?.explanation && (
-          <div className="card" style={{ padding: 16, background: 'var(--color-info-bg)', border: 'none' }}>
-            <strong style={{ fontSize: '0.9rem' }}>{t('whyMatches')} </strong>
-            <span style={{ fontSize: '0.9rem' }}>{match.explanation}</span>
-          </div>
-        )}
+        <MatchExplanation state={explanation} />
 
         {match && (
           <details>
