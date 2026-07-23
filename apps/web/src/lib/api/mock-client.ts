@@ -355,13 +355,26 @@ export class MockApiClient implements ApiClient {
       if (!job) return null;
       const userId = db.sessionUserId;
       const profile = userId ? (db.profiles[userId] ?? null) : null;
-      let match = profile ? computeMatchScore(profile, job) : null;
-      if (profile && match) {
-        const explanation = await aiProvider.generateMatchExplanation(profile, job, profile.preferredLanguage);
-        match = { ...match, explanation: explanation.text };
-      }
+      // Match score only - the explanation is an LLM call and lives behind
+      // jobs.matchExplanation() so the detail page doesn't wait on it.
+      const match = profile ? computeMatchScore(profile, job) : null;
       const myFeedback = userId ? ((db.jobFeedback ?? {})[userId]?.[id] ?? null) : null;
       return { job, match, myFeedback };
+    },
+    matchExplanation: async (id: string): Promise<{ explanation: string | null }> => {
+      // Deliberately slower than the other mock endpoints: against the real
+      // API this is a model round-trip, and the point of the split is that
+      // the page is fully usable while it runs. Keeping it slow here is what
+      // makes the loading state visible in mock-mode development.
+      await delay(1800);
+      const db = this.getDb();
+      const job = JOB_FIXTURES.find((j) => j.jobId === id);
+      if (!job) return { explanation: null };
+      const userId = db.sessionUserId;
+      const profile = userId ? (db.profiles[userId] ?? null) : null;
+      if (!profile) return { explanation: null };
+      const explanation = await aiProvider.generateMatchExplanation(profile, job, profile.preferredLanguage);
+      return { explanation: explanation.text };
     },
     recordFeedback: async (
       id: string,

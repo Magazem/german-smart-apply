@@ -261,6 +261,13 @@
     "fewerLikeThis": "Weniger davon",
     "statusLabel": "Ihr Bewerbungsstatus:",
     "whyMatches": "Warum diese Stelle passt:",
+    "explanationPhrases": {
+      "reading": "Stellenanzeige wird gelesen…",
+      "comparing": "Abgleich mit Ihrem Profil…",
+      "weighing": "Übereinstimmung wird bewertet…",
+      "writing": "Zusammenfassung wird erstellt…",
+      "almostThere": "Gleich geschafft…"
+    },
     "matchBreakdownSummary": "Details zur Übereinstimmung",
     "fullDescriptionHeading": "Vollständige Beschreibung",
     "cvVariantStyleLabel": "Lebenslauf-Variantenstil",
