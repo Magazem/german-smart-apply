@@ -375,8 +375,9 @@ def test_arbeitsagentur_dedupes_the_same_job_seen_under_multiple_search_terms():
     Engineer') commonly surface the same real posting twice. fetch() must
     collapse that to one payload and one detail-endpoint call per unique
     refnr, not one per (term, listing) occurrence -- otherwise every crawl
-    run doubles up detail-endpoint traffic and appends duplicate rows into
-    the append-only raw_job_snapshots history for the exact same job.
+    run doubles up detail-endpoint traffic. (The runner's payload dedup would
+    now absorb the redundant rows, but the wasted detail fetches happen
+    before it and only the adapter can prevent them.)
     """
     base_url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
     url_a = arbeitsagentur._search_url(base_url, was="Softwareentwickler", wo="Deutschland", size=20, page=1)

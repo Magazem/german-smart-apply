@@ -1,6 +1,9 @@
 """Crawl scheduler/runner: dispatches to the right source adapter, records a
-source_crawl_runs row per run, and persists every fetched payload into
-raw_job_snapshots.
+source_crawl_runs row per run, and persists each fetched payload into
+raw_job_snapshots -- but only when it differs from the last payload stored for
+that job. Re-capturing unchanged postings on every 4-hourly crawl grew that
+table to 748k rows / ~3.5 GB holding just 14.5k distinct payloads (~98% exact
+duplicates); dedup keeps the change history while dropping the redundancy.
 
 This module owns the only "commit" boundary that matters for a crawl: callers
 (a CLI entrypoint or a test) decide when to call conn.commit().
@@ -42,12 +45,32 @@ def fetch_source(client: HttpClient, source_row: dict) -> list[RawPayload]:
     return adapter.fetch(client, config, allowlist)
 
 
-def _existing_snapshot_count(cur, source_id: str, original_job_id: str) -> int:
+def _latest_snapshot(cur, source_id: str, original_job_id: str, payload_json: str):
+    """(id, stored_hash, incoming_hash) for the most recent snapshot of this
+    job, or None if the job has never been captured.
+
+    Both hashes are computed by Postgres over `jsonb::text` so they are
+    comparable by construction. Hashing the incoming payload in Python instead
+    would NOT work: "payload" is JSONB, so Postgres re-serializes it (key order
+    and whitespace normalized) and md5(payload::text) would never equal
+    md5(json.dumps(...)).
+
+    Replaces a COUNT(*) over the job's entire snapshot history, which got
+    linearly more expensive with every crawl. COALESCE covers rows written
+    before "payloadHash" existed: the DB hashes that one row's payload on read,
+    which is far cheaper than backfilling every TOASTed row up front.
+    """
     cur.execute(
-        'SELECT COUNT(*) FROM "raw_job_snapshots" WHERE "sourceId" = %s AND "originalJobId" = %s',
-        (source_id, original_job_id),
+        """
+        SELECT "id", COALESCE("payloadHash", md5("payload"::text)), md5(%s::jsonb::text)
+        FROM "raw_job_snapshots"
+        WHERE "sourceId" = %s AND "originalJobId" = %s
+        ORDER BY "fetchedAt" DESC, "id" DESC
+        LIMIT 1
+        """,
+        (payload_json, source_id, original_job_id),
     )
-    return cur.fetchone()[0]
+    return cur.fetchone()
 
 
 def _insert_crawl_run(cur, run_id: str, source_id: str, started_at: datetime) -> None:
@@ -83,14 +106,22 @@ def _finalize_crawl_run(
     )
 
 
-def _insert_snapshot(cur, source_id: str, payload: RawPayload) -> str:
+def _insert_snapshot(cur, source_id: str, payload: RawPayload, payload_json: str) -> str:
     snapshot_id = str(uuid.uuid4())
     cur.execute(
         """
-        INSERT INTO "raw_job_snapshots" ("id", "sourceId", "originalJobId", "payload", "fetchedAt")
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO "raw_job_snapshots"
+            ("id", "sourceId", "originalJobId", "payload", "payloadHash", "fetchedAt")
+        VALUES (%s, %s, %s, %s, md5(%s::jsonb::text), %s)
         """,
-        (snapshot_id, source_id, payload.original_job_id, json.dumps(payload.payload), payload.fetched_at),
+        (
+            snapshot_id,
+            source_id,
+            payload.original_job_id,
+            payload_json,
+            payload_json,
+            payload.fetched_at,
+        ),
     )
     return snapshot_id
 
@@ -129,13 +160,29 @@ def run_crawl(conn, client: HttpClient, source_row: dict) -> dict[str, Any]:
 
     jobs_new = 0
     jobs_updated = 0
+    jobs_unchanged = 0
     snapshot_ids: list[str] = []
     for payload in payloads:
-        if _existing_snapshot_count(cur, source_id, payload.original_job_id) == 0:
+        payload_json = json.dumps(payload.payload)
+        latest = _latest_snapshot(cur, source_id, payload.original_job_id, payload_json)
+
+        if latest is None:
             jobs_new += 1
+            snapshot_ids.append(_insert_snapshot(cur, source_id, payload, payload_json))
+            continue
+
+        latest_id, stored_hash, incoming_hash = latest
+        if stored_hash == incoming_hash:
+            # Byte-identical re-capture of a posting we already hold. Writing it
+            # again bought nothing but storage: this is what grew the table to
+            # 748k rows for 14.5k distinct payloads. Reuse the existing row's id
+            # so the normalizer still processes this job exactly as before -
+            # skipping the write must stay invisible downstream.
+            jobs_unchanged += 1
+            snapshot_ids.append(latest_id)
         else:
             jobs_updated += 1
-        snapshot_ids.append(_insert_snapshot(cur, source_id, payload))
+            snapshot_ids.append(_insert_snapshot(cur, source_id, payload, payload_json))
 
     # Reaching this point means fetch_source succeeded (possibly with zero
     # results, e.g. a source configured with no board tokens/feed URLs yet).
@@ -156,15 +203,22 @@ def run_crawl(conn, client: HttpClient, source_row: dict) -> dict[str, Any]:
         "status": status,
         "jobsFetched": len(payloads),
         "jobsNew": jobs_new,
+        # Jobs seen before whose payload actually CHANGED this run. Note this
+        # is narrower than the pre-dedup meaning ("job seen before", which
+        # counted unchanged re-captures too) -- the admin UI's "{count}
+        # updated" now reflects real edits instead of every repeat sighting.
         "jobsUpdated": jobs_updated,
+        # Jobs re-fetched byte-identical to what we already stored: no row written.
+        "jobsUnchanged": jobs_unchanged,
         "retryCount": max(retry_count, 0),
-        # The exact raw_job_snapshots rows this call just inserted -- NOT a
-        # query for "all snapshots for this source", which would keep
-        # growing forever (raw_job_snapshots is an intentional append-only
-        # history log, see its @@map comment in schema.prisma / the "both
-        # crawl runs persisted their own snapshot rows" test above). The
-        # normalizer only ever needs to process what THIS run just fetched;
-        # run_pipeline.py uses this list instead of re-selecting the whole
-        # source's history on every invocation.
+        # One snapshot id per payload fetched this run -- the newly inserted
+        # row where the payload was new or changed, and the existing latest
+        # row where it was unchanged. NOT a query for "all snapshots for this
+        # source", which would keep growing forever. The normalizer only ever
+        # needs to process what THIS run fetched; run_pipeline.py uses this
+        # list instead of re-selecting the whole source's history on every
+        # invocation. Reusing the existing id for unchanged payloads keeps
+        # that contract intact: dedup changes what we STORE, never what the
+        # downstream pipeline SEES.
         "snapshotIds": snapshot_ids,
     }
