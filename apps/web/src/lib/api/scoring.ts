@@ -1,5 +1,18 @@
-import { marketDe, resolveTitleEquivalenceClassId, titleEquivalenceIndex } from '@german-smart-apply/market-de';
-import type { CandidateProfile, CanonicalJob, JobMatchScore, SalaryFitUnavailableReason } from '@german-smart-apply/shared';
+import {
+  cityFit as computeCityFit,
+  languageFitScore,
+  marketDe,
+  resolveTitleEquivalenceClassId,
+  skillEvidence,
+  titleEquivalenceIndex,
+} from '@german-smart-apply/market-de';
+import type {
+  CandidateProfile,
+  CanonicalJob,
+  CityFit,
+  JobMatchScore,
+  SalaryFitUnavailableReason,
+} from '@german-smart-apply/shared';
 
 /**
  * Deterministic structured-scoring approximation of plan.md's Search and
@@ -12,11 +25,24 @@ import type { CandidateProfile, CanonicalJob, JobMatchScore, SalaryFitUnavailabl
 export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob): JobMatchScore {
   const titleSimilarity = titleMatchScore(profile.targetRole, job.jobTitleNormalized);
 
-  const skillOverlap = ratioOverlap(profile.skills, job.techStackTags);
+  // Same evidence-based skill matching the real backend uses, from the same
+  // module - not a re-implementation. See market-de's skillEvidence().
+  const skillOverlap = skillEvidence(profile.skills, job, marketDe.skillAliases).score;
 
-  const locationFit = computeLocationFit(profile, job);
+  const cityFit = computeCityFit(
+    {
+      homeCity: profile.homeCity,
+      acceptableCities: profile.acceptableCities,
+      relocationWillingness: profile.relocationWillingness,
+    },
+    job,
+    marketDe.locationDictionary,
+  );
 
-  const eligible = !profile.targetCountryCode || profile.targetCountryCode === job.countryCode;
+  const locationFit = computeLocationFit(profile, job, cityFit);
+
+  const eligible =
+    (!profile.targetCountryCode || profile.targetCountryCode === job.countryCode) && cityFit !== 'mismatch';
 
   const recencmyBoost = computeRecencyBoost(job.postedAt);
 
@@ -26,7 +52,9 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
   const salaryFitUnavailableReason: SalaryFitUnavailableReason | undefined =
     salaryFit != null ? undefined : profile.salaryTargetMin != null ? 'no_job_salary' : 'no_candidate_target';
 
-  const languageFit = normalizeLang(profile.preferredLanguage) === normalizeLang(job.language) ? 1 : 0.5;
+  // Reads the candidate's actual languages[], not the UI language - same
+  // module as the real backend. See market-de's languageFitScore().
+  const languageFit = languageFitScore(profile.languages, job.language);
 
   const sourceTrust = job.sourceTrustScore;
 
@@ -50,30 +78,27 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
   // scorer can't silently diverge from the real backend on this again.
   const eligibilityPenalty = eligible ? 1 : 0.5;
 
-  // Mirrors ranking.service.ts: when salaryFit is null, it's excluded
-  // entirely (weight redistributed across the measured dimensions) rather
+  // Mirrors ranking.service.ts: any dimension that couldn't be measured
+  // (no salary data, no skills recorded, no languages recorded) is excluded
+  // entirely and its weight redistributed across the ones that were, rather
   // than assumed neutral - see the totalScore comment there for the full
   // rationale.
-  const totalPositiveWeight =
-    weights.titleSimilarity +
-    weights.skillOverlap +
-    weights.locationFit +
-    weights.recency +
-    weights.salaryFit +
-    weights.languageFit +
-    weights.sourceTrust;
-  const availableWeight = salaryFit == null ? totalPositiveWeight - weights.salaryFit : totalPositiveWeight;
+  const dimensions: Array<{ weight: number; value: number | null }> = [
+    { weight: weights.titleSimilarity, value: titleSimilarity },
+    { weight: weights.skillOverlap, value: skillOverlap },
+    { weight: weights.locationFit, value: locationFit * eligibilityPenalty },
+    { weight: weights.recency, value: recencmyBoost },
+    { weight: weights.salaryFit, value: salaryFit },
+    { weight: weights.languageFit, value: languageFit },
+    { weight: weights.sourceTrust, value: sourceTrust },
+  ];
 
-  const weightedPositive =
-    titleSimilarity * weights.titleSimilarity +
-    skillOverlap * weights.skillOverlap +
-    locationFit * weights.locationFit * eligibilityPenalty +
-    recencmyBoost * weights.recency +
-    (salaryFit == null ? 0 : salaryFit * weights.salaryFit) +
-    languageFit * weights.languageFit +
-    sourceTrust * weights.sourceTrust;
+  const totalPositiveWeight = dimensions.reduce((sum, d) => sum + d.weight, 0);
+  const measured = dimensions.filter((d): d is { weight: number; value: number } => d.value !== null);
+  const availableWeight = measured.reduce((sum, d) => sum + d.weight, 0);
+  const weightedPositive = measured.reduce((sum, d) => sum + d.weight * d.value, 0);
 
-  const positive = (weightedPositive * totalPositiveWeight) / availableWeight;
+  const positive = availableWeight === 0 ? 0 : (weightedPositive * totalPositiveWeight) / availableWeight;
 
   const totalScore = Math.max(0, Math.min(1, positive - riskPenalty * weights.riskPenalty));
 
@@ -81,12 +106,13 @@ export function computeMatchScore(profile: CandidateProfile, job: CanonicalJob):
     jobId: job.jobId,
     totalScore: Math.round(totalScore * 100) / 100,
     titleSimilarity: round2(titleSimilarity),
-    skillOverlap: round2(skillOverlap),
+    skillOverlap: skillOverlap == null ? null : round2(skillOverlap),
     locationFit: round2(locationFit),
+    cityFit,
     recencmyBoost: round2(recencmyBoost),
     salaryFit: salaryFit == null ? null : round2(salaryFit),
     salaryFitUnavailableReason,
-    languageFit: round2(languageFit),
+    languageFit: languageFit == null ? null : round2(languageFit),
     sourceTrust: round2(sourceTrust),
     duplicateConfidence,
     riskPenalty: round2(riskPenalty),
@@ -136,25 +162,7 @@ function tokenizeTitle(s: string): Set<string> {
   return new Set(Array.from(tokenize(s)).map((t) => marketDe.titleAliases[t] ?? t));
 }
 
-function ratioOverlap(a: string[], b: string[]): number {
-  if (a.length === 0 || b.length === 0) return 0.1;
-  const setB = new Set(b.map((s) => canonicalizeSkill(s)));
-  const hits = a.filter((s) => setB.has(canonicalizeSkill(s))).length;
-  return Math.min(1, hits / Math.min(a.length, b.length, 5));
-}
-
-/**
- * Mirrors ranking.service.ts's canonicalizeSkill() via the same
- * marketDe.skillAliases table, so the mock/demo scorer can't silently
- * diverge from the real backend on vocabulary-mismatch handling the way
- * rankingWeights already used to (see the comment on `weights` above).
- */
-function canonicalizeSkill(value: string): string {
-  const key = value.toLowerCase().trim();
-  return marketDe.skillAliases[key] ?? key;
-}
-
-function computeLocationFit(profile: CandidateProfile, job: CanonicalJob): number {
+function computeLocationFit(profile: CandidateProfile, job: CanonicalJob, cityFit: CityFit): number {
   let score: number;
   if (profile.locationPreference === 'any') score = 0.85;
   else if (profile.locationPreference === job.remoteType) score = 1;
@@ -164,9 +172,21 @@ function computeLocationFit(profile: CandidateProfile, job: CanonicalJob): numbe
   else if (profile.locationPreference === 'onsite' && job.remoteType === 'hybrid') score = 0.6;
   else score = 0.35;
 
+  // Mirrors ranking.service.ts's locationFit(): a city the candidate would
+  // have to move to is a real cost on an otherwise-fine match (a city they
+  // ruled out is handled as a hard constraint via `eligible` instead).
+  if (cityFit === 'relocation_required') {
+    score *= 0.7;
+  }
+
   // Mirrors ranking.service.ts's locationFit() discount - see its comment
-  // for why this is a placeholder rather than a real distance check.
-  if (profile.commutePreferenceKm != null && (job.remoteType === 'onsite' || job.remoteType === 'hybrid')) {
+  // for why this is a placeholder rather than a real distance check, and why
+  // 'relocation_required' is the one case it's skipped for.
+  if (
+    profile.commutePreferenceKm != null &&
+    cityFit !== 'relocation_required' &&
+    (job.remoteType === 'onsite' || job.remoteType === 'hybrid')
+  ) {
     score *= 0.9;
   }
 
@@ -196,10 +216,6 @@ function computeSalaryFit(profile: CandidateProfile, job: CanonicalJob): number 
   if (job.salaryMax >= profile.salaryTargetMin) return 1;
   const gap = (profile.salaryTargetMin - job.salaryMax) / profile.salaryTargetMin;
   return Math.max(0, 1 - gap * 2);
-}
-
-function normalizeLang(lang: string): string {
-  return lang.trim().slice(0, 2).toLowerCase();
 }
 
 export function riskLevel(scamRiskScore: number): 'low' | 'medium' | 'high' {

@@ -129,7 +129,11 @@
     "salaryNotCountedFree": "Nicht berücksichtigt — Gehaltsvorstellungen sind eine Pro-Funktion.",
     "salaryNotCountedSetTarget": "Nicht berücksichtigt — hinterlege eine Gehaltsvorstellung in deinem Profil, um dies einzubeziehen.",
     "salaryNotCountedNoJobRange": "Nicht berücksichtigt — diese Stelle gibt keine Gehaltsspanne an.",
-    "upgradeCta": "Auf Pro upgraden"
+    "upgradeCta": "Auf Pro upgraden",
+    "skillsNotCounted": "Nicht berücksichtigt — lade deinen Lebenslauf hoch, damit wir deine Skills abgleichen können.",
+    "languagesNotCounted": "Nicht berücksichtigt — hinterlege deine Sprachkenntnisse in deinem Profil.",
+    "cityMismatch": "Diese Stelle ist in {city} — nicht einer deiner angegebenen Arbeitsorte.",
+    "cityRelocation": "Diese Stelle ist in {city} — du müsstest umziehen."
   },
   "RiskBadge": {
     "riskLow": "Geringes Betrugsrisiko",
@@ -509,7 +513,17 @@
     "cvVariantLabel": "Lebenslauf-Variante",
     "coverLetterLabel": "Anschreiben",
     "draftNeedsApprovalText": "Dieser Entwurf benötigt jetzt Ihre Freigabe.",
-    "reviewInQueueLink": "In der Bewerbungswarteschlange prüfen →"
+    "reviewInQueueLink": "In der Bewerbungswarteschlange prüfen →",
+    "homeCityLabel": "Deine Stadt",
+    "homeCityPlaceholder": "z. B. Berlin",
+    "acceptableCitiesLabel": "Weitere Städte, in denen du arbeiten würdest",
+    "acceptableCitiesPlaceholder": "z. B. Potsdam, Hamburg",
+    "relocationLabel": "Umzugsbereit?",
+    "relocationUnset": "Keine Angabe",
+    "relocationNo": "Nein — nur meine Städte",
+    "relocationWithinCountry": "Innerhalb des Landes",
+    "relocationWithinEu": "Innerhalb der EU",
+    "relocationAnywhere": "Überall"
   },
   "CareerCoach": {
     "loading": "Wird geladen...",

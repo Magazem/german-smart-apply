@@ -1,6 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import { marketDe, resolveTitleEquivalenceClassId, titleEquivalenceIndex } from '@german-smart-apply/market-de';
-import type { CanonicalJob, JobMatchScore, SalaryFitUnavailableReason } from '@german-smart-apply/shared';
+import {
+  cityFit as computeCityFit,
+  languageFitScore,
+  marketDe,
+  resolveTitleEquivalenceClassId,
+  skillEvidence,
+  titleEquivalenceIndex,
+} from '@german-smart-apply/market-de';
+import type {
+  CanonicalJob,
+  CityFit,
+  JobMatchScore,
+  RelocationWillingness,
+  SalaryFitUnavailableReason,
+} from '@german-smart-apply/shared';
 
 /**
  * Only the profile fields the ranking formula actually reads. Decoupled from
@@ -12,9 +25,18 @@ export interface RankingProfileInput {
   skills: string[];
   targetRole: string;
   targetCountryCode: string;
+  /**
+   * UI/display language. Deliberately NOT used to score language fit any
+   * more - see `languages` below and market-de's languageFitScore().
+   */
   preferredLanguage: string;
+  /** What the candidate actually speaks, as parsed from their CV. */
+  languages: string[];
   seniority: string;
   locationPreference: string;
+  homeCity: string | null;
+  acceptableCities: string[];
+  relocationWillingness: RelocationWillingness | null;
   salaryTargetMin: number | null;
   salaryTargetMax: number | null;
   commutePreferenceKm: number | null;
@@ -77,12 +99,25 @@ export class RankingService {
     const targetTitleText = profile?.targetRole ?? ctx.queryText ?? '';
     const titleSimilarity = targetTitleText ? this.titleSimilarity(targetTitleText, job.jobTitleNormalized) : 0.5;
 
-    const skillOverlap = profile
-      ? this.skillOverlap(profile.skills, job.techStackTags)
-      : 0.5;
+    // null (not a low-but-real number) when the candidate has no skills
+    // recorded - see skillEvidence()'s comment for why this is evidence
+    // counting rather than the set-similarity it replaced.
+    const skillOverlap = profile ? skillEvidence(profile.skills, job, marketDe.skillAliases).score : 0.5;
 
-    const locationFit = profile ? this.locationFit(profile, job) : 0.5;
-    const eligible = profile ? this.isEligible(profile, job) : true;
+    const cityFit = profile
+      ? computeCityFit(
+          {
+            homeCity: profile.homeCity,
+            acceptableCities: profile.acceptableCities,
+            relocationWillingness: profile.relocationWillingness,
+          },
+          job,
+          marketDe.locationDictionary,
+        )
+      : 'unknown';
+
+    const locationFit = profile ? this.locationFit(profile, job, cityFit) : 0.5;
+    const eligible = profile ? this.isEligible(profile, job, cityFit) : true;
     // Same magnitude as the old in-locationFit country discount (0.5x on the
     // locationFit-weighted term only) - this PR separates the *signal* from
     // the *scoring*, it doesn't retune how much a hard-constraint mismatch
@@ -109,11 +144,11 @@ export class RankingService {
           ? 'no_job_salary'
           : 'no_candidate_target';
 
-    const languageFit = profile
-      ? this.languagesMatch(profile.preferredLanguage, job.language)
-        ? 1
-        : 0.5
-      : 0.5;
+    // Reads the candidate's actual languages[], not preferredLanguage (which
+    // is the UI language and was never evidence of what they speak) - and
+    // returns null rather than a neutral-looking 0.5 when there's nothing
+    // recorded to compare. See market-de's languageFitScore().
+    const languageFit = profile ? languageFitScore(profile.languages, job.language) : 0.5;
 
     const sourceTrust = job.sourceTrustScore;
     // Reported, not weighted: canonical_jobs.duplicateConfidence (populated
@@ -128,27 +163,38 @@ export class RankingService {
     // projected back onto the full weight budget (totalPositiveWeight) so a
     // job with unknown salary data lands on the same 0..totalPositiveWeight
     // scale as one with known salary data, rather than being scored out of a
-    // shrunken max. When salaryFit is available this is identical to the old
-    // fixed-weights formula (availableWeight === totalPositiveWeight).
-    const totalPositiveWeight =
-      weights.titleSimilarity +
-      weights.skillOverlap +
-      weights.locationFit +
-      weights.recency +
-      weights.salaryFit +
-      weights.languageFit +
-      weights.sourceTrust;
-    const availableWeight = salaryFit == null ? totalPositiveWeight - weights.salaryFit : totalPositiveWeight;
-    const weightedPositive =
-      weights.titleSimilarity * titleSimilarity +
-      weights.skillOverlap * skillOverlap +
-      weights.locationFit * locationFit * eligibilityPenalty +
-      weights.recency * recencmyBoost +
-      (salaryFit == null ? 0 : weights.salaryFit * salaryFit) +
-      weights.languageFit * languageFit +
-      weights.sourceTrust * sourceTrust;
+    // shrunken max.
+    //
+    // Generalized from the salary-only special case this replaces: skillOverlap
+    // and languageFit can now be null too (unparsed CV -> no skills, no
+    // languages), and every one of them means the same thing - we did not
+    // measure this, so don't let it drag the score toward the middle. Any
+    // future nullable dimension only needs a line in `dimensions` below.
+    const dimensions: Array<{ weight: number; value: number | null }> = [
+      { weight: weights.titleSimilarity, value: titleSimilarity },
+      { weight: weights.skillOverlap, value: skillOverlap },
+      // eligibilityPenalty discounts only the locationFit-weighted term, same
+      // convention as before - a hard-constraint mismatch isn't a separate
+      // weighted dimension yet.
+      { weight: weights.locationFit, value: locationFit * eligibilityPenalty },
+      { weight: weights.recency, value: recencmyBoost },
+      { weight: weights.salaryFit, value: salaryFit },
+      { weight: weights.languageFit, value: languageFit },
+      { weight: weights.sourceTrust, value: sourceTrust },
+    ];
 
-    let totalScore = (weightedPositive * totalPositiveWeight) / availableWeight - weights.riskPenalty * riskPenalty;
+    const totalPositiveWeight = dimensions.reduce((sum, d) => sum + d.weight, 0);
+    const measured = dimensions.filter((d): d is { weight: number; value: number } => d.value !== null);
+    const availableWeight = measured.reduce((sum, d) => sum + d.weight, 0);
+    const weightedPositive = measured.reduce((sum, d) => sum + d.weight * d.value, 0);
+
+    // availableWeight is only 0 if every dimension was unmeasurable, which
+    // can't happen today (title/location/recency/sourceTrust are never null)
+    // but is guarded rather than left to produce NaN if that ever changes.
+    let totalScore =
+      availableWeight === 0
+        ? 0
+        : (weightedPositive * totalPositiveWeight) / availableWeight - weights.riskPenalty * riskPenalty;
 
     if (ctx.interactionBias) {
       totalScore += ctx.interactionBias * 0.05;
@@ -162,6 +208,7 @@ export class RankingService {
       titleSimilarity,
       skillOverlap,
       locationFit,
+      cityFit,
       recencmyBoost,
       salaryFit,
       salaryFitUnavailableReason,
@@ -187,41 +234,17 @@ export class RankingService {
     return jaccard(tokenizeTitle(targetTitleText), tokenizeTitle(jobTitle));
   }
 
-  private skillOverlap(skills: string[], stackTags: string[]): number {
-    // 0.1, not 0: missing tag data (common on non-tech postings that were
-    // never given techStackTags) shouldn't be indistinguishable from a
-    // measured near-total mismatch, but it also shouldn't be generous enough
-    // to meaningfully inflate an unrelated job's score - this was 0.3 before,
-    // which (combined with the old, flatter weights) let e.g. a legal
-    // counselor profile score within a few points of a genuinely relevant
-    // programming job against a job with no tags at all.
-    if (skills.length === 0 || stackTags.length === 0) return 0.1;
-    const skillSet = new Set(skills.map((s) => this.canonicalizeSkill(s)));
-    const tagSet = new Set(stackTags.map((t) => this.canonicalizeSkill(t)));
-    return jaccard(skillSet, tagSet);
-  }
-
   /**
-   * Collapses a skill/tag string to its canonical concept key via
-   * marketDe.skillAliases (identity if it isn't a known alias), so that
-   * skillOverlap's Jaccard set-intersection credits two phrases describing
-   * the same underlying skill (e.g. 'A/B Testing' and 'Experimentation')
-   * even though they share zero literal tokens. Deliberately conservative -
-   * see skillAliases' own comment for what it does and doesn't collapse.
-   */
-  private canonicalizeSkill(value: string): string {
-    const key = value.toLowerCase().trim();
-    return marketDe.skillAliases[key] ?? key;
-  }
-
-  /**
-   * Pure work-mode fit (onsite/hybrid/remote vs. preference) - deliberately
+   * Work-mode fit (onsite/hybrid/remote vs. preference), discounted when the
+   * job is in a city the candidate would have to move to. Deliberately
    * ignores country, which is a hard-constraint concern handled by
-   * isEligible() instead. A job's locationFit shouldn't silently drop because
-   * it's in the wrong country; that's a different fact from "not my
-   * preferred work mode" and callers need to see them separately.
+   * isEligible() instead - a job's locationFit shouldn't silently drop
+   * because it's in the wrong country; that's a different fact from "not my
+   * preferred work mode" and callers need to see them separately. A city the
+   * candidate flatly won't move to is likewise a hard constraint, not a
+   * discount, and is handled in isEligible() too.
    */
-  private locationFit(profile: RankingProfileInput, job: CanonicalJob): number {
+  private locationFit(profile: RankingProfileInput, job: CanonicalJob, cityFit: CityFit): number {
     let score = 0.5;
     if (profile.locationPreference === 'any') {
       score = 0.8;
@@ -234,14 +257,24 @@ export class RankingService {
       score = 0.3;
     }
 
-    // Placeholder pending real geo-distance data (Phase 4): commutePreferenceKm
-    // is collected but there's no candidate city/postal-code field yet to
-    // measure it against job.locationNormalized, so this can't verify actual
-    // proximity. Setting a commute radius at all means the candidate cares
-    // about physical distance for onsite/hybrid roles specifically - treating
-    // an otherwise-perfect onsite/hybrid match as slightly less certain is
-    // honest about that unverifiable gap, not a claim we know the distance.
-    if (profile.commutePreferenceKm != null && (job.remoteType === 'onsite' || job.remoteType === 'hybrid')) {
+    // A real, quantifiable cost the candidate has told us they'd accept -
+    // distinct from 'mismatch', which isEligible() treats as disqualifying.
+    if (cityFit === 'relocation_required') {
+      score *= 0.7;
+    }
+
+    // Placeholder pending real geo-distance data: commutePreferenceKm is
+    // collected but we still have no postal codes or coordinates to measure
+    // an actual distance with, only city equality - so even a same-city match
+    // leaves the actual commute unverified. Skipped only for
+    // 'relocation_required', where the 0.7 above has already priced in the
+    // move and hedging again would double-count it. Unchanged for the
+    // 'unknown' case, which is every profile that hasn't filled in a city.
+    if (
+      profile.commutePreferenceKm != null &&
+      cityFit !== 'relocation_required' &&
+      (job.remoteType === 'onsite' || job.remoteType === 'hybrid')
+    ) {
       score *= 0.9;
     }
 
@@ -249,16 +282,22 @@ export class RankingService {
   }
 
   /**
-   * Hard constraint, not a fit signal: does this job even meet a condition
-   * the candidate can't compromise on? Today that's just target country -
-   * work authorization and companyBlacklist are collected on the profile
-   * (see plan.md's Phase 10 auto-apply groundwork) but not yet checked here.
-   * Deliberately returns a boolean, not a score, so it can't be silently
-   * blended into a continuous dimension the way the old locationFit discount
-   * was.
+   * Hard constraints, not fit signals: does this job even meet a condition
+   * the candidate can't compromise on? Today that's target country and a
+   * city they've ruled out - work authorization and companyBlacklist are
+   * collected on the profile (see plan.md's Phase 10 auto-apply groundwork)
+   * but not yet checked here. Deliberately returns a boolean, not a score, so
+   * it can't be silently blended into a continuous dimension the way the old
+   * locationFit country discount was.
    */
-  private isEligible(profile: RankingProfileInput, job: CanonicalJob): boolean {
+  private isEligible(profile: RankingProfileInput, job: CanonicalJob, cityFit: CityFit): boolean {
     if (profile.targetCountryCode && profile.targetCountryCode !== job.countryCode) {
+      return false;
+    }
+    // Only 'mismatch' disqualifies - 'unknown' (no cities given, the default
+    // for every pre-existing profile) must stay neutral, or every current
+    // user would be ineligible for every onsite job overnight.
+    if (cityFit === 'mismatch') {
       return false;
     }
     return true;
@@ -299,7 +338,4 @@ export class RankingService {
     return 1;
   }
 
-  private languagesMatch(preferred: string, jobLanguage: string): boolean {
-    return preferred.slice(0, 2).toLowerCase() === jobLanguage.slice(0, 2).toLowerCase();
-  }
 }

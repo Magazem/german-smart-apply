@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { Prisma } from '@german-smart-apply/db';
+import type { CandidateProfile as PrismaCandidateProfile, Prisma } from '@german-smart-apply/db';
 import type { CanonicalJob, JobFeedbackType, JobMatchScore } from '@german-smart-apply/shared';
 import { AiProviderFactory } from '../ai/ai-provider-factory.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -19,26 +19,34 @@ export interface RankedJobResult {
 // MVP scale (Postgres FTS/pgvector-backed search is a Phase 3 upgrade per
 // plan.md); revisit if canonical_jobs grows large enough that this misses
 // good matches outside the top `CANDIDATE_POOL_SIZE` most recent postings.
-/** The ranking-relevant slice of a CandidateProfile row. Pure - no I/O, so callers that already hold the row don't re-query for it. */
-function toRankingProfile(
-  profile: NonNullable<Awaited<ReturnType<PrismaService['client']['candidateProfile']['findUnique']>>>,
-): RankingProfileInput {
+const CANDIDATE_POOL_SIZE = 200;
+const DEFAULT_PAGE_SIZE = 20;
+const ALERT_MATCH_LIMIT = 20;
+
+/**
+ * The ranking-relevant slice of a CandidateProfile row. Pure - no I/O, so a
+ * caller that already holds the row doesn't re-query for it. Shared by the
+ * search, job-detail and match-explanation paths, which each used to spell
+ * this mapping out and so had to be kept in step by hand - the same drift
+ * hazard that already bit apps/web's mock scorer.
+ */
+function toRankingProfile(profile: PrismaCandidateProfile): RankingProfileInput {
   return {
     skills: profile.skills,
     targetRole: profile.targetRole,
     targetCountryCode: profile.targetCountryCode,
     preferredLanguage: profile.preferredLanguage,
+    languages: profile.languages,
     seniority: profile.seniority,
     locationPreference: profile.locationPreference,
+    homeCity: profile.homeCity,
+    acceptableCities: profile.acceptableCities,
+    relocationWillingness: profile.relocationWillingness as RankingProfileInput['relocationWillingness'],
     salaryTargetMin: profile.salaryTargetMin,
     salaryTargetMax: profile.salaryTargetMax,
     commutePreferenceKm: profile.commutePreferenceKm,
   };
 }
-
-const CANDIDATE_POOL_SIZE = 200;
-const DEFAULT_PAGE_SIZE = 20;
-const ALERT_MATCH_LIMIT = 20;
 
 @Injectable()
 export class JobsService {

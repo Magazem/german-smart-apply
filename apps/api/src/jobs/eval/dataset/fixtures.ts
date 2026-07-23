@@ -47,8 +47,21 @@ export function buildEvalProfile(overrides: Partial<RankingProfileInput> = {}): 
     targetRole: '',
     targetCountryCode: 'DE',
     preferredLanguage: 'en',
+    // Deliberately matches buildEvalJob's default `language: 'en'`, which
+    // reproduces exactly what the old preferredLanguage-based languageFit
+    // scored for these fixtures (1). Leaving it empty would make languageFit
+    // null across the whole dataset and shift every NDCG number for a reason
+    // unrelated to ranking quality, masking the skill/location deltas this
+    // dataset exists to measure. Cases that care about a language mismatch
+    // should override it explicitly.
+    languages: ['en'],
     seniority: 'mid',
     locationPreference: 'any',
+    // Empty by default: city scoring stays dormant ('unknown') unless a case
+    // opts in, so existing queries measure what they always did.
+    homeCity: null,
+    acceptableCities: [],
+    relocationWillingness: null,
     salaryTargetMin: null,
     salaryTargetMax: null,
     commutePreferenceKm: null,

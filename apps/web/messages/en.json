@@ -129,7 +129,11 @@
     "salaryNotCountedFree": "Not counted — salary targets are a Pro feature.",
     "salaryNotCountedSetTarget": "Not counted — add a salary target in your profile to include this.",
     "salaryNotCountedNoJobRange": "Not counted — this listing doesn't disclose a salary range.",
-    "upgradeCta": "Upgrade to Pro"
+    "upgradeCta": "Upgrade to Pro",
+    "skillsNotCounted": "Not counted — upload your CV so we can match your skills.",
+    "languagesNotCounted": "Not counted — add the languages you speak to your profile.",
+    "cityMismatch": "This job is in {city}, which isn't one of the cities you work in.",
+    "cityRelocation": "This job is in {city} — you'd need to relocate."
   },
   "RiskBadge": {
     "riskLow": "Low scam risk",
@@ -509,7 +513,17 @@
     "cvVariantLabel": "CV variant",
     "coverLetterLabel": "Cover letter",
     "draftNeedsApprovalText": "This draft now needs your approval.",
-    "reviewInQueueLink": "Go review it in the application queue →"
+    "reviewInQueueLink": "Go review it in the application queue →",
+    "homeCityLabel": "Your city",
+    "homeCityPlaceholder": "e.g. Berlin",
+    "acceptableCitiesLabel": "Other cities you'd work in",
+    "acceptableCitiesPlaceholder": "e.g. Potsdam, Hamburg",
+    "relocationLabel": "Willing to relocate?",
+    "relocationUnset": "Not specified",
+    "relocationNo": "No — only my cities",
+    "relocationWithinCountry": "Within the country",
+    "relocationWithinEu": "Within the EU",
+    "relocationAnywhere": "Anywhere"
   },
   "CareerCoach": {
     "loading": "Loading...",

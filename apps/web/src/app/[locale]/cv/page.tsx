@@ -294,6 +294,62 @@ export default function CvWorkspacePage() {
           </div>
         </div>
 
+        {/*
+          Deliberately in the free section, not the Pro block below: these
+          feed the deterministic scorer every user gets, and without them
+          location fit can only measure work mode - an onsite role in another
+          city scores identically to one down the street. See
+          market-de's cityFit().
+        */}
+        <div className="row gap-16" style={{ flexWrap: 'wrap' }}>
+          <div className="field" style={{ flex: 1, minWidth: 160 }}>
+            <label htmlFor="homeCity">{t('homeCityLabel')}</label>
+            <input
+              id="homeCity"
+              className="input"
+              placeholder={t('homeCityPlaceholder')}
+              value={profile.homeCity ?? ''}
+              onChange={(e) => update({ homeCity: e.target.value || null })}
+            />
+          </div>
+          <div className="field" style={{ flex: 1, minWidth: 160 }}>
+            <label htmlFor="acceptableCities">{t('acceptableCitiesLabel')}</label>
+            <input
+              id="acceptableCities"
+              className="input"
+              placeholder={t('acceptableCitiesPlaceholder')}
+              value={profile.acceptableCities.join(', ')}
+              onChange={(e) =>
+                update({
+                  acceptableCities: e.target.value
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                })
+              }
+            />
+          </div>
+          <div className="field" style={{ flex: 1, minWidth: 160 }}>
+            <label htmlFor="relocation">{t('relocationLabel')}</label>
+            <select
+              id="relocation"
+              className="input"
+              value={profile.relocationWillingness ?? ''}
+              onChange={(e) =>
+                update({
+                  relocationWillingness: (e.target.value || null) as CandidateProfile['relocationWillingness'],
+                })
+              }
+            >
+              <option value="">{t('relocationUnset')}</option>
+              <option value="no">{t('relocationNo')}</option>
+              <option value="within_country">{t('relocationWithinCountry')}</option>
+              <option value="within_eu">{t('relocationWithinEu')}</option>
+              <option value="anywhere">{t('relocationAnywhere')}</option>
+            </select>
+          </div>
+        </div>
+
         <div className="stack gap-8" style={{ marginTop: 8, paddingTop: 16, borderTop: '1px solid var(--color-border)' }}>
           <div className="row gap-8" style={{ alignItems: 'center' }}>
             <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>{t('deeperSettingsTitle')}</h3>

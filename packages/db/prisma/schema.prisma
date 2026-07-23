@@ -263,6 +263,16 @@ model CandidateProfile {
   salaryTargetMax     Int?
   workAuthorization   String?
   companyBlacklist    String[] @default([])
+  // Where the candidate is and where they'd work, as distinct from
+  // locationPreference (a work MODE only). Nullable/empty by default so
+  // existing profiles keep scoring exactly as before until they fill these
+  // in - see market-de's cityFit(), which returns 'unknown' in that case.
+  // relocationWillingness is a string, not an enum, matching how
+  // locationPreference and seniority are already stored; the allowed values
+  // live in shared's RELOCATION_WILLINGNESS.
+  homeCity            String?
+  acceptableCities    String[] @default([])
+  relocationWillingness String?
   commutePreferenceKm Int?
   portfolioLinks      String[] @default([])
   createdAt           DateTime @default(now())
