@@ -210,6 +210,12 @@ The `ON CONFLICT DO UPDATE` clause doesn't touch `crawledAt`, so
 path reads it today (recency uses `postedAt`), but it makes "how fresh is this
 listing" unanswerable and would mislead any future staleness logic.
 
+### 2.6 `run_pipeline.py` — the production entrypoint — has no test coverage
+Its own docstring says so: *"This script is NOT exercised by the pytest suite."* It
+is what `workers/Dockerfile`'s `CMD` runs on every scheduled tick, and it owns the
+per-source ordering, the commit boundaries, and the error handling. The
+whole-run-abort bug fixed on the core path lived here and no test could have caught
+it.
 ### 2.7 Findings the production data DOWNGRADED — recorded so the severity isn't overstated later
 Measuring the real corpus corrected two claims that the code alone justified but
 the data does not. Both were still fixed on the core path (they are correct
@@ -232,12 +238,6 @@ Worth stating plainly because the reverse mistake is expensive: a reviewer readi
 only the code would rank these two above `countryCode` and `remoteType`, and the
 data says the opposite.
 
-### 2.6 `run_pipeline.py` — the production entrypoint — has no test coverage
-Its own docstring says so: *"This script is NOT exercised by the pytest suite."* It
-is what `workers/Dockerfile`'s `CMD` runs on every scheduled tick, and it owns the
-per-source ordering, the commit boundaries, and the error handling. The
-whole-run-abort bug fixed on the core path lived here and no test could have caught
-it.
 
 ---
 
