@@ -197,13 +197,29 @@ export class RealApiClient implements ApiClient {
       } else {
         form.append('file', new Blob([input.text], { type: 'text/plain' }), 'cv.txt');
       }
+      // Read server-side as @Body('language'); omitted entirely rather than
+      // sent empty so the API's own 'en' default still applies when the
+      // caller has no locale to offer.
+      if (input.language) {
+        form.append('language', input.language);
+      }
       const token = getToken();
       const res = await fetch(`${this.baseUrl}/cv/upload`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: form,
       });
-      if (!res.ok) throw new Error(`CV upload failed: ${res.status}`);
+      if (!res.ok) {
+        // Route through extractApiErrorMessage like request() does, instead of
+        // throwing a bare status. The API's messages here are specifically
+        // written to be shown to the user ("Unsupported file type "x". Upload a
+        // PDF, DOCX, or plain-text CV.") and were being discarded in favour of
+        // "CV upload failed: 400", which tells the candidate nothing about how
+        // to succeed. Also carries the status, so callers can tell a rejected
+        // file apart from an outage.
+        const body = await res.text().catch(() => '');
+        throw new ApiError(extractApiErrorMessage(body, res), res.status);
+      }
       const body = (await res.json()) as { parsed: ParsedCvResult };
       return body.parsed;
     },

@@ -60,7 +60,18 @@ export interface JobDetailResult {
   myFeedback?: JobFeedbackType | null;
 }
 
-export type CvUploadInput = { kind: 'file'; file: File } | { kind: 'text'; text: string };
+/**
+ * `language` is the language the candidate-facing output of parsing should be
+ * written in (the parsed summary and the CV suggestions - see apps/api's
+ * CvService.uploadAndParse, which defaults it to 'en'). Callers pass the
+ * active UI locale: on a Germany-first product, a German user uploading a
+ * German CV was previously shown an English summary and English CV
+ * suggestions as the very first output of onboarding, because the client
+ * never sent this at all.
+ */
+export type CvUploadInput = ({ kind: 'file'; file: File } | { kind: 'text'; text: string }) & {
+  language?: string;
+};
 
 export interface TokenUsageSummary {
   totalTokens: number;

@@ -54,7 +54,11 @@ function toApiFilters(f: FilterState): JobSearchFilters {
     remoteType: f.remoteType.length ? f.remoteType : undefined,
     seniority: f.seniority.length ? f.seniority : undefined,
     language: f.language || undefined,
-    salaryMin: f.salaryMin ? Number(f.salaryMin) : undefined,
+    // Rounded, not passed through raw: SearchJobsDto.salaryMin is @IsInt(), so
+    // a non-integer from the number input (typing "1000.5") was rejected with a
+    // 400 by the real API - which, before this page had any error handling,
+    // showed as a skeleton that never resolved.
+    salaryMin: f.salaryMin ? Math.round(Number(f.salaryMin)) : undefined,
     locationCountryCode: 'DE',
     limit: 50,
   };
@@ -68,6 +72,10 @@ export default function JobsPage() {
   const [matches, setMatches] = useState<Record<string, JobMatchScore>>({});
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  // This page had no error state at all - unlike dashboard/job-detail/
+  // applications/cv, which all have one. Against the mock, search() cannot
+  // reject, so the omission was invisible.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [savingSearch, setSavingSearch] = useState(false);
   const [searchName, setSearchName] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -77,12 +85,26 @@ export default function JobsPage() {
     let cancelled = false;
     setLoading(true);
     const handle = setTimeout(async () => {
-      const result = await getApiClient().jobs.search(toApiFilters(filters));
-      if (cancelled) return;
-      setJobs(result.jobs);
-      setMatches(result.matches);
-      setTotal(result.total);
-      setLoading(false);
+      // try/catch/finally, not a bare await: without the finally,
+      // setLoading(false) was never reached on rejection, so any 4xx/5xx/network
+      // failure left the page showing loading skeletons and "Searching…"
+      // permanently, with no error and no way to retry.
+      try {
+        const result = await getApiClient().jobs.search(toApiFilters(filters));
+        if (cancelled) return;
+        setLoadError(null);
+        setJobs(result.jobs);
+        setMatches(result.matches);
+        setTotal(result.total);
+      } catch (err) {
+        if (cancelled) return;
+        setLoadError(err instanceof Error ? err.message : t('loadError'));
+        setJobs([]);
+        setMatches({});
+        setTotal(0);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }, 250);
     return () => {
       cancelled = true;
@@ -287,13 +309,30 @@ export default function JobsPage() {
 
         <div className="stack gap-16">
           <p className="muted" data-testid="jobs-result-count">
-            {loading ? t('searching') : t('resultCount', { count: total })}
+            {loading ? t('searching') : loadError ? t('loadErrorCount') : t('resultCount', { count: total })}
           </p>
           {loading ? (
             <div className="stack gap-12">
               {[0, 1, 2].map((i) => (
                 <div key={i} className="skeleton" style={{ height: 160 }} />
               ))}
+            </div>
+          ) : loadError ? (
+            // Distinct from the no-results card below on purpose: "your filters
+            // matched nothing" and "we could not reach the server" are different
+            // facts, and showing the first for the second is what made a backend
+            // outage look like an empty job market.
+            <div className="card" style={{ padding: 32, textAlign: 'center' }} data-testid="jobs-load-error">
+              <p>{t('loadError')}</p>
+              <p className="muted" style={{ marginTop: 8, fontSize: 14 }}>{loadError}</p>
+              <button
+                type="button"
+                className="btn"
+                style={{ marginTop: 16 }}
+                onClick={() => setFilters((f) => ({ ...f }))}
+              >
+                {t('retry')}
+              </button>
             </div>
           ) : jobs.length === 0 ? (
             <div className="card" style={{ padding: 32, textAlign: 'center' }}>

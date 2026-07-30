@@ -159,7 +159,19 @@ def run_dedup(conn, country_code: str = "DE") -> dict[str, Any]:
             canonical_pick["sourceTrustScore"],
             canonical_pick["scamRiskScore"],
             duplicate_confidence,
-            canonical_pick["postedAt"],
+            # Fall back to crawledAt when the source published no date, rather
+            # than persisting NULL. Two things downstream treat a NULL postedAt
+            # as better than an old real date, and both are in the core ranking
+            # path: apps/api's JobsService orders its hard-capped
+            # CANDIDATE_POOL_SIZE pool by postedAt (Postgres sorts NULLs FIRST
+            # on DESC, so undated rows were considered before every dated one -
+            # now also pinned with nulls: 'last' on that query), and
+            # RankingService.recencyBoost returns a flat 0.4 for NULL, which
+            # beats the exponential decay's value for anything older than ~19
+            # days. first-seen is a defensible lower bound on "posted", and this
+            # module already used exactly that coalesce internally for its own
+            # sort key (_canonical_sort_key) without ever persisting it.
+            canonical_pick["postedAt"] or canonical_pick["crawledAt"],
             canonical_pick["crawledAt"],
         )
 

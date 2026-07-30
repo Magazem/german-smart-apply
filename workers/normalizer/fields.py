@@ -88,24 +88,124 @@ def normalize_job_title(raw: str) -> str:
 # Location normalization
 # ---------------------------------------------------------------------------
 
+# Country names as ATS boards actually write them, in English and German, plus
+# bare ISO-3166 alpha-2 codes, mapped to alpha-2.
+#
+# Why this exists: the market pack's location dictionary is keyed on CITY name
+# and carries no country information, so normalize_location() previously
+# returned the market default ("DE") on every path -- including its own
+# no-match fallback. A Greenhouse posting reading "Shanghai, China" was stored
+# with countryCode="DE", passed the `locationCountryCode=DE` hard filter in
+# apps/api's JobsService, and was reported `eligible: true` by RankingService,
+# whose only hard country check is `profile.targetCountryCode !==
+# job.countryCode`. Boards are admitted to this crawl at a >=30% Germany-located
+# bar (see common/market_de.py), so the non-German remainder is the majority of
+# some boards' postings, not an edge case.
+#
+# Deliberately NOT exhaustive-by-generation: only names that appear as an
+# explicit country segment in a location string. See normalize_location() for
+# why an unrecognized location still falls back to the market default rather
+# than to "unknown".
+_COUNTRY_NAME_TO_CODE: dict[str, str] = {
+    "germany": "DE", "deutschland": "DE", "de": "DE", "ger": "DE",
+    "austria": "AT", "österreich": "AT", "oesterreich": "AT", "at": "AT",
+    "switzerland": "CH", "schweiz": "CH", "ch": "CH",
+    "france": "FR", "frankreich": "FR", "fr": "FR",
+    "netherlands": "NL", "niederlande": "NL", "holland": "NL", "nl": "NL",
+    "belgium": "BE", "belgien": "BE", "be": "BE",
+    "luxembourg": "LU", "luxemburg": "LU", "lu": "LU",
+    "united kingdom": "GB", "uk": "GB", "great britain": "GB",
+    "england": "GB", "grossbritannien": "GB", "großbritannien": "GB", "gb": "GB",
+    "ireland": "IE", "irland": "IE", "ie": "IE",
+    "spain": "ES", "spanien": "ES", "es": "ES",
+    "portugal": "PT", "pt": "PT",
+    "italy": "IT", "italien": "IT", "it": "IT",
+    "poland": "PL", "polen": "PL", "pl": "PL",
+    "czech republic": "CZ", "czechia": "CZ", "tschechien": "CZ", "cz": "CZ",
+    "slovakia": "SK", "slowakei": "SK", "sk": "SK",
+    "hungary": "HU", "ungarn": "HU", "hu": "HU",
+    "romania": "RO", "rumänien": "RO", "rumaenien": "RO", "ro": "RO",
+    "bulgaria": "BG", "bulgarien": "BG", "bg": "BG",
+    "greece": "GR", "griechenland": "GR", "gr": "GR",
+    "sweden": "SE", "schweden": "SE", "se": "SE",
+    "norway": "NO", "norwegen": "NO", "no": "NO",
+    "denmark": "DK", "dänemark": "DK", "daenemark": "DK", "dk": "DK",
+    "finland": "FI", "finnland": "FI", "fi": "FI",
+    "estonia": "EE", "estland": "EE", "ee": "EE",
+    "latvia": "LV", "lettland": "LV", "lv": "LV",
+    "lithuania": "LT", "litauen": "LT", "lt": "LT",
+    "united states": "US", "united states of america": "US", "usa": "US",
+    "u.s.": "US", "us": "US", "vereinigte staaten": "US",
+    "canada": "CA", "kanada": "CA", "ca": "CA",
+    "mexico": "MX", "mexiko": "MX", "mx": "MX",
+    "brazil": "BR", "brasilien": "BR", "br": "BR",
+    "china": "CN", "cn": "CN",
+    "japan": "JP", "jp": "JP",
+    "india": "IN", "indien": "IN", "in": "IN",
+    "singapore": "SG", "singapur": "SG", "sg": "SG",
+    "australia": "AU", "australien": "AU", "au": "AU",
+    "new zealand": "NZ", "neuseeland": "NZ", "nz": "NZ",
+    "israel": "IL", "il": "IL",
+    "turkey": "TR", "türkei": "TR", "tuerkei": "TR", "tr": "TR",
+    "ukraine": "UA", "ua": "UA",
+    "south africa": "ZA", "südafrika": "ZA", "suedafrika": "ZA", "za": "ZA",
+    "south korea": "KR", "südkorea": "KR", "korea": "KR", "kr": "KR",
+    "hong kong": "HK", "hongkong": "HK", "hk": "HK",
+    "united arab emirates": "AE", "uae": "AE", "ae": "AE",
+}
+
+
+def _country_code_from_parts(parts: list[str]) -> str | None:
+    """The ISO-3166 alpha-2 code named explicitly in a location string, if any.
+
+    Scans right-to-left because the country is conventionally the last segment
+    ("Berlin, Germany", "Austin, TX, United States") - scanning left-to-right
+    would let a city that happens to collide with a two-letter code win.
+    """
+    for part in reversed(parts):
+        code = _COUNTRY_NAME_TO_CODE.get(part.lower())
+        if code:
+            return code
+    return None
+
+
 def normalize_location(raw: str, location_dictionary: dict[str, str], default_country_code: str = "DE") -> tuple[str, str]:
     """Return (locationNormalized, countryCode).
 
     Splits multi-value strings ("Berlin, Germany", "Berlin / Remote") and
     matches each part against the market pack's location dictionary. Falls
     back to a title-cased version of the first part if nothing matches.
+
+    The country code comes from an explicitly-named country segment when the
+    string has one, and only otherwise from `default_country_code`. That
+    asymmetry is deliberate rather than lazy: the market pack's location
+    dictionary holds 8 German cities, so a dictionary MISS is not evidence of
+    a foreign posting - most real German cities (Nürnberg, Dresden, Hannover,
+    ...) miss it too. Treating every miss as "unknown country" would drop the
+    majority of genuinely German listings out of a DE-filtered search, which
+    is a worse failure than the one being fixed. So this resolves the case
+    boards actually produce for foreign roles - an explicit country segment -
+    and leaves a bare unrecognized city on the market default. A bare
+    non-German city name with no country segment ("Shanghai" alone) is still
+    misclassified; closing that needs a real city->country dataset, not a
+    longer hand-kept dictionary.
     """
     if not raw or not raw.strip():
         return ("Unknown", default_country_code)
 
     parts = [p.strip() for p in re.split(r"[,/|]", raw) if p.strip()]
+    country_code = _country_code_from_parts(parts) or default_country_code
+
     for part in parts:
         key = part.lower()
         if key in location_dictionary:
-            return (location_dictionary[key], default_country_code)
+            return (location_dictionary[key], country_code)
 
-    fallback = parts[0] if parts else raw.strip()
-    return (fallback.title(), default_country_code)
+    # Prefer a segment that isn't the country name itself, so "Shanghai, China"
+    # normalizes to "Shanghai" rather than to "China".
+    city_parts = [p for p in parts if p.lower() not in _COUNTRY_NAME_TO_CODE]
+    fallback = (city_parts or parts or [raw.strip()])[0]
+    return (fallback.title(), country_code)
 
 
 # ---------------------------------------------------------------------------
@@ -380,12 +480,26 @@ _SENIORITY_KEYWORDS: list[tuple[str, list[str]]] = [
 
 
 def infer_seniority(title: str) -> str | None:
+    """Infer a seniority level from a job title, or None when unclear.
+
+    Matches on WORD boundaries, not raw substrings. Plain `kw in haystack`
+    classified any title containing "International" or "Internal" as an
+    internship, because "intern" is a prefix of both - verified:
+    "Manager International Business" and "Internal Audit Specialist" both
+    resolved to "intern". That is not a cosmetic mislabel: JobsService applies
+    `where.seniority = { in: [...] }` as a HARD FILTER, so those postings
+    became reachable only by candidates filtering for internships, and
+    invisible to everyone else.
+
+    Multi-word keywords still match as phrases; the boundary classes just stop
+    a keyword from matching inside a longer word.
+    """
     if not title:
         return None
     haystack = title.lower()
     for seniority, keywords in _SENIORITY_KEYWORDS:
         for kw in keywords:
-            if kw in haystack:
+            if re.search(rf"(?<![\w]){re.escape(kw.strip())}(?![\w])", haystack):
                 return seniority
     return None
 
@@ -432,15 +546,46 @@ def infer_employment_type(title: str, description: str = "", hint: str | None = 
 # Remote-type inference
 # ---------------------------------------------------------------------------
 
-def infer_remote_type(location_raw: str, remote_hint=None) -> str:
+def infer_remote_type(location_raw: str, remote_hint=None, description: str = "") -> str:
+    """Infer onsite/hybrid/remote from the location, an explicit source hint,
+    and the description text.
+
+    The description is read because for four of the five job-producing sources
+    (greenhouse, lever, personio, arbeitsagentur) `remote_hint` is always None -
+    only SmartRecruiters and Stepstone supply one - so without it the answer
+    could only ever come from the location STRING containing "remote"/"hybrid".
+    German postings almost never do that; they write "Homeoffice möglich" or
+    "hybrides Arbeiten" in the body. The result was a near-constant "onsite",
+    and since JobsService applies remoteType as a HARD FILTER, a candidate
+    filtering for remote work got a near-empty result set on a product whose
+    core promise is matching.
+
+    infer_employment_type() directly below already scans the description for
+    its own keywords; this function simply never received it.
+
+    German remote vocabulary is included explicitly - matching English
+    "remote"/"hybrid" only would have left most of the corpus unreadable.
+    """
     haystack = (location_raw or "").lower()
     if isinstance(remote_hint, bool) and remote_hint:
         haystack += " remote"
     elif isinstance(remote_hint, str):
         haystack += " " + remote_hint.lower()
+    # Weaker evidence than the location field or an explicit structured hint, so
+    # it is appended rather than given its own precedence: a description that
+    # mentions both remote and hybrid still resolves to hybrid below, which is
+    # the conservative reading of "hybrid role with home-office days".
+    haystack += " " + (description or "").lower()
 
-    has_remote = "remote" in haystack or "homeoffice" in haystack or "home office" in haystack
-    has_hybrid = "hybrid" in haystack
+    has_remote = (
+        "remote" in haystack
+        or "homeoffice" in haystack
+        or "home office" in haystack
+        or "home-office" in haystack
+        or "telearbeit" in haystack
+        or "vollständig remote" in haystack
+    )
+    has_hybrid = "hybrid" in haystack or "hybrides" in haystack
     if has_remote and has_hybrid:
         return "hybrid"
     if has_remote:

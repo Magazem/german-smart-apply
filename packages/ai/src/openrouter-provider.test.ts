@@ -290,6 +290,58 @@ describe('OpenRouterAiProvider', () => {
       });
     });
 
+    it('rejects a truncated cover letter instead of returning it as a finished draft', async () => {
+      // finish_reason was previously only read to decorate error messages, so a
+      // response cut off at max_tokens was persisted as a real
+      // ApplicationDraft, advanced the application to draft_ready, and was
+      // approvable and exportable to PDF.
+      const { client } = fakeClient(() =>
+        textCompletion('Sehr geehrte Damen und Herren, ich bewerbe mich als', {
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: 'Sehr geehrte Damen und Herren, ich bewerbe mich als',
+                refusal: null,
+              } as OpenAI.ChatCompletionMessage,
+              finish_reason: 'length',
+              logprobs: null,
+            },
+          ],
+        }),
+      );
+      const provider = new OpenRouterAiProvider(testMarketPack, { client });
+
+      await expect(provider.generateCoverLetter(profile, job, 'de')).rejects.toMatchObject({
+        code: 'malformed_response',
+      });
+    });
+
+    it('rejects a truncated CV variant too', async () => {
+      const { client } = fakeClient(() =>
+        textCompletion('Jane Doe - Senior Backend Engineer, led a team of', {
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: 'Jane Doe - Senior Backend Engineer, led a team of',
+                refusal: null,
+              } as OpenAI.ChatCompletionMessage,
+              finish_reason: 'length',
+              logprobs: null,
+            },
+          ],
+        }),
+      );
+      const provider = new OpenRouterAiProvider(testMarketPack, { client });
+
+      await expect(provider.generateCvVariant(profile, job, 'en')).rejects.toMatchObject({
+        code: 'malformed_response',
+      });
+    });
+
     it('interpolates job/company into the cover letter prompt', async () => {
       const { client, create } = fakeClient(() => textCompletion('Sehr geehrte Damen und Herren, ...'));
       const provider = new OpenRouterAiProvider(testMarketPack, { client });

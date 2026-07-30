@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@german-smart-apply/db';
-import type { ParsedCvResult } from '@german-smart-apply/shared';
+import { TARGET_ROLE_UNSET, type ParsedCvResult } from '@german-smart-apply/shared';
 import pdfParse from 'pdf-parse';
 import * as mammoth from 'mammoth';
 import { AiProviderFactory } from '../ai/ai-provider-factory.service.js';
@@ -125,7 +125,7 @@ export class CvService {
           fullName: parsed.fullName,
           email: parsed.email,
           phone: parsed.phone,
-          targetRole: parsed.experience[0]?.title ?? 'Not specified yet',
+          targetRole: parsed.experience[0]?.title ?? TARGET_ROLE_UNSET,
           summary: parsed.summary,
           skills: parsed.skills,
           experience: parsed.experience as unknown as Prisma.InputJsonValue,

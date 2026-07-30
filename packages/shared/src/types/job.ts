@@ -1,4 +1,14 @@
-export type RemoteType = 'onsite' | 'hybrid' | 'remote';
+/**
+ * Runtime arrays, with the types derived from them rather than declared
+ * alongside them. class-validator's @IsIn needs a real array at runtime, so a
+ * type-only union forces every validator to hand-copy the members - and those
+ * copies drift silently: apps/api's SearchJobsDto was missing 'personio' and
+ * 'smartrecruiters' long after both adapters shipped, so filtering by either
+ * source 400'd on a value this very file called valid. Deriving the union from
+ * the array makes that class of drift a compile error instead.
+ */
+export const REMOTE_TYPES = ['onsite', 'hybrid', 'remote'] as const;
+export type RemoteType = (typeof REMOTE_TYPES)[number];
 
 /**
  * A user's explicit thumbs up/down on a job, distinct from the passive
@@ -16,18 +26,21 @@ export type EmploymentType =
   | 'working_student'
   | 'freelance';
 
-export type Seniority = 'intern' | 'junior' | 'mid' | 'senior' | 'lead' | 'principal';
+export const SENIORITIES = ['intern', 'junior', 'mid', 'senior', 'lead', 'principal'] as const;
+export type Seniority = (typeof SENIORITIES)[number];
 
-export type SourceType =
-  | 'greenhouse'
-  | 'lever'
-  | 'ashby'
-  | 'teamtailor'
-  | 'successfactors'
-  | 'arbeitsagentur'
-  | 'stepstone'
-  | 'personio'
-  | 'smartrecruiters';
+export const SOURCE_TYPES = [
+  'greenhouse',
+  'lever',
+  'ashby',
+  'teamtailor',
+  'successfactors',
+  'arbeitsagentur',
+  'stepstone',
+  'personio',
+  'smartrecruiters',
+] as const;
+export type SourceType = (typeof SOURCE_TYPES)[number];
 
 /**
  * Canonical job schema — the single shape every source adapter's raw payload

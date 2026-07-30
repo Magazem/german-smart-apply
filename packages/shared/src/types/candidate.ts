@@ -6,6 +6,39 @@
 export const RELOCATION_WILLINGNESS = ['no', 'within_country', 'within_eu', 'anywhere'] as const;
 export type RelocationWillingness = (typeof RELOCATION_WILLINGNESS)[number];
 
+/**
+ * Placeholder written into `targetRole` when a CandidateProfile row has to be
+ * created before the user has answered the onboarding questions - CV-parse
+ * prefill creates the row first, and `targetRole` is NOT NULL with no DB
+ * default. Exported (rather than being a bare literal in two services) because
+ * the frontend has to recognize it: see hasCompletedOnboarding().
+ */
+export const TARGET_ROLE_UNSET = 'Not specified yet';
+
+/**
+ * Whether this profile has been through the onboarding questions step.
+ *
+ * The frontend used to answer this with a truthiness check on `targetRole`,
+ * which only ever worked against the mock client - the mock creates profiles
+ * with `targetRole: ''`, but the real API always writes a non-empty value
+ * (either the CV's most recent job title, or TARGET_ROLE_UNSET). So a real user
+ * who uploaded a CV and then abandoned the questions step was treated as fully
+ * onboarded: login routed them to /dashboard, the "finish onboarding" CTA never
+ * rendered, and their jobs were ranked against the literal string
+ * "Not specified yet" with no route back into the flow.
+ *
+ * Takes the whole profile (not just the role string) so the notion of "done"
+ * can grow to cover more answers without changing any call site. Declared as a
+ * type predicate so a true result also narrows away null/undefined - callers
+ * generally want the profile itself immediately afterwards.
+ */
+export function hasCompletedOnboarding<T extends Pick<CandidateProfile, 'targetRole'>>(
+  profile: T | null | undefined,
+): profile is T {
+  const role = profile?.targetRole?.trim();
+  return Boolean(role) && role !== TARGET_ROLE_UNSET;
+}
+
 export interface CandidateProfile {
   id: string;
   userId: string;

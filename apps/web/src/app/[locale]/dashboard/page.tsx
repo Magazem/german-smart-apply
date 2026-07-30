@@ -3,7 +3,13 @@
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { useEffect, useState } from 'react';
-import type { CandidateProfile, CanonicalJob, JobMatchScore, ParsedCvResult } from '@german-smart-apply/shared';
+import {
+  hasCompletedOnboarding,
+  type CandidateProfile,
+  type CanonicalJob,
+  type JobMatchScore,
+  type ParsedCvResult,
+} from '@german-smart-apply/shared';
 import { getApiClient } from '@/lib/api-client';
 import { useRequireAuth } from '@/lib/use-require-auth';
 import { JobCard } from '@/components/job-card';
@@ -27,7 +33,7 @@ export default function DashboardPage() {
         if (cancelled) return;
         setProfile(p);
         setParsedCv(cv);
-        if (p?.targetRole) {
+        if (hasCompletedOnboarding(p)) {
           const result = await api.jobs.search({ locationCountryCode: p.targetCountryCode, limit: 5 });
           if (cancelled) return;
           setTopJobs(result.jobs.map((job) => ({ job, match: result.matches[job.jobId] })));
@@ -53,7 +59,11 @@ export default function DashboardPage() {
     );
   }
 
-  const needsOnboarding = !loading && profile && !profile.targetRole;
+  // hasCompletedOnboarding(), not a truthiness check: the real API always
+  // writes a non-empty targetRole (TARGET_ROLE_UNSET when the questions step
+  // hasn't run), so `!profile.targetRole` was only ever false against the mock -
+  // and a real user who uploaded a CV then stopped never saw this CTA.
+  const needsOnboarding = !loading && profile && !hasCompletedOnboarding(profile);
 
   return (
     <div className="container stack gap-24" style={{ padding: '40px 24px 96px' }}>

@@ -19,8 +19,17 @@ FROM deps AS build
 # has no effect, since the image is already built by then. They must be
 # ARGs available at build time (docker-compose `build.args` / `fly deploy
 # --build-arg`), not just runtime env vars.
+# The DEFAULTS matter as much as the values callers pass, because they are what
+# a build that forgets --build-arg actually ships. The previous pair
+# (USE_MOCK_API=false + API_URL=http://localhost:3001) was the one combination
+# that cannot work anywhere: the real client is enabled, pointed at a host that
+# does not exist inside the container or from a user's browser, so every request
+# fails on connection. Defaulting to the mock instead means a forgotten build
+# arg produces an obviously-fake-but-working demo rather than a silently broken
+# deployment. docker-compose.yml and both fly.toml files set these explicitly,
+# so the real deployments are unaffected.
 ARG NEXT_PUBLIC_API_URL=http://localhost:3001
-ARG NEXT_PUBLIC_USE_MOCK_API=false
+ARG NEXT_PUBLIC_USE_MOCK_API=true
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_USE_MOCK_API=$NEXT_PUBLIC_USE_MOCK_API
 COPY tsconfig.base.json ./

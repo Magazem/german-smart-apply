@@ -107,6 +107,9 @@
     "saveSearchError": "Diese Suche konnte nicht gespeichert werden.",
     "searching": "Suche läuft…",
     "resultCount": "{count, plural, =0 {Keine Jobs gefunden} one {# Job gefunden} other {# Jobs gefunden}}",
+    "loadError": "Stellen konnten gerade nicht geladen werden.",
+    "loadErrorCount": "Ergebnisse konnten nicht geladen werden",
+    "retry": "Erneut versuchen",
     "noResults": "Keine Jobs entsprechen diesen Filtern. Versuchen Sie, sie zu lockern."
   },
   "JobCard": {

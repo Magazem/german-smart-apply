@@ -54,6 +54,31 @@ export function createAiProvider(
     console.log('[ai] using AnthropicAiProvider');
     return new AnthropicAiProvider(marketPack);
   }
-  console.log('[ai] using MockAiProvider (no OPENROUTER_API_KEY or ANTHROPIC_API_KEY set)');
+  // Fail closed in production rather than silently serving canned text as a
+  // real candidate's cover letter.
+  //
+  // MockAiProvider returns fixed templates ("Dear Hiring Team, I am writing to
+  // apply for the <title> role at <company>...") and, on Pro variant styles, a
+  // literal "(concise variant: trimmed to essentials)" marker. That output is
+  // persisted as a real ApplicationDraft, advances the application to
+  // draft_ready, is approvable, and exports to PDF. `modelUsed: 'mock'` is
+  // stored but rendered nowhere in the web app, so nothing distinguished it from
+  // a real generation. Both keys are documented as optional and ship blank, so a
+  // deploy that simply forgot `fly secrets set` produced exactly this.
+  //
+  // ALLOW_MOCK_AI=true is the explicit opt-in for the cases that legitimately
+  // want the mock in a production-like NODE_ENV (e.g. a demo instance).
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_MOCK_AI !== 'true') {
+    throw new Error(
+      'No AI provider configured: set OPENROUTER_API_KEY or ANTHROPIC_API_KEY. ' +
+        'Refusing to fall back to MockAiProvider in production, because its canned ' +
+        'template text would be shown to users as their tailored CV and cover letter. ' +
+        'Set ALLOW_MOCK_AI=true if a mock-backed production deployment is genuinely intended.',
+    );
+  }
+  console.warn(
+    '[ai] WARNING: using MockAiProvider (no OPENROUTER_API_KEY or ANTHROPIC_API_KEY set). ' +
+      'Generated CVs and cover letters will be canned placeholder text, not real output.',
+  );
   return new MockAiProvider();
 }
