@@ -550,6 +550,29 @@ step has passing tests"* — is not enforced by any automation. Combined with 5.
 here only because adding CI is outside "review and fix core-path bugs" — it's your
 call, not mine to slip into a review PR.
 
+### 5.1b The worker test suite requires an EMPTY database, not merely a Postgres
+`workers/tests/test_e2e_pipeline.py:61` and throughout
+
+The suite asserts **absolute** row counts — `SELECT COUNT(*) FROM
+raw_job_snapshots` is compared against `3`, etc. — so it can only pass against a
+freshly-migrated, empty schema. Pointed at a copy of the production corpus it fails
+immediately with `assert 19606 == 3`, and the seed fixtures become slow enough
+(they re-run `seed_sources` + `seed_company_aliases` per test against a populated
+table) to look like a hang: the same subset that completes in **6 seconds** on an
+empty database was still in its early tests after **50 minutes** against a
+production clone.
+
+Nothing documents this. `run_pipeline.py`'s docstring says only "Requires
+DATABASE_URL to point at a real Postgres instance", and `conftest.py`'s `pg_conn`
+docstring promises tests "can be re-run indefinitely without unique-constraint
+conflicts" — true for residue the suite itself creates, but not for pre-existing
+data.
+
+**Fix shape:** either scope the assertions (count rows created by *this* test,
+e.g. by tagging fixtures, rather than counting the whole table), or have the
+fixture assert the database is empty up front and fail with a clear message. The
+second is a five-line change and would have saved the confusion above.
+
 ### 5.2 `pnpm test` is red before any database is involved
 `apps/api/src/applications/application-pdf.test.ts` — 2 of 3 tests fail with
 `bad XRef entry` and `FormatError: Illegal character: 41`: the generated PDF is not
@@ -562,15 +585,38 @@ workaround *"measurably reduces (though does not eliminate)"* it. The docstring
 names the real fix: move off pdfkit's programmatic drawing to an HTML/CSS-templated
 renderer.
 
+**[measured]** Worse than "2 unit tests" once a database is available: the same
+defect also fails **`test/applications.e2e-spec.ts > PDF export > draftId selection
+> exports a specific draft variant by draftId`** with the identical
+`bad XRef entry`. So the corruption breaks a real end-to-end export path, not just
+a synthetic unit assertion — and it is the **only** thing failing in the entire API
+suite (3 of 313 tests, all three this one bug).
+
 PDF export is Phase 3, so it's deferred — but it means the suite cannot be used as
 a green/red signal until either the renderer is replaced or these tests are
 explicitly quarantined.
 
-### 5.3 Every API e2e spec hard-fails without a live Postgres
-All 11 files in `apps/api/test/` boot the full Nest graph against a real local
-Postgres (`test-app.ts:12-18`) with **no skip guard** — so without a DB they don't
-skip, they error: 12 failed files, 124 skipped tests. `packages/db`'s
+### 5.2b `applications.e2e-spec.ts` carries mutable state across tests
+`apps/api/test/applications.e2e-spec.ts:431-435`
+
+The `draftId selection` block's `beforeAll` depends on the user having been
+upgraded to Pro by an *earlier test in the same file* — its own comment says so:
+"accessToken's user became Pro earlier in this file". So any filtered or sharded
+run (`vitest -t …`, or parallelising spec files by test) fails with a confusing
+`403 Forbidden` on a draft request that looks unrelated to billing. Grant the tier
+in the block's own setup instead.
+
+### 5.3 Every API e2e spec hard-fails without a live Postgres instead of skipping
+All 11 files in `apps/api/test/` boot the full Nest graph against a real Postgres
+(`test-app.ts:12-18`) with **no skip guard** — so without a DB they don't skip, they
+error: 12 failed files, 124 tests never run. `packages/db`'s
 `schema.integration.test.ts` has the same problem in `beforeAll`/`afterAll`.
+
+**[measured]** Given a database, all of it works: **310 of 313 API tests pass**, and
+the 3 failures are all the pdfkit defect (5.2). So the specs themselves are sound —
+the only defect is that their absence of a guard makes `pnpm test` misleadingly red
+for any developer without Postgres, which is how the PDF failures stayed
+unremarkable.
 
 Add a `DATABASE_URL`-reachability check that skips the suite with a clear message,
 so a developer without Docker can still get a meaningful signal from `pnpm test`.
