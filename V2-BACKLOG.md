@@ -14,11 +14,17 @@ Everything here is a real defect or a real gap, verified in code, with a file
 reference. Nothing in this file is a style opinion. Items fixed on the core path
 are **not** listed here — see the PR description for those.
 
-**Review caveat:** no Docker/Postgres was available in the review environment, so
-nothing below was verified against a running stack. All API e2e specs and
-`packages/db`'s integration test require a live Postgres and could not run.
-Findings are code-verified; frequency claims that depend on real crawled data
-are marked as such.
+**Verification status:** initially written as a static review (no local
+Postgres). Afterwards, the findings were re-checked against the **real production
+corpus** via a throwaway Neon branch — 13,103 `canonical_jobs` from 15,385
+`raw_jobs` across 5 sources. Measured numbers are inlined below and marked
+**[measured]**. Two findings were **downgraded** as a result (see 2.7); several
+were confirmed as larger than estimated.
+
+Corpus snapshot at time of review: smartrecruiters 7,791 · personio 2,179 ·
+greenhouse 1,761 · arbeitsagentur 1,220 · lever 152 · stepstone 0. 12,902 visible,
+201 hidden by near-dup clustering, 179 merge survivors, **1,552 `raw_jobs` still
+awaiting dedup**.
 
 ---
 
@@ -36,6 +42,9 @@ Trust tier maps `high→0.9, medium→0.6, low→0.3`. Every job-producing sourc
 `medium` source (stepstone) ships zero jobs. So every row in `canonical_jobs` gets
 exactly `0.9`, and `ranking.service.ts:153` weights an identical additive constant
 across every job.
+
+**[measured]** Confirmed exactly: **all 13,103 rows have `sourceTrustScore = 0.9`**
+— a single distinct value, zero variance. The dimension orders nothing.
 
 **Why deferred:** giving this real variance is a market-data and scoring-weights
 exercise (per-source reliability history, response-rate signal), not a bug fix. It
@@ -59,8 +68,11 @@ Two independent reasons, both code-level:
   `"Please send us\nyour IBAN"` and never matches — which is exactly the real-world
   shape. The phrases are also English against a mostly-German corpus.
 
-Result: `canonical_jobs.scamRiskScore` is a constant `0.0`, so
-`ranking.service.ts:160`'s `riskPenalty` term is always zero.
+**[measured]** Very nearly confirmed, with one correction: **13,099 of 13,103 rows
+score exactly `0.0`, and 4 rows score `0.35`** — so the heuristics are not quite
+*incapable* of firing as the code reading suggested, but at 0.03% hit rate they are
+inert in practice. `ranking.service.ts:160`'s `riskPenalty` term is zero for
+99.97% of the corpus.
 
 **Note:** the `re.DOTALL` half of this is a genuine one-line bug and is a good
 first candidate to pull forward. It was left here because fixing the regex alone
@@ -83,6 +95,9 @@ crawls ~41 search terms of which 30 are non-tech (Pflegefachkraft,
 Einzelhandelskaufmann, Erzieher, Buchhalter, …). Verified by execution:
 `extract_tech_stack_tags("Pflegefachkraft", "Wir suchen eine Pflegefachkraft.")`
 → `[]`.
+
+**[measured]** Larger than estimated: **11,765 of 13,103 rows (89.8%) have an empty
+`techStackTags` array**, so the stack filter can reach only ~10% of the corpus.
 
 This does **not** break the `skillOverlap` ranking dimension —
 `skill-matching.ts:156` falls back to whole-word matching against
@@ -122,10 +137,22 @@ Dresden, Hannover, Bremen, Essen, Dortmund all miss it too. Treating every miss 
 "unknown country" would drop the majority of genuinely German listings out of a
 DE-filtered search, a worse failure than the one being fixed.
 
+**[measured]** **All 13,103 rows carry `countryCode = 'DE'`** — a single distinct
+value, confirming the field could not express anything else. Of those, **at least
+616 (4.7%) name a foreign country outright in `locationRaw`** and are now fixed by
+the core-path change: real examples from the corpus include `Rochester, NY, United
+States`, `Abbotsford, British Columbia, Canada`, `Aguascalientes, AGUASCALIENTES`
+and `Alor Setar, Kedah`. 616 is a **lower bound** — it only counts strings with an
+explicit country segment, which is exactly the subset the fix handles. Bare foreign
+city names are still miscounted and still misclassified.
+
 **Proper fix:** a real city→country dataset (e.g. GeoNames cities500), not a longer
 hand-kept dictionary. Expanding `LOCATION_DICTIONARY` to the top ~200 German
 cities is a cheap partial improvement worth doing regardless — it also improves
-`cityFit`, which compares the candidate's city against `locationNormalized`.
+`cityFit`, which compares the candidate's city against `locationNormalized`. The
+corpus shows why it matters: `locationRaw` is overwhelmingly
+`City, Bundesland` (`Aachen, NRW`, `Albstadt, BW`), none of which the 8-entry
+dictionary resolves.
 
 ### 2.3 Near-duplicate clustering can merge distinct roles when both descriptions are empty
 `workers/deduplicator/near_duplicates.py:41,81-86`
@@ -155,6 +182,15 @@ Verified: `infer_seniority("Softwareentwickler")` → `None`,
 an equality filter, so every NULL row is excluded. A user filtering for "senior"
 loses every German-titled posting.
 
+**[measured]** This is the single largest filter gap in the corpus: **9,520 of
+13,103 rows (72.7%) have `seniority = NULL`** and are therefore invisible to any
+seniority filter. Distribution of the rest: lead 1,353 · senior 1,100 · junior 464
+· intern 348 · principal 314 · mid 4. ("mid" at 4 rows is itself suspicious given
+it is the default assigned to profiles.) The substring bug fixed on the core path
+accounted for **26** wrongly-`intern` rows — e.g. `internal audit working student`,
+`legal counsel employment law international markets`, `internal logistic
+specialist` — so it was real but small next to the NULL problem.
+
 Note `seniority` is **not** a ranking input — `ranking.service.ts`'s `score()` never
 reads `job.seniority` or `profile.seniority` (it appears only in the
 `RankingProfileInput` type and `toRankingProfile`). So this affects the filter
@@ -180,6 +216,28 @@ is what `workers/Dockerfile`'s `CMD` runs on every scheduled tick, and it owns t
 per-source ordering, the commit boundaries, and the error handling. The
 whole-run-abort bug fixed on the core path lived here and no test could have caught
 it.
+### 2.7 Findings the production data DOWNGRADED — recorded so the severity isn't overstated later
+Measuring the real corpus corrected two claims that the code alone justified but
+the data does not. Both were still fixed on the core path (they are correct
+defensive changes), but neither was actively degrading anything:
+
+- **`postedAt` NULLs: zero.** All **13,103 of 13,103** rows have a non-null
+  `postedAt`. The reasoning was sound — the column is nullable, Postgres sorts
+  `NULLS FIRST` on `DESC`, the candidate pool is a hard 200-row cut, and
+  `recencyBoost` returns a flat 0.4 for null, which beats anything older than ~19
+  days — but in practice every configured source supplies a usable date. So the
+  `nulls: 'last'` ordering fix and the `crawledAt` fallback are **latent
+  protection, not a live repair**. They matter the moment a source starts omitting
+  dates (or a new adapter lands), which is why they were kept.
+- **Future-dated `postedAt`: zero.** No row has `postedAt > now()`, so the
+  Arbeitsagentur `eintrittsdatum` fallback was not in fact producing
+  future-dated rows in this corpus. Removing it prevents a real failure mode
+  (a perfect 1.0 recency plus the top of the pool) that had not yet occurred.
+
+Worth stating plainly because the reverse mistake is expensive: a reviewer reading
+only the code would rank these two above `countryCode` and `remoteType`, and the
+data says the opposite.
+
 
 ---
 
@@ -492,6 +550,29 @@ step has passing tests"* — is not enforced by any automation. Combined with 5.
 here only because adding CI is outside "review and fix core-path bugs" — it's your
 call, not mine to slip into a review PR.
 
+### 5.1b The worker test suite requires an EMPTY database, not merely a Postgres
+`workers/tests/test_e2e_pipeline.py:61` and throughout
+
+The suite asserts **absolute** row counts — `SELECT COUNT(*) FROM
+raw_job_snapshots` is compared against `3`, etc. — so it can only pass against a
+freshly-migrated, empty schema. Pointed at a copy of the production corpus it fails
+immediately with `assert 19606 == 3`, and the seed fixtures become slow enough
+(they re-run `seed_sources` + `seed_company_aliases` per test against a populated
+table) to look like a hang: the same subset that completes in **6 seconds** on an
+empty database was still in its early tests after **50 minutes** against a
+production clone.
+
+Nothing documents this. `run_pipeline.py`'s docstring says only "Requires
+DATABASE_URL to point at a real Postgres instance", and `conftest.py`'s `pg_conn`
+docstring promises tests "can be re-run indefinitely without unique-constraint
+conflicts" — true for residue the suite itself creates, but not for pre-existing
+data.
+
+**Fix shape:** either scope the assertions (count rows created by *this* test,
+e.g. by tagging fixtures, rather than counting the whole table), or have the
+fixture assert the database is empty up front and fail with a clear message. The
+second is a five-line change and would have saved the confusion above.
+
 ### 5.2 `pnpm test` is red before any database is involved
 `apps/api/src/applications/application-pdf.test.ts` — 2 of 3 tests fail with
 `bad XRef entry` and `FormatError: Illegal character: 41`: the generated PDF is not
@@ -504,15 +585,38 @@ workaround *"measurably reduces (though does not eliminate)"* it. The docstring
 names the real fix: move off pdfkit's programmatic drawing to an HTML/CSS-templated
 renderer.
 
+**[measured]** Worse than "2 unit tests" once a database is available: the same
+defect also fails **`test/applications.e2e-spec.ts > PDF export > draftId selection
+> exports a specific draft variant by draftId`** with the identical
+`bad XRef entry`. So the corruption breaks a real end-to-end export path, not just
+a synthetic unit assertion — and it is the **only** thing failing in the entire API
+suite (3 of 313 tests, all three this one bug).
+
 PDF export is Phase 3, so it's deferred — but it means the suite cannot be used as
 a green/red signal until either the renderer is replaced or these tests are
 explicitly quarantined.
 
-### 5.3 Every API e2e spec hard-fails without a live Postgres
-All 11 files in `apps/api/test/` boot the full Nest graph against a real local
-Postgres (`test-app.ts:12-18`) with **no skip guard** — so without a DB they don't
-skip, they error: 12 failed files, 124 skipped tests. `packages/db`'s
+### 5.2b `applications.e2e-spec.ts` carries mutable state across tests
+`apps/api/test/applications.e2e-spec.ts:431-435`
+
+The `draftId selection` block's `beforeAll` depends on the user having been
+upgraded to Pro by an *earlier test in the same file* — its own comment says so:
+"accessToken's user became Pro earlier in this file". So any filtered or sharded
+run (`vitest -t …`, or parallelising spec files by test) fails with a confusing
+`403 Forbidden` on a draft request that looks unrelated to billing. Grant the tier
+in the block's own setup instead.
+
+### 5.3 Every API e2e spec hard-fails without a live Postgres instead of skipping
+All 11 files in `apps/api/test/` boot the full Nest graph against a real Postgres
+(`test-app.ts:12-18`) with **no skip guard** — so without a DB they don't skip, they
+error: 12 failed files, 124 tests never run. `packages/db`'s
 `schema.integration.test.ts` has the same problem in `beforeAll`/`afterAll`.
+
+**[measured]** Given a database, all of it works: **310 of 313 API tests pass**, and
+the 3 failures are all the pdfkit defect (5.2). So the specs themselves are sound —
+the only defect is that their absence of a guard makes `pnpm test` misleadingly red
+for any developer without Postgres, which is how the PDF failures stayed
+unremarkable.
 
 Add a `DATABASE_URL`-reachability check that skips the suite with a clear message,
 so a developer without Docker can still get a meaningful signal from `pnpm test`.
