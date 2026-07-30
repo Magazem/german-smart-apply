@@ -65,7 +65,15 @@ export class JobsService {
     const candidates = await this.prisma.client.canonicalJob.findMany({
       where,
       include: { rawJob: { include: { source: true } } },
-      orderBy: { postedAt: 'desc' },
+      // `nulls: 'last'` is load-bearing, not cosmetic: postedAt is nullable
+      // and Postgres sorts NULLs FIRST on DESC, so a plain `postedAt: 'desc'`
+      // filled the CANDIDATE_POOL_SIZE pool with undated postings before any
+      // dated one was considered. Several adapters routinely leave postedAt
+      // null (the source doesn't publish a date), so on real crawled data
+      // that silently starved ranking of the recent jobs it is supposed to
+      // rank - the pool is a hard cut, so anything outside it can never be
+      // matched, no matter how good a fit it is.
+      orderBy: { postedAt: { sort: 'desc', nulls: 'last' } },
       take: CANDIDATE_POOL_SIZE,
     });
 

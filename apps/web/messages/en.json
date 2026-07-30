@@ -107,6 +107,9 @@
     "saveSearchError": "Could not save this search.",
     "searching": "Searching…",
     "resultCount": "{count, plural, =0 {No jobs found} one {# job found} other {# jobs found}}",
+    "loadError": "We couldn't load jobs right now.",
+    "loadErrorCount": "Could not load results",
+    "retry": "Try again",
     "noResults": "No jobs match these filters. Try loosening them."
   },
   "JobCard": {

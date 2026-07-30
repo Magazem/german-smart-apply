@@ -225,7 +225,15 @@ def extract_arbeitsagentur(payload: dict) -> dict:
         # original listing (what "View original listing" should open).
         "source_url": external_url or detail_url,
         "apply_url": detail_url,
-        "posted_at": payload.get("aktuelleVeroeffentlichungsdatum") or payload.get("eintrittsdatum"),
+        # `eintrittsdatum` is deliberately NOT a fallback here. It is the
+        # employment START date, routinely months in the FUTURE (this adapter's
+        # own docstring example pairs publication 2026-07-01 with eintrittsdatum
+        # 2026-08-01), so using it as "posted at" handed those rows a perfect
+        # recency score and the front of the postedAt-ordered candidate pool -
+        # the exact opposite of what the field means. A BA listing with no
+        # publication date now normalizes to NULL and picks up the crawledAt
+        # fallback in the dedup step, like every other undated posting.
+        "posted_at": payload.get("aktuelleVeroeffentlichungsdatum"),
         "employment_type_hint": None,
         "remote_hint": None,
     }

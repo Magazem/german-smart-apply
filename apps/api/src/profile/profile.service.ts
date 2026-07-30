@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@german-smart-apply/db';
+import { TARGET_ROLE_UNSET } from '@german-smart-apply/shared';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { UpdateProfileDto } from './dto/update-profile.dto.js';
 
@@ -29,7 +30,7 @@ export class ProfileService {
         // matching the same placeholder strategy cv.service.ts's own
         // prefillProfile already uses. The onboarding questions step's later
         // partial save overwrites these with the user's real answers.
-        targetRole: dto.targetRole ?? 'Not specified yet',
+        targetRole: dto.targetRole ?? TARGET_ROLE_UNSET,
         targetCountryCode: dto.targetCountryCode,
         preferredLanguage: dto.preferredLanguage,
         seniority: dto.seniority ?? 'mid',

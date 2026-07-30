@@ -30,6 +30,16 @@ const MS_PER_DAY = 1000 * 60 * 60 * 24;
 /** Statuses from which a candidate can plausibly still be waiting on a reply. */
 const FOLLOW_UP_ELIGIBLE_STATUSES: ApplicationStatus[] = ['applied', 'interview'];
 
+/**
+ * Prisma's unique-constraint error. Detected structurally rather than by
+ * importing Prisma.PrismaClientKnownRequestError, which is a runtime class from
+ * the generated client and awkward to narrow against in a type-only import
+ * setup - the code is the stable part of the contract.
+ */
+function isUniqueConstraintViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002';
+}
+
 @Injectable()
 export class ApplicationsService {
   private readonly logger = new Logger(ApplicationsService.name);
@@ -154,22 +164,37 @@ export class ApplicationsService {
       throw new ConflictException('An application for this job already exists');
     }
 
-    const application = await this.prisma.client.$transaction(
-      async (tx: Prisma.TransactionClient) => {
-        const created = await tx.application.create({
-          data: { userId, canonicalJobId: dto.jobId, status: 'new' },
-        });
-        await tx.applicationEvent.create({
-          data: {
-            applicationId: created.id,
-            fromStatus: null,
-            toStatus: 'new',
-            note: 'Application created',
-          },
-        });
-        return created;
-      },
-    );
+    let application;
+    try {
+      application = await this.prisma.client.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          const created = await tx.application.create({
+            data: { userId, canonicalJobId: dto.jobId, status: 'new' },
+          });
+          await tx.applicationEvent.create({
+            data: {
+              applicationId: created.id,
+              fromStatus: null,
+              toStatus: 'new',
+              note: 'Application created',
+            },
+          });
+          return created;
+        },
+      );
+    } catch (err) {
+      // The findUnique check above is outside this transaction, so two
+      // concurrent creates for the same (user, job) both pass it and the second
+      // one violates @@unique([userId, canonicalJobId]) - which surfaced as an
+      // unhandled Prisma P2002 and a 500. That is reachable in normal use, not
+      // just under load: the job-detail page fires create() on every mount, so a
+      // React double-mount or a double-click races itself. Map it to the same
+      // 409 the pre-check returns, so callers only have one case to handle.
+      if (isUniqueConstraintViolation(err)) {
+        throw new ConflictException('An application for this job already exists');
+      }
+      throw err;
+    }
     return toSharedApplication(application);
   }
 

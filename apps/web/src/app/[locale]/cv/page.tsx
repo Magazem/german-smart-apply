@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Application, ApplicationDraft, CandidateProfile, CanonicalJob, ParsedCvResult } from '@german-smart-apply/shared';
@@ -19,6 +19,8 @@ const SENIORITY_LABEL_KEYS: Record<string, string> = {
 
 export default function CvWorkspacePage() {
   const t = useTranslations('CvWorkspace');
+  // Re-parse output (summary + suggestions) is written in this language.
+  const locale = useLocale();
   const { loading: authLoading } = useRequireAuth();
   const { user } = useAuth();
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
@@ -155,7 +157,7 @@ export default function CvWorkspacePage() {
     setReparseMessage(null);
     try {
       const api = getApiClient();
-      const result = await api.cv.upload({ kind: 'file', file });
+      const result = await api.cv.upload({ kind: 'file', file, language: locale });
       const updated = await api.profile.update({
         ...(result.fullName ? { fullName: result.fullName } : {}),
         ...(result.email ? { email: result.email } : {}),

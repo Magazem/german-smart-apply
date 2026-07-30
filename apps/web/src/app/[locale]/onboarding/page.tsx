@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import type {
   Application,
@@ -34,6 +34,9 @@ export default function OnboardingPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const t = useTranslations('Onboarding');
+  // The parsed candidate summary and CV suggestions come back written in this
+  // language - see CvUploadInput.language.
+  const locale = useLocale();
 
   const [step, setStep] = useState<Step>(1);
   const [cvMode, setCvMode] = useState<'file' | 'text'>('file');
@@ -79,14 +82,14 @@ export default function OnboardingPage() {
           setParsing(false);
           return;
         }
-        result = await api.cv.upload({ kind: 'file', file });
+        result = await api.cv.upload({ kind: 'file', file, language: locale });
       } else {
         if (!cvText.trim()) {
           setCvError(t('pasteTextError'));
           setParsing(false);
           return;
         }
-        result = await api.cv.upload({ kind: 'text', text: cvText });
+        result = await api.cv.upload({ kind: 'text', text: cvText, language: locale });
       }
       setParsedCv(result);
       if (result.fullName) {
@@ -132,7 +135,20 @@ export default function OnboardingPage() {
       setTopJobs(jobs);
 
       if (jobs[0]) {
-        let app = await api.applications.create(jobs[0].job.jobId);
+        // Same non-idempotent create() the job-detail page already guards
+        // against: the real API 409s when an application for this job exists,
+        // while the mock is find-or-create. Unguarded, re-running onboarding -
+        // or having opened the top-matched job first, which auto-creates an
+        // application - rejected this whole handler, so the user was stuck on
+        // step 2 with a button that failed every time, profile already saved.
+        let app: Application;
+        try {
+          app = await api.applications.create(jobs[0].job.jobId);
+        } catch {
+          const existing = (await api.applications.list()).find((a) => a.jobId === jobs[0].job.jobId);
+          if (!existing) throw new Error(t('answersGenericError'));
+          app = existing;
+        }
         // A fresh application starts "new" against the real API; draft
         // generation requires "viewed"/"saved" first. The mock client
         // fast-forwards create() straight to "viewed" internally (and
@@ -202,7 +218,13 @@ export default function OnboardingPage() {
                 id="cv-file"
                 ref={fileInputRef}
                 type="file"
-                accept=".txt,.pdf,.md"
+                // Must match CvService.SUPPORTED_MIME_TYPES (PDF / DOCX /
+                // text-plain). This previously offered ".md", which the API
+                // rejects with a 400, and omitted ".docx", which it accepts -
+                // so the first step of onboarding invited the one format that
+                // cannot work and hid a common CV format that can. The /cv
+                // page already had the right list.
+                accept=".pdf,.docx,.txt"
                 className="input"
                 data-testid="cv-file-input"
               />

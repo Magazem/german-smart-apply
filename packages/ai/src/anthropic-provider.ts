@@ -317,6 +317,16 @@ function extractText(message: Anthropic.Message, context: string): string {
       'malformed_response',
     );
   }
+  // See the matching guard in openrouter-provider.ts: stop_reason was only ever
+  // used to decorate error messages, so a draft cut off at the token ceiling was
+  // persisted and approved as if it were complete.
+  if (message.stop_reason === 'max_tokens') {
+    throw new AiProviderError(
+      `${context}: model output was truncated at the token limit (stop_reason=max_tokens), so the ` +
+        `result is incomplete and must not be presented as a finished draft`,
+      'malformed_response',
+    );
+  }
   return text;
 }
 

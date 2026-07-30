@@ -1,17 +1,12 @@
+import { REMOTE_TYPES, SENIORITIES, SOURCE_TYPES } from '@german-smart-apply/shared';
 import { Transform, Type } from 'class-transformer';
 import { IsArray, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
-const REMOTE_TYPES = ['onsite', 'hybrid', 'remote'];
-const SENIORITIES = ['intern', 'junior', 'mid', 'senior', 'lead', 'principal'];
-const SOURCE_TYPES = [
-  'greenhouse',
-  'lever',
-  'ashby',
-  'teamtailor',
-  'successfactors',
-  'arbeitsagentur',
-  'stepstone',
-];
+// Imported from @german-smart-apply/shared rather than re-declared here. The
+// local copies these replace had fallen behind: SOURCE_TYPES was missing
+// 'personio' and 'smartrecruiters', so a filter on either - both shipped
+// adapters, both listed in shared's SourceType - was rejected with a 400
+// naming them as invalid values.
 
 function toArray(value: unknown): string[] | undefined {
   if (value === undefined || value === null || value === '') return undefined;

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from dateutil import parser as date_parser
 
@@ -38,11 +38,31 @@ def _to_utc_naive(value: datetime) -> datetime:
     return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+def _reject_future(value: datetime | None) -> datetime | None:
+    """Drop a postedAt that claims to be in the future.
+
+    A publication date later than now is not a fresh posting, it is bad data -
+    and both recency consumers reward it maximally rather than distrusting it:
+    RankingService.recencyBoost returns a hard 1.0 for a negative age, and the
+    candidate pool is ordered by postedAt DESC, so future-dated rows sort above
+    every real posting. Returning None routes them through the same
+    crawledAt fallback as any other undated job.
+
+    A small tolerance absorbs clock skew between the source and this machine
+    without letting a genuinely wrong date (days or months out) through.
+    """
+    if value is None:
+        return None
+    if value > datetime.utcnow() + timedelta(days=1):
+        return None
+    return value
+
+
 def _parse_datetime(value) -> datetime | None:
     if not value:
         return None
     if isinstance(value, datetime):
-        return _to_utc_naive(value)
+        return _reject_future(_to_utc_naive(value))
     text = str(value)
     try:
         # dateutil's dayfirst flag isn't scoped to genuinely-ambiguous inputs
@@ -53,9 +73,49 @@ def _parse_datetime(value) -> datetime | None:
         # pipeline's designated market, market_de, uses that convention) are
         # actually ambiguous, so dayfirst is scoped to just that shape.
         parsed = date_parser.parse(text, dayfirst=bool(_DOTTED_DATE_RE.match(text)))
-        return _to_utc_naive(parsed)
+        return _reject_future(_to_utc_naive(parsed))
     except (ValueError, TypeError, OverflowError):
         return None
+
+
+# Keys from extract_common_fields() that land in a NOT NULL text column on
+# raw_jobs (see _RAW_JOB_COLUMNS and schema.prisma's RawJob).
+_REQUIRED_TEXT_KEYS = (
+    "original_job_id",
+    "source_url",
+    "company_name_raw",
+    "job_title_raw",
+    "description_text",
+    "location_raw",
+    "apply_url",
+)
+
+
+def _coerce_required_text(common: dict) -> dict:
+    """Replace None with "" for every field bound for a NOT NULL text column.
+
+    The adapters guard with `payload.get(key, "")`, which does NOT protect
+    against a key that is *present* with value None - and that is exactly what
+    the XML adapters produce: personio's `_position_to_dict` builds its dict
+    from `text_of()`, which returns None both for a missing tag and for an
+    empty one (`<office></office>`). So `payload.get("office", "")` returned
+    None, `locationRaw`/`jobTitleRaw` went to the INSERT as NULL, and Postgres
+    rejected the row.
+
+    That failure was not contained: run_pipeline.py had no per-source error
+    isolation, so one malformed posting out of ~100 Personio tenants aborted
+    the whole invocation before run_dedup() and near-duplicate clustering ever
+    ran - no source got its canonical_jobs updated that tick, and the next
+    scheduled run hit the same payload again. (That second half is fixed in
+    run_pipeline.py; this is the first half.)
+
+    Normalizing here rather than in each adapter keeps the guarantee in one
+    place and extends it to adapters added later. "" is the right value, not a
+    sentinel: normalize_location() already degrades "" to "Unknown", and the
+    empty-title case is caught by the caller's own skip.
+    """
+    return {key: (common.get(key) or "") if key in _REQUIRED_TEXT_KEYS else value
+            for key, value in {**{k: None for k in _REQUIRED_TEXT_KEYS}, **common}.items()}
 
 
 def build_raw_job_fields(
@@ -68,7 +128,7 @@ def build_raw_job_fields(
     (everything except id/sourceId, which the caller/DB layer own).
     """
     location_dictionary = location_dictionary or market_de.LOCATION_DICTIONARY
-    common = extract_common_fields(source_type, payload)
+    common = _coerce_required_text(extract_common_fields(source_type, payload))
 
     company_normalized = fields.normalize_company_name(common["company_name_raw"])
     title_normalized = fields.normalize_job_title(common["job_title_raw"])
@@ -83,7 +143,9 @@ def build_raw_job_fields(
     )
     language = fields.detect_language(common["description_text"] or common["job_title_raw"])
     seniority = fields.infer_seniority(common["job_title_raw"])
-    remote_type = fields.infer_remote_type(common["location_raw"], common.get("remote_hint"))
+    remote_type = fields.infer_remote_type(
+        common["location_raw"], common.get("remote_hint"), common["description_text"]
+    )
     employment_type = fields.infer_employment_type(
         common["job_title_raw"], common["description_text"], common.get("employment_type_hint")
     )
@@ -134,11 +196,40 @@ def upsert_raw_job(cur, source_id: str, row_fields: dict) -> str:
     update_clause = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in _RAW_JOB_COLUMNS)
     values = [row_id, source_id] + [row_fields[c] for c in _RAW_JOB_COLUMNS]
 
+    # Did any normalized value actually change? Every expression in a DO UPDATE
+    # SET list is evaluated against the OLD row, so comparing "raw_jobs".<col>
+    # against EXCLUDED.<col> here is a true before/after comparison even though
+    # update_clause overwrites those same columns in the same statement.
+    old_row = ", ".join(f'"raw_jobs"."{c}"' for c in _RAW_JOB_COLUMNS)
+    new_row = ", ".join(f'EXCLUDED."{c}"' for c in _RAW_JOB_COLUMNS)
+    content_changed = f"(({old_row}) IS DISTINCT FROM ({new_row}))"
+
+    # Resetting isDeduplicated is what makes an EDITED posting propagate.
+    # dedup.fetch_undeduplicated_raw_jobs() only ever picks up rows with
+    # isDeduplicated = false, and nothing set it back to false, so once a job
+    # had been deduped its canonical_jobs row was frozen forever. The normalizer
+    # kept refreshing raw_jobs, so a posting that changed title or disclosed a
+    # salary produced a visible split: search hard-filters and the match score
+    # ran against the day-one jobTitleNormalized/salaryMin/techStackTags from
+    # canonical_jobs, while the UI showed the fresh jobTitleRaw and description
+    # read from raw_jobs (see canonical-job.mapper.ts, which reads normalized
+    # fields from one table and raw fields from the other).
+    #
+    # Gated on content_changed rather than unconditional: re-deduping every
+    # unchanged job on every 4-hourly run would be pure waste, and the crawler
+    # already re-fetches every job every run.
+    #
+    # crawledAt moves with it, so it means last-seen rather than first-seen.
     cur.execute(
         f"""
         INSERT INTO "raw_jobs" ({", ".join(columns)})
         VALUES ({", ".join(placeholders)})
-        ON CONFLICT ("sourceId", "originalJobId") DO UPDATE SET {update_clause}
+        ON CONFLICT ("sourceId", "originalJobId") DO UPDATE SET
+            {update_clause},
+            "isDeduplicated" = CASE WHEN {content_changed}
+                THEN false ELSE "raw_jobs"."isDeduplicated" END,
+            "crawledAt" = CASE WHEN {content_changed}
+                THEN now() ELSE "raw_jobs"."crawledAt" END
         RETURNING "id"
         """,
         values,

@@ -330,6 +330,20 @@ describe('AnthropicAiProvider', () => {
       });
     });
 
+    it('rejects a draft truncated at the token limit instead of persisting it as complete', async () => {
+      // stop_reason was previously only used to decorate error messages, so a CV
+      // cut off mid-sentence was written to ApplicationDraft.cvVariantText,
+      // advanced the application to draft_ready, and reached the exported PDF.
+      const { client } = fakeClient(() =>
+        textMessage('Jane Doe - Senior Backend Engineer, led a team of', { stop_reason: 'max_tokens' }),
+      );
+      const provider = new AnthropicAiProvider(testMarketPack, { client });
+
+      await expect(provider.generateCvVariant(profile, job, 'en')).rejects.toMatchObject({
+        code: 'malformed_response',
+      });
+    });
+
     it('omits any variant-style instruction from the system prompt by default (standard)', async () => {
       const { client, create } = fakeClient(() => textMessage('CV text'));
       const provider = new AnthropicAiProvider(testMarketPack, { client });

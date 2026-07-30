@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
-import type { CandidateProfile } from '@german-smart-apply/shared';
+import { hasCompletedOnboarding, type CandidateProfile } from '@german-smart-apply/shared';
 import { DEMO_EMAIL, DEMO_PASSWORD, getApiClient, isMockApi } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 
@@ -49,7 +49,9 @@ export default function LoginPage() {
     } catch {
       // Swallowed deliberately - see comment above.
     }
-    router.push(profile?.targetRole ? '/dashboard' : '/onboarding');
+    // See hasCompletedOnboarding(): a placeholder targetRole must route back
+    // into onboarding, not to the dashboard.
+    router.push(hasCompletedOnboarding(profile) ? '/dashboard' : '/onboarding');
   };
 
   const onSubmit = async (e: FormEvent) => {

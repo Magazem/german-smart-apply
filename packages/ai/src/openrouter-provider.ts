@@ -234,6 +234,25 @@ function extractText(completion: OpenAI.ChatCompletion, context: string): string
     );
   }
 
+  // Truncation is a failure, not a success with less text. finish_reason was
+  // previously read only to decorate the two error messages above, so a
+  // response that hit the token ceiling mid-sentence ("...led a team of" + EOF)
+  // was returned as a completed draft: written to
+  // ApplicationDraft.cvVariantText, advancing the application to draft_ready,
+  // passing the approval modal, and landing in the exported PDF. With
+  // max_tokens 3072 for the CV and 1536 for the cover letter, a long profile
+  // reaches that ceiling on ordinary input, not just pathological input.
+  //
+  // Checked last so a truncated-AND-empty response still reports the more
+  // specific empty-content error above.
+  if (completion.choices[0]?.finish_reason === 'length') {
+    throw new AiProviderError(
+      `${context}: model output was truncated at the token limit (finish_reason=length), so the ` +
+        `result is incomplete and must not be presented as a finished draft`,
+      'malformed_response',
+    );
+  }
+
   return text;
 }
 
