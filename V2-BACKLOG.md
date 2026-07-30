@@ -210,6 +210,30 @@ The `ON CONFLICT DO UPDATE` clause doesn't touch `crawledAt`, so
 path reads it today (recency uses `postedAt`), but it makes "how fresh is this
 listing" unanswerable and would mislead any future staleness logic.
 
+### 2.5b Near-duplicate clustering's memory footprint is O(all visible jobs) — now on a 512mb machine
+`workers/deduplicator/near_duplicates.py:111-129`, `workers/fly.toml`
+
+`run_near_duplicate_clustering` does a single `fetchall()` of every visible job in
+the country **including full `jobDescriptionText`**, then `_shingles` expands each
+description into a set of 3-word shingles — several times the raw text size again.
+The column list has already been trimmed to the minimum, and the module docstring
+is explicit that the O(all visible jobs) fetch is a known simplification (an
+incremental rescan would need a schema change).
+
+At **~12,900 visible jobs** this is the largest allocation in the pipeline, and the
+worker machine was deliberately set back to **512mb** — a value not backed by a
+peak-memory measurement, because the pipeline had been crashing before this stage
+ran at all. So this is now a live risk rather than a theoretical one.
+
+**Watch for:** a run that logs `[dedup]` but never `[near-dedup]`, or an
+out-of-memory kill in `fly logs --app german-smart-apply-workers`.
+
+**Durable fix:** bound the query — iterate one `(resolved company key, location)`
+bucket at a time, which is already the only scope comparisons happen within, so
+nothing about the algorithm changes. That makes peak memory a function of the
+largest single bucket rather than the whole corpus, and stops the limit mattering
+as the corpus grows. Preferable to raising the machine size again.
+
 ### 2.6 `run_pipeline.py` — the production entrypoint — has no test coverage
 Its own docstring says so: *"This script is NOT exercised by the pytest suite."* It
 is what `workers/Dockerfile`'s `CMD` runs on every scheduled tick, and it owns the

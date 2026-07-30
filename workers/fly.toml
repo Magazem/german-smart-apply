@@ -23,13 +23,29 @@ primary_region = 'fra'
   dockerfile = 'Dockerfile'
 
 [[vm]]
-  # Bumped from 512mb: run_pipeline.py loads canonical_jobs' full
-  # descriptions for the whole country into memory once per run in
-  # near_duplicates.py (see that module's docstring - it's O(all visible
-  # jobs), by design, not a bug fixed here), and that pool only grows as
-  # more real jobs get crawled. 512mb was already tight for that; this is
-  # a safety margin, not a substitute for bounding the query itself.
+  # 512mb, deliberately chosen despite the history below - this is a one-shot
+  # batch machine that runs for a few minutes every 4 hours, so the difference
+  # in cost is small and so is the cost of a failed run.
+  #
+  # History worth knowing before changing this again: this was 512mb, was raised
+  # to 1024mb after an OOM, and is now back at 512mb. The OOM came from
+  # near_duplicates.py, which loads every visible job for the whole country -
+  # full description text included - into memory in one fetchall(), then expands
+  # each description into a set of 3-word shingles. That is O(all visible jobs)
+  # by design (see the module docstring), so the footprint grows with the corpus:
+  # ~12,900 visible jobs at the time of writing.
+  #
+  # This value is NOT backed by a peak-memory measurement. It could not be: the
+  # pipeline had been dying on a dropped database connection before the near-dup
+  # stage ever ran (fixed in common/db.py + scripts/run_pipeline.py), so recent
+  # logs show no OOM only because the memory-hungry stage was being skipped.
+  #
+  # If runs start failing, check `fly logs --app german-smart-apply-workers` for
+  # an out-of-memory kill, or for a run that logs [dedup] but never [near-dedup].
+  # The durable fix is to bound the query - process one (company, location)
+  # bucket at a time instead of the whole country - not to keep raising this
+  # number.
   size = 'shared-cpu-1x'
-  memory = '1024mb'
+  memory = '512mb'
   cpus = 1
-  memory_mb = 1024
+  memory_mb = 512
