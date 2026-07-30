@@ -11,10 +11,18 @@ these run without a Postgres instance - unlike most of this suite.
 """
 from __future__ import annotations
 
+import io
+import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from normalizer.fields import infer_remote_type, infer_seniority, normalize_location
-from normalizer.pipeline import _parse_datetime, build_raw_job_fields
+from normalizer.pipeline import (
+    _RAW_JOB_COLUMNS,
+    _parse_datetime,
+    build_raw_job_fields,
+    upsert_raw_job,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -166,3 +174,100 @@ def test_a_plain_onsite_description_stays_onsite():
 def test_description_is_optional_so_existing_callers_are_unaffected():
     assert infer_remote_type("Remote", None) == "remote"
     assert infer_remote_type("Berlin", None) == "onsite"
+
+
+# ---------------------------------------------------------------------------
+# Structural guards for the two raw-SQL write paths
+# ---------------------------------------------------------------------------
+# These are the highest-risk changes in this review and the ONLY ones that
+# cannot be covered without a live Postgres: the tests that would exercise them
+# (test_dedup, test_near_duplicates, test_e2e_pipeline) all require a database.
+# A mistake here is not a degraded ranking input - it is a dead ingestion
+# pipeline, or a silently wrong column mapping. So these assert the SQL's
+# *structure* instead, which is checkable in-process.
+
+class _CapturingCursor:
+    """Records the SQL upsert_raw_job builds, without executing it."""
+
+    def __init__(self) -> None:
+        self.sql: str | None = None
+        self.values: tuple | list | None = None
+
+    def execute(self, sql, values):
+        self.sql, self.values = sql, values
+
+    def fetchone(self):
+        return ("row-id",)
+
+
+def _captured_upsert() -> _CapturingCursor:
+    cur = _CapturingCursor()
+    upsert_raw_job(cur, "source-1", {c: None for c in _RAW_JOB_COLUMNS})
+    return cur
+
+
+def test_upsert_placeholder_count_matches_the_values_passed():
+    cur = _captured_upsert()
+    placeholders = cur.sql.split("VALUES (")[1].split(")")[0].count("%s")
+    assert placeholders == len(cur.values) == len(_RAW_JOB_COLUMNS) + 2  # + id + sourceId
+
+
+def test_upsert_change_detection_compares_equal_numbers_of_columns():
+    """The isDeduplicated reset hinges on a row-constructor comparison spanning
+    every content column. Unequal arity on the two sides is a SQL error, which
+    would fail EVERY job ingestion rather than degrading anything."""
+    cur = _captured_upsert()
+    match = re.search(r"\(\((.*?)\) IS DISTINCT FROM \((.*?)\)\)", cur.sql, re.S)
+    assert match is not None, "the content-changed comparison is missing"
+    left, right = match.group(1), match.group(2)
+    assert left.count(",") == right.count(",") == len(_RAW_JOB_COLUMNS) - 1
+
+
+def test_upsert_compares_the_existing_row_against_the_proposed_row():
+    """Left side must read the OLD row (by table name), right side the incoming
+    one (EXCLUDED). Getting this backwards, or comparing EXCLUDED to itself,
+    would make the comparison a constant and silently stop propagating edits."""
+    cur = _captured_upsert()
+    match = re.search(r"\(\((.*?)\) IS DISTINCT FROM \((.*?)\)\)", cur.sql, re.S)
+    assert match.group(1).strip().startswith('"raw_jobs"."')
+    assert match.group(2).strip().startswith('EXCLUDED."')
+
+
+def test_upsert_resets_is_deduplicated_and_refreshes_crawled_at_on_change():
+    cur = _captured_upsert()
+    assert '"isDeduplicated" = CASE WHEN' in cur.sql
+    assert 'THEN false ELSE "raw_jobs"."isDeduplicated" END' in cur.sql
+    assert '"crawledAt" = CASE WHEN' in cur.sql
+    assert 'THEN now() ELSE "raw_jobs"."crawledAt" END' in cur.sql
+
+
+def _canonical_fields_elements() -> list[str]:
+    source = io.open(Path(__file__).parent.parent / "deduplicator" / "dedup.py", encoding="utf-8").read()
+    block = source.split("canonical_fields = (", 1)[1]
+    depth, i = 1, 0
+    while depth > 0:
+        depth += {"(": 1, ")": -1}.get(block[i], 0)
+        i += 1
+    return [
+        line.strip().rstrip(",")
+        for line in block[: i - 1].splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def test_canonical_fields_arity_matches_both_dedup_statements():
+    """canonical_fields is splatted positionally into two hand-written
+    statements, so an inserted or removed element shifts every value after it
+    onto the wrong column - with no error if the types happen to line up.
+    Both statements take 19 placeholders: the UPDATE as 1 + N + 1 (rawJobId,
+    fields, WHERE id) and the INSERT as 2 + N (id, rawJobId, fields)."""
+    assert len(_canonical_fields_elements()) == 17
+
+
+def test_posted_at_falls_back_to_crawled_at_in_the_persisted_canonical_row():
+    """The fallback has to be PERSISTED, not just used for dedup's internal sort
+    key - a NULL postedAt sorts ahead of every dated row in the candidate pool
+    and scores a flat 0.4 recency."""
+    elements = _canonical_fields_elements()
+    posted_at = [e for e in elements if e.startswith('canonical_pick["postedAt"]')]
+    assert posted_at == ['canonical_pick["postedAt"] or canonical_pick["crawledAt"]']
