@@ -271,3 +271,104 @@ def test_posted_at_falls_back_to_crawled_at_in_the_persisted_canonical_row():
     elements = _canonical_fields_elements()
     posted_at = [e for e in elements if e.startswith('canonical_pick["postedAt"]')]
     assert posted_at == ['canonical_pick["postedAt"] or canonical_pick["crawledAt"]']
+
+
+# ---------------------------------------------------------------------------
+# Connection loss mid-run must cost one source, not the whole invocation
+# ---------------------------------------------------------------------------
+# This is the failure mode observed in production: a crawl spends most of its
+# wall-clock time in HTTP fetches (greenhouse alone fetched 1,541 jobs in one
+# run), the single long-lived connection goes idle at the TCP level, the managed
+# Postgres reaps it, and the next statement dies with "SSL connection has been
+# closed unexpectedly". The run then aborted before dedup, which is why
+# raw_jobs accumulated 1,552 rows still marked isDeduplicated = false.
+
+import psycopg2
+
+from common import db as db_module
+
+
+class _DeadConnection:
+    """A connection whose server has gone away: every use raises, as psycopg2
+    does once the socket is gone, and rollback() raises InterfaceError."""
+
+    closed = 0
+
+    def cursor(self, *a, **k):
+        raise psycopg2.OperationalError('SSL connection has been closed unexpectedly')
+
+    def rollback(self):
+        raise psycopg2.InterfaceError('connection already closed')
+
+    def close(self):
+        raise psycopg2.InterfaceError('connection already closed')
+
+
+class _LiveConnection:
+    closed = 0
+
+    def __init__(self):
+        self.rolled_back = False
+
+    def cursor(self, *a, **k):
+        class C:
+            def __enter__(self_inner): return self_inner
+            def __exit__(self_inner, *a): return False
+            def execute(self_inner, *a, **k): return None
+        return C()
+
+    def rollback(self):
+        self.rolled_back = True
+
+
+def test_is_usable_is_false_for_a_connection_whose_server_went_away():
+    assert db_module.is_usable(_DeadConnection()) is False
+
+
+def test_is_usable_is_true_for_a_live_connection():
+    assert db_module.is_usable(_LiveConnection()) is True
+
+
+def test_is_usable_handles_none_and_self_closed():
+    assert db_module.is_usable(None) is False
+    closed = _LiveConnection()
+    closed.closed = 1
+    assert db_module.is_usable(closed) is False
+
+
+def test_recover_connection_rolls_back_a_live_connection_and_keeps_it():
+    from scripts.run_pipeline import _recover_connection
+
+    live = _LiveConnection()
+    assert _recover_connection(live) is live
+    assert live.rolled_back is True
+
+
+def test_recover_connection_reconnects_when_the_connection_is_dead(monkeypatch):
+    """The important one: recovery must not re-raise. A bare conn.rollback() in
+    the per-source handler raises InterfaceError when the connection is what
+    died, which escapes the handler and aborts the run - exactly the behaviour
+    the per-source isolation exists to prevent."""
+    from scripts import run_pipeline
+
+    replacement = _LiveConnection()
+    monkeypatch.setattr(run_pipeline.db, 'connect', lambda *a, **k: replacement)
+
+    recovered = run_pipeline._recover_connection(_DeadConnection())
+    assert recovered is replacement
+
+
+def test_connect_requests_tcp_keepalives(monkeypatch):
+    """Root-cause guard: without keepalives the connection is reaped while the
+    crawler is busy doing HTTP, which is what produced the outage."""
+    captured = {}
+
+    def fake_connect(dsn, **kwargs):
+        captured['dsn'] = dsn
+        captured['kwargs'] = kwargs
+        return _LiveConnection()
+
+    monkeypatch.setattr(db_module.psycopg2, 'connect', fake_connect)
+    db_module.connect('postgresql://example/db')
+    assert captured['kwargs']['keepalives'] == 1
+    assert captured['kwargs']['keepalives_idle'] > 0

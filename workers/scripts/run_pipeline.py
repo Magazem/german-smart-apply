@@ -71,30 +71,72 @@ def main() -> int:
             try:
                 _crawl_and_normalize(conn, client, source_row)
             except Exception as exc:  # noqa: BLE001 - one bad source must not stop the rest
-                conn.rollback()
                 failures.append(f"{source_row['sourceType']}: {exc}")
                 print(f"[error] {source_row['sourceType']} failed, continuing: {exc!r}")
+                # Recover the connection, don't just roll back. A bare
+                # conn.rollback() here raises InterfaceError("connection already
+                # closed") whenever the failure WAS the connection dying - which
+                # is the actual production failure mode (a dropped Neon
+                # connection mid-crawl) - so the rollback itself would escape
+                # this handler and abort the run, defeating the isolation it
+                # exists to provide. That is precisely how dedup got skipped and
+                # left raw_jobs stranded at isDeduplicated = false.
+                conn = _recover_connection(conn)
 
-        dedup_result = run_dedup(conn)
-        conn.commit()
-        print(f"[dedup] {dedup_result}")
-
-        near_dup_result = run_near_duplicate_clustering(conn)
-        conn.commit()
-        print(f"[near-dedup] {near_dup_result}")
+        # Each stage guarded separately: near-dup clustering is the memory- and
+        # time-hungry one, and losing it should not also discard exact dedup's
+        # committed work.
+        for label, stage in (("dedup", run_dedup), ("near-dedup", run_near_duplicate_clustering)):
+            try:
+                result = stage(conn)
+                conn.commit()
+                print(f"[{label}] {result}")
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"{label}: {exc}")
+                print(f"[error] {label} failed: {exc!r}")
+                conn = _recover_connection(conn)
 
         if failures:
-            # Dedup has already run, so the run's useful work is committed -
-            # but exit non-zero so a partial failure is still visible to the
-            # scheduler instead of being silently swallowed.
-            print(f"[warn] {len(failures)} source(s) failed: {'; '.join(failures)}")
+            # Every stage has had its chance by now, so the run's useful work is
+            # committed - but exit non-zero so a partial failure is still visible
+            # to the scheduler instead of being silently swallowed.
+            print(f"[warn] {len(failures)} stage(s) failed: {'; '.join(failures)}")
             return 1
         return 0
     except Exception:  # noqa: BLE001
-        conn.rollback()
+        # Best-effort: if we got here because the connection died, rollback()
+        # raises too, and that would mask the original error with a much less
+        # informative InterfaceError.
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
         raise
     finally:
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _recover_connection(conn):
+    """Return a connection usable for the next stage.
+
+    Rolls the current one back when it is still alive; opens a fresh one when it
+    is not. Returning a working connection (rather than raising) is what lets a
+    mid-run connection loss cost only the source that was in flight instead of
+    the whole invocation - dedup still runs, and the crawl work already committed
+    for earlier sources still gets folded into canonical_jobs.
+    """
+    if db.is_usable(conn):
+        conn.rollback()
+        return conn
+    print("[warn] database connection was lost; reconnecting")
+    try:
         conn.close()
+    except Exception:  # noqa: BLE001 - already-dead connection, nothing to salvage
+        pass
+    return db.connect()
 
 
 def _crawl_and_normalize(conn, client, source_row: dict) -> None:
