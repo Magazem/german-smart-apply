@@ -209,9 +209,7 @@ def run_dedup(conn, country_code: str = "DE") -> dict[str, Any]:
             )
             clusters_created += 1
 
-        # Cluster-membership rows only need inserting for jobs newly arrived
-        # in *this* batch - a prior run's members already have rows. The
-        # canonical-pick flag is refreshed across the whole cluster since a
+        # The canonical-pick flag is refreshed across the whole cluster since a
         # newly-arrived job may have just been promoted above.
         cur.execute(
             'UPDATE "duplicate_cluster_members" SET "isCanonicalPick" = false '
@@ -219,11 +217,31 @@ def run_dedup(conn, country_code: str = "DE") -> dict[str, Any]:
             (duplicate_cluster_id,),
         )
         for job in jobs:
+            # ON CONFLICT is load-bearing, not defensive. This batch is NOT
+            # "jobs newly arrived", which an earlier version of this comment
+            # assumed: run_dedup selects on isDeduplicated = false, and
+            # normalizer/pipeline.py deliberately resets that flag whenever a
+            # posting's content changes, so that an EDITED posting propagates
+            # to canonical_jobs. An edited job therefore comes back through
+            # here already holding a membership row from the run that first
+            # saw it, and a plain INSERT violates
+            # duplicate_cluster_members_duplicateClusterId_rawJobId_key.
+            #
+            # That is not a rare edge: it took the whole stage down. run_dedup
+            # is one transaction, so a single collision rolled back every
+            # cluster, canonical_jobs stopped being refreshed entirely on
+            # 2026-07-23, and the API served an 8-day-old snapshot of a corpus
+            # that was still being crawled and normalized underneath it.
+            # Measured at the time of this fix: 9,049 of the 12,160 jobs
+            # awaiting dedup already had a membership row, i.e. the stage could
+            # not have succeeded on any run.
             cur.execute(
                 """
                 INSERT INTO "duplicate_cluster_members"
                     ("id", "duplicateClusterId", "rawJobId", "similarityScore", "isCanonicalPick")
                 VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT ("duplicateClusterId", "rawJobId")
+                DO UPDATE SET "similarityScore" = EXCLUDED."similarityScore"
                 """,
                 (str(uuid.uuid4()), duplicate_cluster_id, job["id"], 1.0, False),
             )
