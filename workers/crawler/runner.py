@@ -139,6 +139,16 @@ def run_crawl(conn, client: HttpClient, source_row: dict) -> dict[str, Any]:
     source_id = source_row["id"]
     started_at = _now()
     _insert_crawl_run(cur, run_id, source_id, started_at)
+    # Committed before the fetch, not with the snapshots after it. Everything
+    # below this line is HTTP, which for a source that fetches a detail record
+    # per posting is minutes of wall-clock with no SQL at all. Holding the row
+    # uncommitted would leave the connection idle IN TRANSACTION for that whole
+    # stretch, which managed Postgres reaps far more readily than a merely idle
+    # one - and the reaped connection is what killed SmartRecruiters' writes
+    # every run (see _fetch_details_for_page in smartrecruiters.py). It also
+    # means an interrupted crawl leaves a visible 'running' row instead of no
+    # trace at all.
+    conn.commit()
 
     retryer = Retrying(
         reraise=True,

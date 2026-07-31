@@ -155,18 +155,47 @@ _COUNTRY_NAME_TO_CODE: dict[str, str] = {
 }
 
 
+# Bare two-letter codes that are also a US state or Canadian province
+# abbreviation, so "San Francisco, CA" reads as Canada, "Chicago, IL" as
+# Israel, "Indianapolis, IN" as India, "Saskatoon, SK" as Slovakia and
+# "St. John's, NL" as the Netherlands.
+#
+# These stay in _COUNTRY_NAME_TO_CODE rather than being deleted. Dropping them
+# looks like the tidier fix but is a net regression for a DE-only product:
+# "Amsterdam, NL" would stop resolving and fall back to the market default,
+# i.e. a Dutch posting stamped DE, which then PASSES the `countryCode = DE`
+# hard filter and reaches German candidates. A US posting mislabeled CA is
+# only wrong in analytics - it is excluded from the DE result set either way.
+# So the ambiguity is demoted, not discarded.
+_STATE_AMBIGUOUS_COUNTRY_CODES = frozenset({"ca", "de", "il", "in", "nl", "sk"})
+
+
 def _country_code_from_parts(parts: list[str]) -> str | None:
     """The ISO-3166 alpha-2 code named explicitly in a location string, if any.
 
     Scans right-to-left because the country is conventionally the last segment
     ("Berlin, Germany", "Austin, TX, United States") - scanning left-to-right
     would let a city that happens to collide with a two-letter code win.
+
+    An unambiguous segment beats an ambiguous two-letter one no matter which
+    side of the string it is on, so "San Francisco, CA, USA" resolves to US
+    instead of stopping at "CA" and calling it Canada. Where the string offers
+    nothing but the ambiguous code ("San Francisco, CA"), it is still used -
+    there is nothing else to go on, and a city gazetteer is the only real fix.
     """
+    ambiguous: str | None = None
     for part in reversed(parts):
-        code = _COUNTRY_NAME_TO_CODE.get(part.lower())
-        if code:
-            return code
-    return None
+        key = part.lower()
+        code = _COUNTRY_NAME_TO_CODE.get(key)
+        if not code:
+            continue
+        if key in _STATE_AMBIGUOUS_COUNTRY_CODES:
+            # Remember the rightmost one, but keep looking for better evidence.
+            if ambiguous is None:
+                ambiguous = code
+            continue
+        return code
+    return ambiguous
 
 
 def normalize_location(raw: str, location_dictionary: dict[str, str], default_country_code: str = "DE") -> tuple[str, str]:
@@ -479,6 +508,29 @@ _SENIORITY_KEYWORDS: list[tuple[str, list[str]]] = [
 ]
 
 
+# Endings a keyword may carry and still mean the same thing. German inflects
+# for gender and builds compounds, so a bare right-hand word boundary rejects
+# the most ordinary forms a German posting is written in: Praktikantin,
+# Praktikumsplatz, Traineeprogramm, Berufseinsteigerin, erfahrener.
+#
+# These are enumerated rather than fixed by loosening the boundary to `\w*`,
+# because the right boundary is exactly what makes the boundary matching work
+# at all: in "Manager International Business" the substring "intern" is
+# preceded by a space, so the LEFT boundary matches happily and only the right
+# one rejects it. Widening it would put the original "International" ->
+# internship bug straight back.
+_SENIORITY_SUFFIXES: dict[str, str] = {
+    "praktikant": r"(?:in|en|innen)?",
+    "praktikum": r"(?:splatz|splätze|splaetze|sstelle)?",
+    "trainee": r"(?:programm|programme|stelle)?",
+    "einsteiger": r"(?:in|innen)?",
+    "berufseinsteiger": r"(?:in|innen)?",
+    "erfahren": r"(?:e|er|es|en|ere|erer)?",
+    "leiter": r"(?:in|innen)?",
+    "intern": r"(?:ship|s)?",
+}
+
+
 def infer_seniority(title: str) -> str | None:
     """Infer a seniority level from a job title, or None when unclear.
 
@@ -492,14 +544,17 @@ def infer_seniority(title: str) -> str | None:
     invisible to everyone else.
 
     Multi-word keywords still match as phrases; the boundary classes just stop
-    a keyword from matching inside a longer word.
+    a keyword from matching inside a longer word - except for the inflections
+    and compounds listed in _SENIORITY_SUFFIXES, which are the same word.
     """
     if not title:
         return None
     haystack = title.lower()
     for seniority, keywords in _SENIORITY_KEYWORDS:
         for kw in keywords:
-            if re.search(rf"(?<![\w]){re.escape(kw.strip())}(?![\w])", haystack):
+            stem = kw.strip()
+            suffix = _SENIORITY_SUFFIXES.get(stem, "")
+            if re.search(rf"(?<![\w]){re.escape(stem)}{suffix}(?![\w])", haystack):
                 return seniority
     return None
 
@@ -546,6 +601,139 @@ def infer_employment_type(title: str, description: str = "", hint: str | None = 
 # Remote-type inference
 # ---------------------------------------------------------------------------
 
+_REMOTE_KEYWORDS = (
+    "remote",
+    "homeoffice",
+    "home office",
+    "home-office",
+    "telearbeit",
+    "mobiles arbeiten",
+)
+_HYBRID_KEYWORDS = ("hybrid", "hybride", "hybrides", "hybriden", "hybrider", "hybridem")
+
+# "home office" as a THING the company has, not a way the candidate works -
+# team/department/product names ("Home Office Equipment Team"). Not exhaustive
+# and can't be: "managing our home office in London" is still read as remote,
+# because the follower there ("in") is the same one that makes "Homeoffice in
+# Deutschland möglich" a genuine remote signal. Distinguishing those needs more
+# than the next word, and the English "Home Office" as a proper noun is rare in
+# a German-market corpus - so this covers the mechanical cases and leaves that
+# one documented rather than pretending a keyword list settles it.
+_REMOTE_NOUN_FOLLOWERS = (
+    "equipment",
+    "team",
+    "teams",
+    "department",
+    "supplies",
+    "furniture",
+    "solutions",
+    "hardware",
+)
+
+# "hybrid" is a work-model word only when it isn't describing infrastructure.
+# `hybrid cloud`/`hybride Architektur` are standard vocabulary in essentially
+# every Cloud/DevOps/Platform posting, and reading them as a work model flipped
+# onsite roles to hybrid - which, because remoteType is a HARD filter in
+# JobsService, moved them out of the onsite result set entirely.
+# Only nouns that are unambiguously INFRASTRUCTURE. "hybrid model", "hybrid
+# setup" and "hybride Arbeitsmodelle" are the standard way of describing the
+# WORK arrangement, so excluding those (an earlier draft did) hides genuinely
+# hybrid jobs from the hybrid filter - the same hard-filter harm in the
+# opposite direction. Verified against the live corpus: with model/setup in
+# this list, real hybrid postings like "dank hybrider Arbeitsmodelle" and "we
+# work in a hybrid setup, combining in-office collaboration with..." were
+# demoted to onsite.
+_HYBRID_TECH_FOLLOWERS = (
+    "cloud",
+    "architecture",
+    "architektur",
+    "infrastructure",
+    "infrastruktur",
+    "deployment",
+)
+
+# Endings that keep the same meaning, so the word boundary doesn't reject the
+# ordinary way these are written: "work 100% remotely", "remotes Arbeiten".
+# Same trap as infer_seniority's German inflections - a bare right-hand
+# boundary turns a correct match into a silent miss, and here the miss means a
+# genuinely remote job is filed as onsite. Verified against the live corpus:
+# without these, 59 postings flipped remote -> onsite, and sampling them showed
+# they were "remotely"/"remotes", not negations.
+_KEYWORD_SUFFIXES: dict[str, str] = {
+    # "remotework" as one word is a real spelling in German postings.
+    "remote": r"(?:ly|s|work)?",
+    # German builds the work-model sense as a compound: "im Hybridmodus
+    # arbeiten", "Hybridarbeit". Enumerated rather than a loose `\w*` on
+    # purpose - "Hybridanlagen" (hybrid heat-pump systems, a real product in
+    # this corpus) must keep NOT matching.
+    "hybrid": r"(?:modus|arbeit|arbeiten|modell|modelle)?",
+}
+
+_NEGATIONS = ("kein", "keine", "keinen", "keinerlei", "nicht", "no", "not", "ohne", "without")
+
+# Words that turn a "negation" into an idiom negating nothing. "Arbeitest du
+# gern von zu Hause? KEIN PROBLEM, unsere Homeoffice-Option macht es möglich"
+# is an OFFER of remote work, and reading its "kein" as a negation files it as
+# onsite - the exact inversion this negation handling exists to prevent, just
+# pointing the other way. Found in the live corpus, not imagined.
+_NEGATION_IDIOM_FOLLOWERS = ("problem", "thema", "sorge", "ding", "problemo")
+
+# How far back to look for a negation. Sized from the real corpus rather than
+# guessed: it has to clear an enumeration ("keine remote- oder hybridarbeit
+# vorgesehen" puts 14 characters between the negation and the second term) as
+# well as the simple case ("does not support remote work", 9). Deliberately not
+# much wider than that - the further away the negation, the more likely it
+# governs a different clause, and a false negation files a genuinely remote job
+# as onsite.
+_NEGATION_WINDOW = 30
+
+
+def _is_negated(preceding: str) -> bool:
+    """Whether `preceding` (the text just before a keyword) negates it.
+
+    Skips idiomatic negations - see _NEGATION_IDIOM_FOLLOWERS.
+    """
+    for negation in _NEGATIONS:
+        for match in re.finditer(rf"(?<!\w){negation}(?!\w)", preceding):
+            following = preceding[match.end() :].lstrip(" ,-")
+            if any(re.match(rf"{idiom}(?!\w)", following) for idiom in _NEGATION_IDIOM_FOLLOWERS):
+                continue
+            return True
+    return False
+
+
+def _mentions(haystack: str, keywords: tuple[str, ...], excluded_followers: tuple[str, ...] = ()) -> bool:
+    """Whether `haystack` asserts any of `keywords` - on word boundaries, and
+    not under a negation.
+
+    Plain `kw in haystack` got both halves of this wrong, and both mattered
+    because remoteType is a hard filter:
+
+      - no boundaries: "Home Office Equipment Team" and "our home office in
+        London" both read as a remote work model.
+      - no negation handling: "Kein Homeoffice, sondern Präsenzarbeit" and
+        "This role does not support remote work" both classified as REMOTE -
+        i.e. the posting was shown to exactly the candidates it tells to go
+        away. That is worse than the near-empty result set this inference was
+        added to fix; an empty list is at least honest.
+
+    Mirrors infer_seniority's boundary matching rather than inventing a second
+    convention.
+    """
+    for keyword in keywords:
+        suffix = _KEYWORD_SUFFIXES.get(keyword, "")
+        for match in re.finditer(rf"(?<!\w){re.escape(keyword)}{suffix}(?!\w)", haystack):
+            preceding = haystack[max(0, match.start() - _NEGATION_WINDOW) : match.start()]
+            if _is_negated(preceding):
+                continue
+            if excluded_followers:
+                following = haystack[match.end() : match.end() + 24].lstrip(" -")
+                if any(re.match(rf"{f}(?!\w)", following) for f in excluded_followers):
+                    continue
+            return True
+    return False
+
+
 def infer_remote_type(location_raw: str, remote_hint=None, description: str = "") -> str:
     """Infer onsite/hybrid/remote from the location, an explicit source hint,
     and the description text.
@@ -577,15 +765,8 @@ def infer_remote_type(location_raw: str, remote_hint=None, description: str = ""
     # the conservative reading of "hybrid role with home-office days".
     haystack += " " + (description or "").lower()
 
-    has_remote = (
-        "remote" in haystack
-        or "homeoffice" in haystack
-        or "home office" in haystack
-        or "home-office" in haystack
-        or "telearbeit" in haystack
-        or "vollständig remote" in haystack
-    )
-    has_hybrid = "hybrid" in haystack or "hybrides" in haystack
+    has_remote = _mentions(haystack, _REMOTE_KEYWORDS, excluded_followers=_REMOTE_NOUN_FOLLOWERS)
+    has_hybrid = _mentions(haystack, _HYBRID_KEYWORDS, excluded_followers=_HYBRID_TECH_FOLLOWERS)
     if has_remote and has_hybrid:
         return "hybrid"
     if has_remote:

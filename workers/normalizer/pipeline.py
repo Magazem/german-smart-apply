@@ -111,8 +111,14 @@ def _coerce_required_text(common: dict) -> dict:
 
     Normalizing here rather than in each adapter keeps the guarantee in one
     place and extends it to adapters added later. "" is the right value, not a
-    sentinel: normalize_location() already degrades "" to "Unknown", and the
-    empty-title case is caught by the caller's own skip.
+    sentinel: normalize_location() already degrades "" to "Unknown".
+
+    A missing TITLE is different from a missing location, though, and is not
+    coerced into a row: "" satisfies the NOT NULL constraint, so the row would
+    insert cleanly, cluster with every other untitled posting from the same
+    company, and surface as a blank job card linking to a titleless posting.
+    run_normalizer() skips those instead - see the guard there. This docstring
+    previously claimed that skip already existed when it did not.
     """
     return {key: (common.get(key) or "") if key in _REQUIRED_TEXT_KEYS else value
             for key, value in {**{k: None for k in _REQUIRED_TEXT_KEYS}, **common}.items()}
@@ -248,9 +254,22 @@ def run_normalizer(conn, source_row: dict, snapshots: list[dict]) -> dict:
     location_dictionary = source_row.get("locationDictionary") or market_de.LOCATION_DICTIONARY
 
     written = 0
+    skipped_untitled = 0
     for snapshot in snapshots:
         row_fields = build_raw_job_fields(source_type, snapshot["payload"], location_dictionary)
+        # A posting with no title is not a job we can show anyone: it would
+        # render as an empty card and, because dedup clusters on (company,
+        # title, location), every untitled posting from one company collapses
+        # into a single blank entry. _coerce_required_text() deliberately keeps
+        # the NOT NULL constraint from rejecting the row; this is what decides
+        # the row is not worth having.
+        if not row_fields["jobTitleRaw"].strip():
+            skipped_untitled += 1
+            continue
         upsert_raw_job(cur, source_id, row_fields)
         written += 1
 
-    return {"sourceId": source_id, "rawJobsWritten": written}
+    result = {"sourceId": source_id, "rawJobsWritten": written}
+    if skipped_untitled:
+        result["skippedUntitled"] = skipped_untitled
+    return result

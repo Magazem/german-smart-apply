@@ -687,11 +687,63 @@ def test_smartrecruiters_fetch_returns_raw_payloads():
     assert len(payloads) == 2
     assert payloads[0].original_job_id == "744000012345678"
     assert payloads[0].payload["name"] == "Senior Backend Engineer (m/f/d)"
-    assert client.calls == [
-        url,
+    # The list call has to come first - the detail calls are derived from it -
+    # but the detail calls themselves are issued concurrently
+    # (_fetch_details_for_page), so their relative order is not deterministic
+    # and asserting a fixed sequence here would be a flaky test, not a stricter
+    # one. Payload ORDER is still guaranteed and is asserted separately below.
+    assert client.calls[0] == url
+    assert set(client.calls[1:]) == {
         smartrecruiters._posting_detail_url("acme", "744000012345678"),
         smartrecruiters._posting_detail_url("acme", "744000098765432"),
-    ]
+    }
+
+
+def test_smartrecruiters_pairs_each_detail_with_its_own_posting_under_concurrency():
+    """Details are fetched concurrently, so the merge relies on results coming
+    back in request order - not completion order. If that ever regresses, every
+    posting silently gets some OTHER posting's description, which no assertion
+    about "a description is present" would catch.
+
+    Uses more postings than the thread-pool width, with a detail response whose
+    body identifies which posting it belongs to, so a mispairing is visible.
+    """
+    postings = [{"id": str(1000 + i), "name": f"Role {i}"} for i in range(25)]
+    url = smartrecruiters._postings_url("acme")
+    responses = {url: FakeResponse({"content": postings, "totalFound": len(postings)})}
+    for posting in postings:
+        responses[smartrecruiters._posting_detail_url("acme", posting["id"])] = FakeResponse(
+            {"jobAd": {"sections": {"jobDescription": {"text": f"description-for-{posting['id']}"}}}}
+        )
+
+    payloads = smartrecruiters.fetch(FakeClient(responses), {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST)
+
+    assert [p.original_job_id for p in payloads] == [p["id"] for p in postings]
+    for payload in payloads:
+        text = payload.payload["jobAd"]["sections"]["jobDescription"]["text"]
+        assert text == f"description-for-{payload.original_job_id}"
+
+
+def test_smartrecruiters_keeps_a_posting_whose_detail_call_fails():
+    """A failed detail degrades to no description for that ONE posting, rather
+    than dropping it or failing the page - concurrency must not change that.
+    """
+    postings = [{"id": "1"}, {"id": "2"}]
+    url = smartrecruiters._postings_url("acme")
+    client = FakeClient(
+        {
+            url: FakeResponse({"content": postings, "totalFound": 2}),
+            # Only posting 2 has a detail response; posting 1's call 404s.
+            smartrecruiters._posting_detail_url("acme", "2"): FakeResponse({"jobAd": {"sections": {}}}),
+            smartrecruiters._posting_detail_url("acme", "1"): FakeResponse({}, status_code=404),
+        }
+    )
+
+    payloads = smartrecruiters.fetch(client, {"companyIdentifiers": ["acme"]}, SMARTRECRUITERS_ALLOWLIST)
+
+    assert [p.original_job_id for p in payloads] == ["1", "2"]
+    assert "jobAd" not in payloads[0].payload
+    assert "jobAd" in payloads[1].payload
 
 
 def test_smartrecruiters_fetch_merges_the_detail_job_ad_into_the_payload():

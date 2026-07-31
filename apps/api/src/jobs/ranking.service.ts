@@ -16,6 +16,39 @@ import type {
 } from '@german-smart-apply/shared';
 
 /**
+ * Only the job fields the ranking formula actually reads - the counterpart to
+ * RankingProfileInput below, and there for the same reason: it lets a caller
+ * score a row it fetched with a narrow `select` instead of hydrating the whole
+ * CanonicalJob + RawJob + Source graph.
+ *
+ * That matters because JobsService.search() scores EVERY job matching the
+ * filters (see the comment on its candidate query). The full DTO carries
+ * `jobDescriptionHtml`, which the formula never reads and which is as large as
+ * the description text it duplicates - 19.3MB across the current corpus, so
+ * hydrating it for a full scan would double the transfer for nothing.
+ *
+ * `CanonicalJob` satisfies this shape structurally, so callers that already
+ * hold a full DTO (job detail, match explanation) pass it unchanged.
+ */
+export type ScorableJob = Pick<
+  CanonicalJob,
+  | 'jobId'
+  | 'jobTitleNormalized'
+  | 'jobDescriptionText'
+  | 'techStackTags'
+  | 'language'
+  | 'countryCode'
+  | 'remoteType'
+  | 'locationNormalized'
+  | 'salaryMin'
+  | 'salaryMax'
+  | 'postedAt'
+  | 'sourceTrustScore'
+  | 'scamRiskScore'
+  | 'duplicateConfidence'
+>;
+
+/**
  * Only the profile fields the ranking formula actually reads. Decoupled from
  * both the Prisma `CandidateProfile` model (Date fields, extra columns) and
  * the shared `CandidateProfile` DTO (string timestamps) so callers can pass
@@ -92,7 +125,7 @@ function tokenizeTitle(text: string): Set<string> {
  */
 @Injectable()
 export class RankingService {
-  score(job: CanonicalJob, ctx: RankingContext): JobMatchScore {
+  score(job: ScorableJob, ctx: RankingContext): JobMatchScore {
     const weights = marketDe.rankingWeights;
     const { profile } = ctx;
 
@@ -244,7 +277,7 @@ export class RankingService {
    * candidate flatly won't move to is likewise a hard constraint, not a
    * discount, and is handled in isEligible() too.
    */
-  private locationFit(profile: RankingProfileInput, job: CanonicalJob, cityFit: CityFit): number {
+  private locationFit(profile: RankingProfileInput, job: ScorableJob, cityFit: CityFit): number {
     let score = 0.5;
     if (profile.locationPreference === 'any') {
       score = 0.8;
@@ -290,7 +323,7 @@ export class RankingService {
    * it can't be silently blended into a continuous dimension the way the old
    * locationFit country discount was.
    */
-  private isEligible(profile: RankingProfileInput, job: CanonicalJob, cityFit: CityFit): boolean {
+  private isEligible(profile: RankingProfileInput, job: ScorableJob, cityFit: CityFit): boolean {
     if (profile.targetCountryCode && profile.targetCountryCode !== job.countryCode) {
       return false;
     }
@@ -321,7 +354,7 @@ export class RankingService {
    * with real profiles, so silently reporting it as a measured "50% fit" was
    * actively misleading in the breakdown UI - see match-score.tsx.
    */
-  private salaryFit(profile: RankingProfileInput, job: CanonicalJob): number | null {
+  private salaryFit(profile: RankingProfileInput, job: ScorableJob): number | null {
     // Explicit null checks, not falsy checks: salaryTargetMin/Max of 0 is a
     // real, meaningful preference ("no floor/ceiling"), not "unset".
     if (profile.salaryTargetMin == null && profile.salaryTargetMax == null) return null;
