@@ -139,16 +139,25 @@ def run_crawl(conn, client: HttpClient, source_row: dict) -> dict[str, Any]:
     source_id = source_row["id"]
     started_at = _now()
     _insert_crawl_run(cur, run_id, source_id, started_at)
-    # Committed before the fetch, not with the snapshots after it. Everything
-    # below this line is HTTP, which for a source that fetches a detail record
-    # per posting is minutes of wall-clock with no SQL at all. Holding the row
-    # uncommitted would leave the connection idle IN TRANSACTION for that whole
-    # stretch, which managed Postgres reaps far more readily than a merely idle
-    # one - and the reaped connection is what killed SmartRecruiters' writes
-    # every run (see _fetch_details_for_page in smartrecruiters.py). It also
-    # means an interrupted crawl leaves a visible 'running' row instead of no
-    # trace at all.
-    conn.commit()
+    # Deliberately NOT committed here, despite the long HTTP stretch below.
+    #
+    # An earlier version of this fix committed the crawl_runs row before the
+    # fetch, so the connection would sit merely idle rather than idle IN
+    # TRANSACTION across it. That reasoning is sound, but it broke the
+    # invariant every DB function in this package holds and the whole test
+    # suite depends on: nothing below the pipeline layer commits, because the
+    # caller owns the transaction boundary (see tests/conftest.py's pg_conn,
+    # which makes each test a transaction it rolls back). Committing here
+    # ended the test's transaction mid-test, so anything written afterwards
+    # was rolled back and earlier writes leaked into the next test.
+    #
+    # It is also not needed: the connection-reaping was a function of the
+    # fetch taking 15-60 minutes, and _fetch_details_for_page has since cut
+    # that to ~6 minutes - verified in production, where the first crawl after
+    # that change succeeded in 6m18s. Other sources already sit in an open
+    # transaction for ~4 minutes per run without being reaped. If this needs
+    # revisiting, the fix is to hand run_crawl an explicit transaction
+    # boundary, not to commit behind the caller's back.
 
     retryer = Retrying(
         reraise=True,

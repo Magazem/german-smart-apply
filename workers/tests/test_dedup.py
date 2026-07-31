@@ -408,3 +408,58 @@ def test_run_dedup_promotes_higher_trust_job_arriving_in_a_later_run(seeded_db):
     )
     members = {m["rawJobId"]: m["isCanonicalPick"] for m in dict_cur.fetchall()}
     assert members == {lever_job_id: False, gh_job_id: True}
+
+
+def test_run_dedup_survives_a_job_that_is_deduplicated_twice(seeded_db):
+    """An EDITED posting comes back through run_dedup already holding a
+    duplicate_cluster_members row, and a plain INSERT violated
+    duplicate_cluster_members_duplicateClusterId_rawJobId_key.
+
+    This is the normal path, not an edge case: normalizer/pipeline.py resets
+    isDeduplicated to false whenever a posting's content changes - that reset
+    is what makes an edit propagate - and run_dedup selects exactly those rows.
+    Because run_dedup is a single transaction, one collision rolled back every
+    cluster in the batch, so canonical_jobs silently stopped being refreshed
+    while raw_jobs kept being updated underneath it.
+    """
+    conn, source_ids = seeded_db
+    cur = conn.cursor()
+
+    job_id = insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-edit-1")
+    first = dedup.run_dedup(conn)
+    assert first["canonicalJobsCreated"] == 1
+
+    # The posting is edited and re-normalized: content changed, so the
+    # normalizer clears the flag and the job is queued for dedup again.
+    # No commit - pg_conn owns the transaction and rolls it back at teardown.
+    cur.execute('UPDATE "raw_jobs" SET "isDeduplicated" = false WHERE "id" = %s', (job_id,))
+
+    # Previously raised UniqueViolation and rolled back the whole stage.
+    second = dedup.run_dedup(conn)
+
+    dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    dict_cur.execute('SELECT * FROM "canonical_jobs"')
+    assert len(dict_cur.fetchall()) == 1, "re-dedup must not create a second canonical row"
+
+    dict_cur.execute(
+        'SELECT count(*) AS n FROM "duplicate_cluster_members" WHERE "rawJobId" = %s', (job_id,)
+    )
+    assert dict_cur.fetchone()["n"] == 1, "membership must be upserted, not duplicated"
+
+    cur.execute('SELECT "isDeduplicated" FROM "raw_jobs" WHERE "id" = %s', (job_id,))
+    assert cur.fetchone()[0] is True
+    assert second is not None
+
+
+def test_run_dedup_still_marks_every_processed_job_deduplicated(seeded_db):
+    """Guard on the flag itself: if ON CONFLICT ever silently skipped the row
+    without the surrounding bookkeeping running, jobs would loop forever.
+    """
+    conn, source_ids = seeded_db
+    cur = conn.cursor()
+
+    insert_raw_job(cur, source_ids["greenhouse-de"], originalJobId="gh-flag-1")
+    dedup.run_dedup(conn)
+
+    cur.execute('SELECT count(*) FROM "raw_jobs" WHERE "isDeduplicated" = false')
+    assert cur.fetchone()[0] == 0
