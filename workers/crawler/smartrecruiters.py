@@ -70,11 +70,15 @@ market-de.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from crawler.base import HttpClient, RawPayload, TransientFetchError, enforce_domain_allowlist, retryable
 
 BASE_HOST = "api.smartrecruiters.com"
 DEFAULT_PAGE_LIMIT = 100
 DEFAULT_MAX_JOBS_PER_COMPANY = 5000
+# Concurrent detail fetches per page - see _fetch_details_for_page.
+DEFAULT_DETAIL_WORKERS = 8
 
 
 def _postings_url(company_identifier: str, offset: int = 0, limit: int = DEFAULT_PAGE_LIMIT) -> str:
@@ -119,6 +123,46 @@ def _fetch_posting_detail(
         return {}
 
 
+def _fetch_details_for_page(
+    client: HttpClient, company_identifier: str, postings: list[dict], domain_allowlist: list[str]
+) -> list[dict]:
+    """Detail records for one page of postings, in the same order as `postings`.
+
+    Concurrent because this is the crawl's entire wall-clock cost and that cost
+    was breaking the run, not merely slowing it. One detail call per posting is
+    unavoidable (see the module docstring - `jobAd` exists on no other endpoint),
+    and at ~0.42s each, ~8.4k postings serialized to roughly an hour. The
+    pipeline holds one Postgres connection open across a whole crawl and spends
+    that hour making HTTP calls, so Neon reaped the idle connection and every
+    write after the fetch died with "SSL connection has been closed
+    unexpectedly". The per-source handler in run_pipeline.py caught it and moved
+    on, so the symptom was silent: SmartRecruiters simply stopped producing
+    snapshots on 2026-07-23 - the day the detail fetch shipped - while every
+    other source kept succeeding, and its 7,675 visible jobs kept serving an
+    empty description forever.
+
+    DEFAULT_DETAIL_WORKERS is deliberately modest: this is someone else's public
+    API, the goal is to be off the connection-reaping cliff (~7min at 8 workers),
+    not to extract maximum throughput.
+
+    `requests.Session` is safe to share for concurrent plain GETs - the
+    underlying urllib3 pool is thread-safe, and nothing here mutates session
+    state. Exceptions do not escape: _fetch_posting_detail already degrades a
+    failed detail call to {}, and the executor preserves that per-posting.
+    """
+    if not postings:
+        return []
+    with ThreadPoolExecutor(max_workers=DEFAULT_DETAIL_WORKERS) as pool:
+        return list(
+            pool.map(
+                lambda posting: _fetch_posting_detail(
+                    client, company_identifier, str(posting["id"]), domain_allowlist
+                ),
+                postings,
+            )
+        )
+
+
 def _merge_detail_into_posting(posting: dict, detail: dict) -> dict:
     """Copy the description-bearing fields off the detail record onto the
     list-summary posting. Only fields the list response genuinely lacks are
@@ -155,12 +199,12 @@ def fetch(
             enforce_domain_allowlist(url, domain_allowlist)
             data = _get(client, url)
             content = data.get("content", [])
-            for posting in content:
-                posting_id = str(posting["id"])
-                detail = _fetch_posting_detail(client, identifier, posting_id, domain_allowlist)
+            for posting, detail in zip(
+                content, _fetch_details_for_page(client, identifier, content, domain_allowlist)
+            ):
                 payloads.append(
                     RawPayload(
-                        original_job_id=posting_id,
+                        original_job_id=str(posting["id"]),
                         payload=_merge_detail_into_posting(posting, detail),
                         fetched_at=RawPayload.now_iso(),
                     )
