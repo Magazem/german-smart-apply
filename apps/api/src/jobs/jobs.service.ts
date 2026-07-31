@@ -7,7 +7,7 @@ import { TokenUsageService } from '../token-usage/token-usage.service.js';
 import { toSharedCandidateProfile } from '../profile/candidate-profile.mapper.js';
 import { toSharedCanonicalJob } from './canonical-job.mapper.js';
 import type { SearchJobsDto } from './dto/search-jobs.dto.js';
-import { RankingService, type RankingProfileInput } from './ranking.service.js';
+import { RankingService, type RankingProfileInput, type ScorableJob } from './ranking.service.js';
 
 export interface RankedJobResult {
   job: CanonicalJob;
@@ -15,13 +15,57 @@ export interface RankedJobResult {
   myFeedback?: JobFeedbackType | null;
 }
 
-// Hard-filtered candidate pool size before in-app scoring/sorting. Fine at
-// MVP scale (Postgres FTS/pgvector-backed search is a Phase 3 upgrade per
-// plan.md); revisit if canonical_jobs grows large enough that this misses
-// good matches outside the top `CANDIDATE_POOL_SIZE` most recent postings.
-const CANDIDATE_POOL_SIZE = 200;
+// Absolute ceiling on how many jobs one search will score in-process. This is
+// NOT the old recency pool: it sits far above the whole visible corpus
+// (~12.9k) and exists only so an unbounded corpus can't OOM the API. Hitting
+// it is a bug to fix, not a normal operating mode, so search() logs loudly
+// when it does rather than silently returning a truncated ranking.
+const MAX_SCORED_CANDIDATES = 50_000;
 const DEFAULT_PAGE_SIZE = 20;
 const ALERT_MATCH_LIMIT = 20;
+
+/**
+ * Exactly the columns RankingService.score() reads - see ScorableJob. Notably
+ * absent: `jobDescriptionHtml`, which is as large as the description text and
+ * is never scored against, and the whole Source row.
+ */
+const SCORING_SELECT = {
+  id: true,
+  jobTitleNormalized: true,
+  techStackTags: true,
+  language: true,
+  countryCode: true,
+  remoteType: true,
+  locationNormalized: true,
+  salaryMin: true,
+  salaryMax: true,
+  postedAt: true,
+  sourceTrustScore: true,
+  scamRiskScore: true,
+  duplicateConfidence: true,
+  rawJob: { select: { jobDescriptionText: true } },
+} satisfies Prisma.CanonicalJobSelect;
+
+type ScoringRow = Prisma.CanonicalJobGetPayload<{ select: typeof SCORING_SELECT }>;
+
+function toScorableJob(record: ScoringRow): ScorableJob {
+  return {
+    jobId: record.id,
+    jobTitleNormalized: record.jobTitleNormalized,
+    jobDescriptionText: record.rawJob.jobDescriptionText,
+    techStackTags: record.techStackTags,
+    language: record.language,
+    countryCode: record.countryCode,
+    remoteType: record.remoteType as ScorableJob['remoteType'],
+    locationNormalized: record.locationNormalized,
+    salaryMin: record.salaryMin,
+    salaryMax: record.salaryMax,
+    postedAt: record.postedAt ? record.postedAt.toISOString() : null,
+    sourceTrustScore: record.sourceTrustScore,
+    scamRiskScore: record.scamRiskScore,
+    duplicateConfidence: record.duplicateConfidence,
+  };
+}
 
 /**
  * The ranking-relevant slice of a CandidateProfile row. Pure - no I/O, so a
@@ -59,50 +103,89 @@ export class JobsService {
     private readonly aiProviderFactory: AiProviderFactory,
   ) {}
 
+  /**
+   * Rank every job matching the hard filters, then return one page of the
+   * result.
+   *
+   * The scoring set is deliberately the WHOLE filtered set, not a slice of it.
+   * This previously fetched the `CANDIDATE_POOL_SIZE` (200) most recently
+   * posted matches and scored only those, which made the headline feature
+   * wrong rather than merely approximate: with 12,902 visible jobs, 12,702
+   * (98.4%) could never be scored at all, and the 200-row cut reached back
+   * only about 21 hours. A candidate's best match was returned only if it
+   * happened to have been posted that day. Narrowing the query by hand (a role
+   * filter, say) shrank the matching set below 200 and the good job appeared -
+   * which is exactly how the bug was found, and why it looked like a ranking
+   * problem when it was really a retrieval one.
+   *
+   * Scoring is a pure in-process calculation (no I/O per job), so the cost of
+   * scoring everything is the row fetch, not the arithmetic. That fetch is kept
+   * cheap by selecting only the scored columns - see SCORING_SELECT - and the
+   * full DTO is hydrated for one page of results at the end. Replacing this
+   * with a real search index (Postgres FTS/pgvector) is still the Phase 3 plan;
+   * this makes the answer correct in the meantime instead of fast and wrong.
+   */
   async search(filters: SearchJobsDto, userId?: string) {
     const where = this.buildWhere(filters);
 
     const candidates = await this.prisma.client.canonicalJob.findMany({
       where,
-      include: { rawJob: { include: { source: true } } },
-      // `nulls: 'last'` is load-bearing, not cosmetic: postedAt is nullable
-      // and Postgres sorts NULLs FIRST on DESC, so a plain `postedAt: 'desc'`
-      // filled the CANDIDATE_POOL_SIZE pool with undated postings before any
-      // dated one was considered. Several adapters routinely leave postedAt
-      // null (the source doesn't publish a date), so on real crawled data
-      // that silently starved ranking of the recent jobs it is supposed to
-      // rank - the pool is a hard cut, so anything outside it can never be
-      // matched, no matter how good a fit it is.
+      select: SCORING_SELECT,
+      // Only decides WHICH rows survive the MAX_SCORED_CANDIDATES safety
+      // ceiling, not the order results come back in - that is the score sort
+      // below. `nulls: 'last'` is still load-bearing: postedAt is nullable and
+      // Postgres sorts NULLs FIRST on DESC, so a plain `postedAt: 'desc'` would
+      // put every undated posting ahead of every dated one at the cut.
       orderBy: { postedAt: { sort: 'desc', nulls: 'last' } },
-      take: CANDIDATE_POOL_SIZE,
+      take: MAX_SCORED_CANDIDATES,
     });
 
-    const rankingProfile = await this.loadRankingProfile(userId);
-    const interactionBias = await this.loadInteractionBias(
-      userId,
-      candidates.map((c) => c.id),
-    );
+    if (candidates.length === MAX_SCORED_CANDIDATES) {
+      this.logger.warn(
+        `Search hit the ${MAX_SCORED_CANDIDATES}-row scoring ceiling; ranking is truncated and ` +
+          `the best match may be missing. Move search behind a real index rather than raising this.`,
+      );
+    }
 
-    const scored: RankedJobResult[] = candidates.map((record) => {
-      const job = toSharedCanonicalJob(record);
-      const score = this.ranking.score(job, {
+    const rankingProfile = await this.loadRankingProfile(userId);
+    const interactionBias = await this.loadInteractionBias(userId);
+
+    const scored = candidates.map((record) => ({
+      id: record.id,
+      score: this.ranking.score(toScorableJob(record), {
         profile: rankingProfile,
         queryText: filters.query ?? filters.title,
         interactionBias: interactionBias.get(record.id),
-      });
-      return { job, score };
-    });
+      }),
+    }));
 
     scored.sort((a, b) => b.score.totalScore - a.score.totalScore);
 
     const limit = filters.limit ?? DEFAULT_PAGE_SIZE;
     const offset = filters.offset ?? 0;
+    const page = scored.slice(offset, offset + limit);
+
+    // Hydrate the full DTO (raw company/title/apply URL/description HTML, and
+    // the joined Source row) for the returned page only - one small query
+    // instead of carrying those columns for every scored row.
+    const hydrated = await this.prisma.client.canonicalJob.findMany({
+      where: { id: { in: page.map((entry) => entry.id) } },
+      include: { rawJob: { include: { source: true } } },
+    });
+    const byId = new Map(hydrated.map((record) => [record.id, toSharedCanonicalJob(record)]));
+
+    const results: RankedJobResult[] = [];
+    for (const entry of page) {
+      const job = byId.get(entry.id);
+      // Absent only if the row was deleted between the two queries.
+      if (job) results.push({ job, score: entry.score });
+    }
 
     return {
       total: scored.length,
       limit,
       offset,
-      results: scored.slice(offset, offset + limit),
+      results,
     };
   }
 
@@ -375,15 +458,21 @@ export class JobsService {
     return profile ? toRankingProfile(profile) : null;
   }
 
-  private async loadInteractionBias(
-    userId: string | undefined,
-    canonicalJobIds: string[],
-  ): Promise<Map<string, number>> {
+  /**
+   * All of one user's like/skip interactions, keyed by canonical job id.
+   *
+   * Deliberately not filtered by the candidate ids being scored any more: that
+   * `IN (...)` list was bounded by the old 200-row pool, but search() now
+   * scores the whole filtered corpus, and passing ~13k ids per request would
+   * cost far more than reading the handful of rows one user actually has.
+   */
+  private async loadInteractionBias(userId: string | undefined): Promise<Map<string, number>> {
     const bias = new Map<string, number>();
-    if (!userId || canonicalJobIds.length === 0) return bias;
+    if (!userId) return bias;
 
     const interactions = await this.prisma.client.jobInteraction.findMany({
-      where: { userId, canonicalJobId: { in: canonicalJobIds } },
+      where: { userId },
+      select: { canonicalJobId: true, interactionType: true },
     });
     for (const interaction of interactions) {
       if (interaction.interactionType === 'like') bias.set(interaction.canonicalJobId, 1);
